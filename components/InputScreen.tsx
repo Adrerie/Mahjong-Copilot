@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { GameMode, GameState, Suit, Tile, Meld, AnalysisResult, Language } from '../types';
 import { createTile, SUIT_LABELS, INITIAL_WALL_MCR, INITIAL_WALL_SICHUAN, TEXT, THEME } from '../constants';
@@ -107,7 +108,7 @@ const InputScreen: React.FC<Props> = ({ mode, lang, setLang, onBack }) => {
     <div className={`flex flex-col h-screen bg-gradient-to-b ${THEME.bgGradient}`}>
       
       {/* 1. Header */}
-      <div className="bg-white border-b-2 border-blue-100 z-10 px-4 py-3 shadow-sm shrink-0">
+      <div className="bg-white border-b-2 border-blue-100 z-10 px-4 pb-3 pt-12 shadow-sm shrink-0">
         <div className="flex items-center justify-between mb-2">
           <button onClick={onBack} className="w-8 h-8 flex items-center justify-center bg-gray-100 rounded-full hover:bg-gray-200">
              <span className="text-xl">←</span>
@@ -134,7 +135,15 @@ const InputScreen: React.FC<Props> = ({ mode, lang, setLang, onBack }) => {
                 <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">{t.wallTiles}</p>
                 <div className="flex items-center gap-2">
                     <button onClick={() => setWallCount(c => Math.max(0, c-1))} className="w-6 h-6 bg-white rounded shadow text-[#1A237E] font-bold">-</button>
-                    <span className="font-mono text-xl font-bold text-[#1A237E]">{wallCount}</span>
+                    <input
+                        type="number"
+                        value={wallCount}
+                        onChange={(e) => {
+                            const val = parseInt(e.target.value);
+                            setWallCount(isNaN(val) ? 0 : Math.max(0, val));
+                        }}
+                        className="w-14 text-center font-mono text-xl font-bold text-[#1A237E] bg-transparent outline-none border-b border-transparent focus:border-[#1A237E] focus:bg-white/50 rounded px-1 transition-all no-spinner"
+                    />
                     <button onClick={() => setWallCount(c => c+1)} className="w-6 h-6 bg-white rounded shadow text-[#1A237E] font-bold">+</button>
                 </div>
             </div>
@@ -154,7 +163,7 @@ const InputScreen: React.FC<Props> = ({ mode, lang, setLang, onBack }) => {
       </div>
 
       {/* 2. Scrollable Canvas */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar pb-32">
+      <div className={`flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar transition-[padding] duration-300 ${showKeyboard ? 'pb-96' : 'pb-32'}`}>
         
         {/* === COMBINED PLAYER AREA === */}
         <div className="bg-white rounded-3xl border-2 border-blue-100 shadow-sm transition-all duration-300 overflow-hidden">

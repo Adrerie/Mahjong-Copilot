@@ -1,6 +1,11 @@
 
 import { GameMode, GameState, Suit, Tile, AnalysisResult, FanSuggestion, Language, Meld } from '../types';
-import { createTile, getTileKey, TEXT } from '../constants';
+import { 
+  createTile, getTileKey, TEXT,
+  MCR_88_FAN, MCR_64_FAN, MCR_48_FAN, MCR_32_FAN, MCR_24_FAN, MCR_16_FAN,
+  MCR_12_FAN, MCR_8_FAN, MCR_6_FAN, MCR_4_FAN, MCR_2_FAN, MCR_1_FAN,
+  MCRPattern, MCR_RULES
+} from '../constants';
 
 // --- Helper Functions ---
 
@@ -118,6 +123,9 @@ const analyzeSichuan = (hand: Tile[], melds: Meld[], voidSuit: Suit | null, lang
 
     const suits = new Set(allTiles.map(t => t.suit));
     const isFullFlush = suits.size === 1;
+    
+    // 统计碰/杠副露
+    const pongMelds = melds.filter(m => m.type === 'pong' || m.type === 'gang');
 
     let pairs = 0;
     let triplets = 0;
@@ -150,6 +158,7 @@ const analyzeSichuan = (hand: Tile[], melds: Meld[], voidSuit: Suit | null, lang
              makeSichuanSug(t.qingYiSe, 4, [], 90);
         }
     } else {
+        // 分析清一色潜力：找出最多的花色，计算需要换掉多少张其他花色的牌
         let maxSuit = Suit.Man; 
         let maxC = 0;
         [Suit.Man, Suit.Pin, Suit.Sou].forEach(s => {
@@ -157,31 +166,73 @@ const analyzeSichuan = (hand: Tile[], melds: Meld[], voidSuit: Suit | null, lang
             if(c > maxC) { maxC = c; maxSuit = s; }
         });
         
-        if (maxC >= 9) {
-            const missing: Tile[] = [createTile(maxSuit, 1)]; 
-            makeSichuanSug(t.qingYiSe, 4, missing, maxC * 7);
+        // 需要换掉的牌 = 总牌数 - 最多花色的牌数
+        const otherSuitCount = allTiles.length - maxC;
+        
+        // 如果主花色 >= 8张，或者其他花色 <= 4张，就有清一色的可能
+        if (maxC >= 8 || otherSuitCount <= 4) {
+            // 找出需要换掉的牌（其他花色）
+            const otherSuitTiles = allTiles.filter(tile => tile.suit !== maxSuit).slice(0, 4);
+            const missing = otherSuitTiles.map(tile => createTile(tile.suit, tile.value));
+            
+            // 概率：主花色越多越高
+            const prob = Math.min(90, maxC * 7);
+            makeSichuanSug(t.qingYiSe, 4, missing, prob);
         }
     }
 
-    if (pairs >= 4 && melds.length === 0) {
-        const missing: Tile[] = [];
-        allTiles.forEach(tile => {
-            if (counts.get(getTileKey(tile.suit, tile.value)) === 1) {
-                if(missing.length < 3) missing.push(createTile(tile.suit, tile.value));
+    // 四川七对分析：需要7对，计算当前对子数和缺少的牌
+    if (melds.length === 0) {
+        const singleTilesForQiDui: Tile[] = [];
+        counts.forEach((c, key) => {
+            if (c === 1) {
+                const value = parseInt(key[0]);
+                const suitChar = key.slice(1);
+                const suit = suitChar === 'm' ? Suit.Man : suitChar === 'p' ? Suit.Pin : suitChar === 's' ? Suit.Sou : Suit.Zihai;
+                singleTilesForQiDui.push(createTile(suit, value));
             }
         });
-        const name = roots > 0 ? t.longQiDui : t.qiDui;
-        makeSichuanSug(name, 4, missing, pairs * 12); 
+        
+        const pairsNeededSC = 7 - pairs;
+        
+        // 如果对子数 >= 3，就有七对的可能
+        if (pairs >= 3 && singleTilesForQiDui.length >= pairsNeededSC) {
+            const missingForQiDuiSC = singleTilesForQiDui.slice(0, Math.min(pairsNeededSC, 4));
+            const baseProbSC = pairs >= 6 ? 90 : pairs >= 5 ? 75 : pairs >= 4 ? 55 : 35;
+            const adjustedProbSC = Math.max(10, baseProbSC - pairsNeededSC * 8);
+            
+            const name = roots > 0 ? t.longQiDui : t.qiDui;
+            makeSichuanSug(name, 4, missingForQiDuiSC, adjustedProbSC);
+        }
     }
 
-    if ((triplets + melds.length) >= 3 || pairs >= 5) {
-        const missing: Tile[] = [createTile(allTiles[0].suit, allTiles[0].value)]; 
-        const isQing = isFullFlush || (getSuitCount(allTiles, allTiles[0].suit) >= 10);
+    // 对对胡分析：需要4个刻子+1对将
+    // triplets = 手牌中的刻子数，melds中的碰/杠也算
+    const totalTripsForDui = triplets + pongMelds.length;
+    
+    if (totalTripsForDui >= 2 || pairs >= 4) {
+        // 找出可以凑刻子的对子（需要再来1张）
+        const pairTiles: Tile[] = [];
+        counts.forEach((c, key) => {
+            if (c === 2) {
+                const value = parseInt(key[0]);
+                const suitChar = key.slice(1);
+                const suit = suitChar === 'm' ? Suit.Man : suitChar === 'p' ? Suit.Pin : suitChar === 's' ? Suit.Sou : Suit.Zihai;
+                pairTiles.push(createTile(suit, value));
+            }
+        });
+        
+        // 还需要多少个刻子（总共需要4个）
+        const tripsNeeded = Math.max(0, 4 - totalTripsForDui);
+        const missingForDui = pairTiles.slice(0, Math.min(tripsNeeded, 4));
+        
+        const isQing = isFullFlush || (getSuitCount(allTiles, allTiles[0]?.suit || Suit.Man) >= 10);
+        const baseProb = totalTripsForDui >= 3 ? 80 : totalTripsForDui >= 2 ? 60 : 40;
         
         if (isQing) {
-            makeSichuanSug(t.qingDui, 6, missing, 60);
+            makeSichuanSug(t.qingDui, 6, missingForDui, baseProb);
         } else {
-            makeSichuanSug(t.duiDuiHu, 2, missing, 70);
+            makeSichuanSug(t.duiDuiHu, 2, missingForDui, baseProb);
         }
     }
 
@@ -195,45 +246,391 @@ const analyzeSichuan = (hand: Tile[], melds: Meld[], voidSuit: Suit | null, lang
 
 // --- MCR LOGIC ENGINE REFACTOR ---
 
+// ============================================================
+// 国标麻将番种识别与总番计算
+// 核心原则：
+// 1. 8番起和 - 总番必须 >= 8
+// 2. 可叠加计分 - 除excludes外的番种都可以叠加
+// 3. 不重复计分 - 高番型的excludes中的低番型不再计算
+// ============================================================
+
+// 已识别的番种结果
+interface RecognizedPattern {
+  pattern: MCRPattern;
+  count: number; // 数量（如多个箭刻）
+}
+
+// 计算总番（应用不重复计分原则）
+const calculateTotalFan = (patterns: RecognizedPattern[]): { totalFan: number; validPatterns: RecognizedPattern[]; details: string[] } => {
+  // 按番数从高到低排序
+  const sorted = [...patterns].sort((a, b) => b.pattern.fan - a.pattern.fan);
+  
+  // 收集所有被排除的番种ID
+  const excludedIds = new Set<string>();
+  sorted.forEach(p => {
+    p.pattern.excludes.forEach(ex => excludedIds.add(ex));
+  });
+  
+  // 过滤出有效番种（未被排除的）
+  const validPatterns: RecognizedPattern[] = [];
+  let totalFan = 0;
+  const details: string[] = [];
+  
+  sorted.forEach(p => {
+    if (!excludedIds.has(p.pattern.id)) {
+      validPatterns.push(p);
+      const fanValue = p.pattern.fan * p.count;
+      totalFan += fanValue;
+      
+      if (p.count > 1) {
+        details.push(`${p.pattern.nameZh} x${p.count} (${p.pattern.fan}×${p.count}=${fanValue})`);
+      } else {
+        details.push(`${p.pattern.nameZh} (${p.pattern.fan})`);
+      }
+    }
+  });
+  
+  return { totalFan, validPatterns, details };
+};
+
+// 获取所有番种的查找表
+const getAllPatterns = (): MCRPattern[] => [
+  ...MCR_88_FAN, ...MCR_64_FAN, ...MCR_48_FAN, ...MCR_32_FAN,
+  ...MCR_24_FAN, ...MCR_16_FAN, ...MCR_12_FAN, ...MCR_8_FAN,
+  ...MCR_6_FAN, ...MCR_4_FAN, ...MCR_2_FAN, ...MCR_1_FAN,
+];
+
+const getPatternById = (id: string): MCRPattern | undefined => {
+  return getAllPatterns().find(p => p.id === id);
+};
+
+// 辅助判断函数
+const isHonors = (tile: Tile) => tile.suit === Suit.Zihai;
+const isTerminal = (tile: Tile) => tile.value === 1 || tile.value === 9;
+const isTerminalOrHonor = (tile: Tile) => isHonors(tile) || isTerminal(tile);
+const isSimple = (tile: Tile) => !isHonors(tile) && !isTerminal(tile);
+const isDragon = (tile: Tile) => tile.suit === Suit.Zihai && tile.value >= 5; // 白发中: 5,6,7
+const isWind = (tile: Tile) => tile.suit === Suit.Zihai && tile.value <= 4; // 东南西北: 1,2,3,4
+const isGreen = (tile: Tile) => {
+  // 绿一色：23468条 + 发财
+  if (tile.suit === Suit.Sou && [2, 3, 4, 6, 8].includes(tile.value)) return true;
+  if (tile.suit === Suit.Zihai && tile.value === 6) return true; // 发
+  return false;
+};
+const isReversible = (tile: Tile) => {
+  // 推不倒：1234589筒、245689条、白板
+  if (tile.suit === Suit.Pin && [1, 2, 3, 4, 5, 8, 9].includes(tile.value)) return true;
+  if (tile.suit === Suit.Sou && [2, 4, 5, 6, 8, 9].includes(tile.value)) return true;
+  if (tile.suit === Suit.Zihai && tile.value === 5) return true; // 白
+  return false;
+};
+
+// 识别手牌中的番种
+const recognizeMCRPatterns = (hand: Tile[], melds: Meld[]): RecognizedPattern[] => {
+  const recognized: RecognizedPattern[] = [];
+  const allTiles = [...hand, ...melds.flatMap(m => m.tiles)];
+  const counts = countTiles(allTiles);
+  
+  // 统计花色
+  const suits = new Set(allTiles.filter(t => t.suit !== Suit.Zihai).map(t => t.suit));
+  const hasMan = allTiles.some(t => t.suit === Suit.Man);
+  const hasPin = allTiles.some(t => t.suit === Suit.Pin);
+  const hasSou = allTiles.some(t => t.suit === Suit.Sou);
+  const hasWinds = allTiles.some(t => isWind(t));
+  const hasDragons = allTiles.some(t => isDragon(t));
+  
+  // 统计刻子/杠数量
+  const pongMelds = melds.filter(m => m.type === 'pong' || m.type === 'gang');
+  const chiMelds = melds.filter(m => m.type === 'chi');
+  const gangMelds = melds.filter(m => m.type === 'gang');
+  
+  // 统计暗刻（手牌中3张以上相同的）
+  let anKeCount = 0;
+  counts.forEach((count) => {
+    if (count >= 3) anKeCount++;
+  });
+  
+  // 统计对子
+  let pairCount = 0;
+  counts.forEach((count) => {
+    if (count >= 2) pairCount++;
+  });
+  
+  // 统计四归一
+  let siGuiYiCount = 0;
+  counts.forEach((count) => {
+    if (count === 4) siGuiYiCount++;
+  });
+  
+  // ===== 88番 =====
+  
+  // 绿一色
+  if (allTiles.every(isGreen)) {
+    const p = getPatternById('lvYiSe');
+    if (p) recognized.push({ pattern: p, count: 1 });
+  }
+  
+  // 十三幺 - 特殊判断（需要全部幺九字牌）
+  const yaoJiuTypes = ['1m', '9m', '1p', '9p', '1s', '9s', '1z', '2z', '3z', '4z', '5z', '6z', '7z'];
+  const hasAllYaoJiu = yaoJiuTypes.every(key => {
+    const suit = key[1] as 'm' | 'p' | 's' | 'z';
+    const val = parseInt(key[0]);
+    const suitEnum = suit === 'm' ? Suit.Man : suit === 'p' ? Suit.Pin : suit === 's' ? Suit.Sou : Suit.Zihai;
+    return allTiles.some(t => t.suit === suitEnum && t.value === val);
+  });
+  if (hasAllYaoJiu && allTiles.length === 14) {
+    const p = getPatternById('shiSanYao');
+    if (p) recognized.push({ pattern: p, count: 1 });
+  }
+  
+  // 四杠
+  if (gangMelds.length === 4) {
+    const p = getPatternById('siGang');
+    if (p) recognized.push({ pattern: p, count: 1 });
+  }
+  
+  // ===== 64番 =====
+  
+  // 字一色
+  if (allTiles.every(isHonors)) {
+    const p = getPatternById('ziYiSe');
+    if (p) recognized.push({ pattern: p, count: 1 });
+  }
+  
+  // 四暗刻
+  if (anKeCount >= 4 && melds.every(m => m.type !== 'pong')) {
+    const p = getPatternById('siAnKe');
+    if (p) recognized.push({ pattern: p, count: 1 });
+  }
+  
+  // ===== 32番 =====
+  
+  // 三杠
+  if (gangMelds.length === 3) {
+    const p = getPatternById('sanGang');
+    if (p) recognized.push({ pattern: p, count: 1 });
+  }
+  
+  // 混幺九
+  if (allTiles.every(isTerminalOrHonor)) {
+    const p = getPatternById('hunYaoJiu');
+    if (p) recognized.push({ pattern: p, count: 1 });
+  }
+  
+  // ===== 24番 =====
+  
+  // 七对
+  if (pairCount >= 7 && melds.length === 0) {
+    const p = getPatternById('qiDui');
+    if (p) recognized.push({ pattern: p, count: 1 });
+  }
+  
+  // 清一色
+  if (suits.size === 1 && !allTiles.some(isHonors)) {
+    const p = getPatternById('qingYiSe');
+    if (p) recognized.push({ pattern: p, count: 1 });
+  }
+  
+  // 全大 (789)
+  if (allTiles.every(t => !isHonors(t) && t.value >= 7)) {
+    const p = getPatternById('quanDa');
+    if (p) recognized.push({ pattern: p, count: 1 });
+  }
+  
+  // 全中 (456)
+  if (allTiles.every(t => !isHonors(t) && t.value >= 4 && t.value <= 6)) {
+    const p = getPatternById('quanZhong');
+    if (p) recognized.push({ pattern: p, count: 1 });
+  }
+  
+  // 全小 (123)
+  if (allTiles.every(t => !isHonors(t) && t.value <= 3)) {
+    const p = getPatternById('quanXiao');
+    if (p) recognized.push({ pattern: p, count: 1 });
+  }
+  
+  // 全双刻 (2468)
+  if (allTiles.every(t => !isHonors(t) && [2, 4, 6, 8].includes(t.value))) {
+    const p = getPatternById('quanShuangKe');
+    if (p) recognized.push({ pattern: p, count: 1 });
+  }
+  
+  // ===== 16番 =====
+  
+  // 三暗刻
+  if (anKeCount >= 3) {
+    const p = getPatternById('sanAnKe');
+    if (p) recognized.push({ pattern: p, count: 1 });
+  }
+  
+  // ===== 12番 =====
+  
+  // 大于五 (6789)
+  if (allTiles.every(t => !isHonors(t) && t.value >= 6)) {
+    const p = getPatternById('daYuWu');
+    if (p) recognized.push({ pattern: p, count: 1 });
+  }
+  
+  // 小于五 (1234)
+  if (allTiles.every(t => !isHonors(t) && t.value <= 4)) {
+    const p = getPatternById('xiaoYuWu');
+    if (p) recognized.push({ pattern: p, count: 1 });
+  }
+  
+  // 三风刻
+  const windPongs = pongMelds.filter(m => isWind(m.tiles[0])).length;
+  const handWindTriples = allTiles.filter(t => isWind(t)).length;
+  if (windPongs >= 3 || (windPongs >= 2 && handWindTriples >= 3)) {
+    const p = getPatternById('sanFengKe');
+    if (p) recognized.push({ pattern: p, count: 1 });
+  }
+  
+  // ===== 8番 =====
+  
+  // 推不倒
+  if (allTiles.every(isReversible)) {
+    const p = getPatternById('tuiBuDao');
+    if (p) recognized.push({ pattern: p, count: 1 });
+  }
+  
+  // ===== 6番 =====
+  
+  // 碰碰和
+  const totalPongs = pongMelds.length + anKeCount;
+  if (totalPongs >= 4) {
+    const p = getPatternById('pengPengHu');
+    if (p) recognized.push({ pattern: p, count: 1 });
+  }
+  
+  // 混一色
+  if (suits.size === 1 && allTiles.some(isHonors)) {
+    const p = getPatternById('hunYiSe');
+    if (p) recognized.push({ pattern: p, count: 1 });
+  }
+  
+  // 五门齐
+  if (hasMan && hasPin && hasSou && hasWinds && hasDragons) {
+    const p = getPatternById('wuMenQi');
+    if (p) recognized.push({ pattern: p, count: 1 });
+  }
+  
+  // 双暗杠
+  const anGangCount = gangMelds.filter(m => {
+    // 假设暗杠在melds中标记（简化判断）
+    return true; // 实际应检查是否为暗杠
+  }).length;
+  if (anGangCount >= 2) {
+    const p = getPatternById('shuangAnGang');
+    if (p) recognized.push({ pattern: p, count: 1 });
+  }
+  
+  // 双箭刻
+  const dragonPongs = pongMelds.filter(m => isDragon(m.tiles[0])).length;
+  if (dragonPongs >= 2) {
+    const p = getPatternById('shuangJianKe');
+    if (p) recognized.push({ pattern: p, count: 1 });
+  }
+  
+  // ===== 4番 =====
+  
+  // 全带幺
+  // 每组都带幺九或字牌（简化检测）
+  const hasTerminalInEachGroup = melds.every(m => m.tiles.some(isTerminalOrHonor));
+  if (hasTerminalInEachGroup && allTiles.some(isTerminalOrHonor)) {
+    const p = getPatternById('quanDaiYao');
+    if (p) recognized.push({ pattern: p, count: 1 });
+  }
+  
+  // 不求人（门前清自摸）
+  if (melds.length === 0) {
+    const p = getPatternById('buQiuRen');
+    if (p) recognized.push({ pattern: p, count: 1 });
+  }
+  
+  // 双明杠
+  const mingGangCount = gangMelds.length; // 简化，实际应区分明暗
+  if (mingGangCount >= 2) {
+    const p = getPatternById('shuangMingGang');
+    if (p) recognized.push({ pattern: p, count: 1 });
+  }
+  
+  // ===== 2番 =====
+  
+  // 箭刻（可叠加）
+  const dragonPongCount = pongMelds.filter(m => isDragon(m.tiles[0])).length;
+  if (dragonPongCount >= 1) {
+    const p = getPatternById('jianKe');
+    if (p) recognized.push({ pattern: p, count: dragonPongCount });
+  }
+  
+  // 门前清
+  if (melds.length === 0) {
+    const p = getPatternById('menQianQing');
+    if (p) recognized.push({ pattern: p, count: 1 });
+  }
+  
+  // 平和（4顺子+序数将）
+  if (chiMelds.length >= 4 || (chiMelds.length >= 3 && melds.length === chiMelds.length)) {
+    const p = getPatternById('pingHu');
+    if (p) recognized.push({ pattern: p, count: 1 });
+  }
+  
+  // 四归一
+  if (siGuiYiCount >= 1) {
+    const p = getPatternById('siGuiYi');
+    if (p) recognized.push({ pattern: p, count: siGuiYiCount });
+  }
+  
+  // 双暗刻
+  if (anKeCount >= 2) {
+    const p = getPatternById('shuangAnKe');
+    if (p) recognized.push({ pattern: p, count: 1 });
+  }
+  
+  // 断幺
+  if (allTiles.every(isSimple)) {
+    const p = getPatternById('duanYao');
+    if (p) recognized.push({ pattern: p, count: 1 });
+  }
+  
+  // ===== 1番 =====
+  
+  // 幺九刻
+  const yaoJiuKe = pongMelds.filter(m => isTerminalOrHonor(m.tiles[0])).length;
+  if (yaoJiuKe >= 1) {
+    const p = getPatternById('yaoJiuKe');
+    if (p) recognized.push({ pattern: p, count: yaoJiuKe });
+  }
+  
+  // 明杠
+  if (gangMelds.length >= 1) {
+    const p = getPatternById('mingGang');
+    if (p) recognized.push({ pattern: p, count: gangMelds.length });
+  }
+  
+  // 缺一门
+  if (suits.size === 2) {
+    const p = getPatternById('queYiMen');
+    if (p) recognized.push({ pattern: p, count: 1 });
+  }
+  
+  // 无字
+  if (!allTiles.some(isHonors)) {
+    const p = getPatternById('wuZi');
+    if (p) recognized.push({ pattern: p, count: 1 });
+  }
+  
+  // 自摸（需要额外参数判断，这里暂不加）
+  
+  return recognized;
+};
+
+// 计算MCR附加番（基于已识别的番种）
 const calculateMCRExtras = (allTiles: Tile[], melds: Meld[], mainSuit: Suit | null, t: any): { score: number, details: string[] } => {
-    let score = 0;
-    const details: string[] = [];
-
-    const isHonors = (tile: Tile) => tile.suit === Suit.Zihai;
-    const isTerminal = (tile: Tile) => tile.value === 1 || tile.value === 9;
-    const isSimple = (tile: Tile) => !isHonors(tile) && !isTerminal(tile);
-
-    // 1. All Simples (Duan Yao) - 2 Fan
-    const allSimple = allTiles.every(isSimple);
-    if (allSimple) {
-        score += 2;
-        details.push(`${t.allSimples} (2)`);
-    }
-
-    // 2. No Honors (Wu Zi) - 1 Fan
-    // Only valid if not All Simples (usually). MCR rules: All Simples implies No Honors.
-    // If All Simples, we don't count No Honors.
-    if (!allSimple && !allTiles.some(isHonors)) {
-        score += 1;
-        details.push(`${t.noHonors} (1)`);
-    }
-
-    // 3. One Void (Que Yi Men) - 1 Fan
-    const suits = new Set(allTiles.filter(t => t.suit !== Suit.Zihai).map(t => t.suit));
-    if (suits.size <= 2) {
-        score += 1;
-        details.push(`${t.huaZhu} (1)`); // Reusing "Flower Pig" translation for Void/Missing Door? Or better: Que Yi Men
-    }
-
-    // 4. Closed Hand (Men Qian Qing) - 2 Fan
-    // Check if no open melds (assuming hand input is closed part, melds are open)
-    // Actually in this app, 'melds' array implies exposed.
-    if (melds.length === 0) {
-        score += 2;
-        details.push(`Men Qian Qing (2)`); // TODO: Add trans
-    }
-
-    return { score, details };
+    const recognized = recognizeMCRPatterns(allTiles.slice(0, Math.min(14, allTiles.length)) as Tile[], melds);
+    const { totalFan, details } = calculateTotalFan(recognized);
+    
+    return { score: totalFan, details };
 };
 
 const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language): FanSuggestion[] => {
@@ -316,34 +713,75 @@ const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language): FanSuggestion[
     }
 
     // 3. Five Gates (Wu Men Qi) - 6 Fan
-    // Need Man, Pin, Sou, Wind, Dragon
-    const hasMan = getSuitCount(allTiles, Suit.Man) > 0;
-    const hasPin = getSuitCount(allTiles, Suit.Pin) > 0;
-    const hasSou = getSuitCount(allTiles, Suit.Sou) > 0;
-    const hasWind = allTiles.some(x => x.suit === Suit.Zihai && x.value <= 4);
-    const hasDragon = allTiles.some(x => x.suit === Suit.Zihai && x.value >= 5);
+    // 五门齐：和牌时万、筒、条、风、箭全有
+    // 注意：五门齐是附加番，必须在有效和牌型基础上
+    // 需要检查：1) 五门都有 2) 手牌接近有效和牌型
+    const hasManMCR = getSuitCount(allTiles, Suit.Man) > 0;
+    const hasPinMCR = getSuitCount(allTiles, Suit.Pin) > 0;
+    const hasSouMCR = getSuitCount(allTiles, Suit.Sou) > 0;
+    const hasWindMCR = allTiles.some(x => x.suit === Suit.Zihai && x.value <= 4);
+    const hasDragonMCR = allTiles.some(x => x.suit === Suit.Zihai && x.value >= 5);
     
     let gates = 0;
-    if(hasMan) gates++; if(hasPin) gates++; if(hasSou) gates++; if(hasWind) gates++; if(hasDragon) gates++;
+    if(hasManMCR) gates++; if(hasPinMCR) gates++; if(hasSouMCR) gates++; if(hasWindMCR) gates++; if(hasDragonMCR) gates++;
     
-    if (gates >= 4) {
-         // Missing?
-         const missing: Tile[] = [];
-         if(!hasMan) missing.push(createTile(Suit.Man, 1));
-         if(!hasPin) missing.push(createTile(Suit.Pin, 1));
-         if(!hasSou) missing.push(createTile(Suit.Sou, 1));
-         if(!hasWind) missing.push(createTile(Suit.Zihai, 1));
-         if(!hasDragon) missing.push(createTile(Suit.Zihai, 5));
-         
+    // 计算基本和牌型的向听数（简化估算）
+    // 标准和牌：4面子(顺子/刻子) + 1将(对子)
+    // 向听数 = 需要的面子数 - 已有的面子数
+    const existingMelds = melds.length; // 已有的副露面子
+    const handTileCount = hand.length;
+    
+    // 估算手牌中的面子和搭子
+    let estimatedMelds = existingMelds;
+    let estimatedPairs = 0;
+    const handCounts = countTiles(hand);
+    handCounts.forEach((c) => {
+        if (c >= 3) estimatedMelds++; // 刻子
+        if (c >= 2) estimatedPairs++; // 对子
+    });
+    
+    // 检查顺子搭子（简化）
+    [Suit.Man, Suit.Pin, Suit.Sou].forEach(s => {
+        for (let v = 1; v <= 7; v++) {
+            const has1 = hand.some(t => t.suit === s && t.value === v);
+            const has2 = hand.some(t => t.suit === s && t.value === v + 1);
+            const has3 = hand.some(t => t.suit === s && t.value === v + 2);
+            if (has1 && has2 && has3) estimatedMelds++;
+        }
+    });
+    
+    // 向听数估算：需要4面子，已有estimatedMelds个
+    const shantenEstimate = Math.max(0, 4 - Math.min(4, estimatedMelds));
+    
+    // 只有当五门齐且向听数 <= 2 时才建议
+    if (gates === 5 && shantenEstimate <= 2) {
          const { score: exScore, details: exDetails } = calculateMCRExtras(allTiles, melds, null, t);
          suggestions.push({
             name: t.fiveGates,
             baseFan: 6,
             fan: 6 + exScore,
-            probability: gates * 15,
-            missingTiles: missing,
-            patternDetails: [`${t.fiveGates} (6)`, ...exDetails]
+            probability: Math.max(20, 70 - shantenEstimate * 20),
+            missingTiles: [], // 五门已齐，无缺少
+            patternDetails: [`${t.fiveGates} (6)`, `向听${shantenEstimate}`, ...exDetails]
          });
+    } else if (gates === 4 && shantenEstimate <= 1) {
+        // 差一门，且接近听牌
+        const missing: Tile[] = [];
+        if(!hasManMCR) missing.push(createTile(Suit.Man, 5)); // 建议中张
+        if(!hasPinMCR) missing.push(createTile(Suit.Pin, 5));
+        if(!hasSouMCR) missing.push(createTile(Suit.Sou, 5));
+        if(!hasWindMCR) missing.push(createTile(Suit.Zihai, 1)); // 东风
+        if(!hasDragonMCR) missing.push(createTile(Suit.Zihai, 5)); // 白板
+        
+        const { score: exScore, details: exDetails } = calculateMCRExtras(allTiles, melds, null, t);
+        suggestions.push({
+            name: t.fiveGates,
+            baseFan: 6,
+            fan: 6 + exScore,
+            probability: Math.max(15, 50 - shantenEstimate * 15),
+            missingTiles: missing,
+            patternDetails: [`${t.fiveGates} (6)`, `缺${missing.length}门，向听${shantenEstimate}`, ...exDetails]
+        });
     }
     
     // 4. Pure Straight (Qing Long) - 16 Fan
@@ -372,40 +810,143 @@ const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language): FanSuggestion[
         }
     });
 
-    // 5. Full Flush / Half Flush Logic (reused roughly)
-    // ... (Simplified for brevity, but relying on MCRExtras helps)
+    // 5. Full Flush (清一色 24番) / Half Flush (混一色 6番)
+    // 分析清一色/混一色潜力
+    let maxSuitMCR = Suit.Man;
+    let maxSuitCountMCR = 0;
+    [Suit.Man, Suit.Pin, Suit.Sou].forEach(s => {
+        const c = getSuitCount(allTiles, s);
+        if (c > maxSuitCountMCR) { maxSuitCountMCR = c; maxSuitMCR = s; }
+    });
     
-    // 6. Seven Pairs
+    const honorCount = allTiles.filter(t => t.suit === Suit.Zihai).length;
+    const otherSuitCountMCR = allTiles.length - maxSuitCountMCR - honorCount;
+    
+    // 清一色：只有一种花色，无字牌
+    if (maxSuitCountMCR >= 8 && otherSuitCountMCR <= 4 && honorCount <= 2) {
+        const otherTiles = allTiles.filter(t => t.suit !== maxSuitMCR).slice(0, 4);
+        const missingQYS = otherTiles.map(t => createTile(t.suit, t.value));
+        const probQYS = Math.min(85, maxSuitCountMCR * 6);
+        
+        suggestions.push({
+            name: t.fullFlush,
+            baseFan: 24,
+            fan: 24,
+            probability: probQYS,
+            missingTiles: missingQYS,
+            patternDetails: [`${t.fullFlush} (24)`, `主花色${maxSuitCountMCR}张，需换${otherSuitCountMCR + honorCount}张`]
+        });
+    }
+    
+    // 混一色：一种花色+字牌
+    if (maxSuitCountMCR >= 7 && honorCount >= 1 && otherSuitCountMCR <= 4) {
+        const otherSuitTilesMCR = allTiles.filter(t => t.suit !== maxSuitMCR && t.suit !== Suit.Zihai).slice(0, 4);
+        const missingHYS = otherSuitTilesMCR.map(t => createTile(t.suit, t.value));
+        const probHYS = Math.min(80, (maxSuitCountMCR + honorCount) * 5);
+        
+        const { score: exScoreHYS, details: exDetailsHYS } = calculateMCRExtras(allTiles, melds, null, t);
+        suggestions.push({
+            name: t.mixedOneSuit,
+            baseFan: 6,
+            fan: 6 + exScoreHYS,
+            probability: probHYS,
+            missingTiles: missingHYS,
+            patternDetails: [`${t.mixedOneSuit} (6)`, ...exDetailsHYS]
+        });
+    }
+    
+    // 6. Seven Pairs (七对) - 24 Fan
+    // 需要7个对子，计算当前对子数和缺少的牌
     let pairs = 0;
-    counts.forEach(c => { if(c>=2) pairs++; });
-    if (pairs >= 4) {
+    const singleTiles: Tile[] = []; // 单张牌（可以凑对的候选）
+    counts.forEach((c, key) => { 
+        if (c >= 2) pairs++;
+        if (c === 1) {
+            // 解析 key 获取 suit 和 value
+            const value = parseInt(key[0]);
+            const suitChar = key.slice(1);
+            const suit = suitChar === 'm' ? Suit.Man : suitChar === 'p' ? Suit.Pin : suitChar === 's' ? Suit.Sou : Suit.Zihai;
+            singleTiles.push(createTile(suit, value));
+        }
+    });
+    
+    // 七对需要7对，当前有pairs对，还需要 (7 - pairs) 对
+    // 每个单张变成对子需要再来1张相同的牌
+    const pairsNeeded = 7 - pairs;
+    const tilesNeededForQiDui = pairsNeeded; // 需要摸到的牌数
+    
+    // 如果对子数 >= 3 且单张数足够，就有七对的可能
+    if (pairs >= 3 && melds.length === 0 && singleTiles.length >= pairsNeeded) {
+        // 缺少的牌 = 前 pairsNeeded 个单张（需要再来一张凑对）
+        const missingForQiDui = singleTiles.slice(0, Math.min(pairsNeeded, 4));
+        
+        // 概率计算：基于对子数和需要摸到的牌数
+        // 每张单张还有3张在牌池(假设)，概率随需要的牌数递减
+        const baseProb = pairs >= 6 ? 90 : pairs >= 5 ? 75 : pairs >= 4 ? 55 : 35;
+        const adjustedProb = Math.max(10, baseProb - tilesNeededForQiDui * 8);
+        
         suggestions.push({
             name: t.sevenPairs,
             baseFan: 24,
             fan: 24,
-            probability: pairs * 12,
-            missingTiles: [], // Hard to guess
-            patternDetails: [`${t.sevenPairs} (24)`]
+            probability: adjustedProb,
+            missingTiles: missingForQiDui,
+            patternDetails: [`${t.sevenPairs} (24)`, `已有${pairs}对，缺${pairsNeeded}张`]
         });
     }
     
-    // 7. All Pungs
+    // 7. All Pungs (碰碰和) - 6 Fan
+    // 需要4个刻子+1对将
     let trips = 0;
-    counts.forEach(c => { if(c>=3) trips++; });
-    if (trips + melds.length >= 2) {
-         suggestions.push({
+    const pongMeldsCount = melds.filter(m => m.type === 'pong' || m.type === 'gang').length;
+    counts.forEach(c => { if(c >= 3) trips++; });
+    
+    const totalTrips = trips + pongMeldsCount;
+    
+    // 找出可以凑刻子的对子
+    const pairTilesForPeng: Tile[] = [];
+    counts.forEach((c, key) => {
+        if (c === 2) {
+            const value = parseInt(key[0]);
+            const suitChar = key.slice(1);
+            const suit = suitChar === 'm' ? Suit.Man : suitChar === 'p' ? Suit.Pin : suitChar === 's' ? Suit.Sou : Suit.Zihai;
+            pairTilesForPeng.push(createTile(suit, value));
+        }
+    });
+    
+    // 如果刻子数 >= 2 或者对子数 >= 4，就有碰碰和的可能
+    if (totalTrips >= 2 || pairTilesForPeng.length >= 4) {
+        const tripsNeededForPeng = Math.max(0, 4 - totalTrips);
+        const missingForPeng = pairTilesForPeng.slice(0, Math.min(tripsNeededForPeng, 4));
+        
+        const baseProbPeng = totalTrips >= 3 ? 80 : totalTrips >= 2 ? 55 : 35;
+        const { score: exScorePeng, details: exDetailsPeng } = calculateMCRExtras(allTiles, melds, null, t);
+        
+        suggestions.push({
             name: t.allPungs,
             baseFan: 6,
-            fan: 6,
-            probability: 50,
-            missingTiles: [],
-            patternDetails: [`${t.allPungs} (6)`]
+            fan: 6 + exScorePeng,
+            probability: baseProbPeng,
+            missingTiles: missingForPeng,
+            patternDetails: [`${t.allPungs} (6)`, `已有${totalTrips}刻，缺${tripsNeededForPeng}张`, ...exDetailsPeng]
         });
     }
 
-    // Sort by Total Fan, then Probability
-    return suggestions
-        .sort((a, b) => (b.fan * 10 + b.probability) - (a.fan * 10 + a.probability));
+    // 去重：同一番种只保留最高概率的
+    const uniqueSuggestions = new Map<string, FanSuggestion>();
+    suggestions.forEach(s => {
+        const existing = uniqueSuggestions.get(s.name);
+        if (!existing || s.fan > existing.fan || (s.fan === existing.fan && s.probability > existing.probability)) {
+            uniqueSuggestions.set(s.name, s);
+        }
+    });
+    
+    // 排序：严格按总番数降序，相同番数按概率降序
+    return Array.from(uniqueSuggestions.values())
+        .sort((a, b) => {
+            if (b.fan !== a.fan) return b.fan - a.fan; // 先按番数
+            return b.probability - a.probability; // 再按概率
+        });
 };
 
 // --- MAIN EXPORT ---
@@ -467,4 +1008,34 @@ export const analyzeGame = (state: GameState, lang: Language = 'en'): AnalysisRe
   };
 };
 
-export { sortTiles, countTiles };
+// ============================================================
+// 公开API：计算国标麻将总番
+// 用法示例：
+//   const result = calculateMCRTotalFan(hand, melds);
+//   console.log(`总番: ${result.totalFan}`);
+//   console.log(`番种明细: ${result.details.join(', ')}`);
+//   console.log(`是否满足8番起和: ${result.isValid}`);
+// ============================================================
+export const calculateMCRTotalFan = (hand: Tile[], melds: Meld[]): {
+  totalFan: number;
+  details: string[];
+  isValid: boolean; // 是否满足8番起和
+  patterns: { id: string; name: string; fan: number; count: number }[];
+} => {
+  const recognized = recognizeMCRPatterns(hand, melds);
+  const { totalFan, validPatterns, details } = calculateTotalFan(recognized);
+  
+  return {
+    totalFan,
+    details,
+    isValid: totalFan >= MCR_RULES.MIN_FAN_TO_WIN,
+    patterns: validPatterns.map(p => ({
+      id: p.pattern.id,
+      name: p.pattern.nameZh,
+      fan: p.pattern.fan,
+      count: p.count,
+    })),
+  };
+};
+
+export { sortTiles, countTiles, recognizeMCRPatterns, calculateTotalFan };

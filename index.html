@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <title>Mahjong Copilot</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Nunito:wght@400;700;900&family=Noto+Serif+SC:wght@700&display=swap" rel="stylesheet">
@@ -25,6 +25,16 @@
       .no-scrollbar {
         -ms-overflow-style: none;
         scrollbar-width: none;
+      }
+
+      /* Hide number input spinners */
+      .no-spinner::-webkit-inner-spin-button, 
+      .no-spinner::-webkit-outer-spin-button { 
+        -webkit-appearance: none; 
+        margin: 0; 
+      }
+      .no-spinner {
+        -moz-appearance: textfield;
       }
 
       /* Neubrutalism Shadow Utility */
