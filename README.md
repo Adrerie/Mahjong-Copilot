@@ -237,7 +237,9 @@ npx cap open ios      # 用 Xcode 打开
 
 ## 📄 开源协议
 
-GTP-3.0 @ [Adrerie](https://github.com/Adrerie)
+GPL-3.0 License © 2026 [Adrerie](https://github.com/Adrerie)
+
+本项目以 GPL-3.0 协议发布，允许复制、修改与分发，但需在相同许可证下传播（Copyleft）。详情参见 [LICENSE](LICENSE)。
 
 ---
 
