@@ -42,8 +42,12 @@ const getMissingForSeq = (hand: Tile[], suit: Suit, startVal: number): Tile[] =>
 
 /**
  * MCR 分析主函数 - 分析当前手牌可能达成的番型
+ * @param hand 手牌
+ * @param melds 副露
+ * @param lang 语言
+ * @param wallCount 牌墙剩余数量（可选，用于计算妙手回春/海底捞月）
  */
-export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language): FanSuggestion[] => {
+export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCount?: number): FanSuggestion[] => {
   const t = TEXT[lang];
   const suggestions: FanSuggestion[] = [];
   const allTiles = [...hand, ...melds.flatMap(m => m.tiles)];
@@ -382,6 +386,30 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language): FanSugg
       missingTiles: missingForPeng,
       patternDetails: [`${t.allPungs} (6)`, `已有${totalTrips}刻，缺${tripsNeededForPeng}张`, ...exDetailsPeng]
     });
+  }
+
+  // 9. 妙手回春/海底捞月 - 牌墙将尽时的特殊提示 (8 Fan)
+  if (typeof wallCount === 'number' && wallCount <= 4 && wallCount > 0) {
+    // 如果听牌状态且牌墙快空，提示可能获得海底番
+    const isNearTenpai = hand.length === 13 || hand.length === 14;
+    if (isNearTenpai) {
+      suggestions.push({
+        name: wallCount === 1 
+          ? (lang === 'zh' ? '妙手回春/海底捞月' : 'Last Tile Draw/Claim')
+          : (lang === 'zh' ? '海底机会' : 'Last Tile Chance'),
+        baseFan: 8,
+        fan: 8,
+        probability: wallCount === 1 ? 90 : Math.max(10, 60 - (wallCount - 1) * 15),
+        missingTiles: [],
+        patternDetails: [
+          `${t.lastTileDraw || '妙手回春'} / ${t.lastTileClaim || '海底捞月'} (8)`,
+          lang === 'zh' 
+            ? `牌墙仅剩${wallCount}张` 
+            : `Only ${wallCount} tile(s) left`,
+          t.lastTileHint || '牌墙将尽，可能获得海底番！'
+        ]
+      });
+    }
   }
 
   // 去重：同一番种只保留最高概率的

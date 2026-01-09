@@ -95,6 +95,9 @@ export const TEXT = {
     allSimples: 'All Simples',
     noHonors: 'No Honors',
     terminalsChows: 'Terminals & Chows', // Quan Dai Yao
+    lastTileDraw: 'Last Tile Draw',
+    lastTileClaim: 'Last Tile Claim',
+    lastTileHint: 'Wall nearly empty - last tile bonus possible!',
     // Sichuan
     pingHu: 'Ping Hu (Sequence)',
     duiDuiHu: 'Dui Dui Hu (All Pungs)',
@@ -186,6 +189,9 @@ export const TEXT = {
     allSimples: '断幺',
     noHonors: '无字',
     terminalsChows: '全带幺',
+    lastTileDraw: '妙手回春',
+    lastTileClaim: '海底捞月',
+    lastTileHint: '牌墙将尽，可能获得海底番！',
     // Sichuan
     pingHu: '平胡',
     duiDuiHu: '对对胡',

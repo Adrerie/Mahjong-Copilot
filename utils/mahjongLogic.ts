@@ -75,11 +75,15 @@ export const analyzeGame = (state: GameState, lang: Language = 'en'): AnalysisRe
   let waitingTiles: { tile: Tile; remaining: number; probability: string }[] = [];
   if (isReady && hand.length === 13) {
     const waits = calculateWaitingTiles(hand, melds);
-    waitingTiles = waits.map(tile => ({
-      tile,
-      remaining: 4 - (usedCounts.get(getTileKey(tile.suit, tile.value)) || 0),
-      probability: 'N/A'
-    }));
+    waitingTiles = waits.map(tile => {
+      const remaining = 4 - (usedCounts.get(getTileKey(tile.suit, tile.value)) || 0);
+      const prob = wallCount > 0 ? (remaining / wallCount * 100).toFixed(1) : '0';
+      return {
+        tile,
+        remaining,
+        probability: `${prob}%`
+      };
+    });
   }
   
   // 4. 计算最优弃牌 (只有14张牌时需要)
@@ -132,11 +136,15 @@ export const analyzeGame = (state: GameState, lang: Language = 'en'): AnalysisRe
           if (newShanten === 0) {
             voidWaitingTiles = calculateWaitingTiles(newHand, melds);
             // 更新 waitingTiles 显示打出后的听牌
-            waitingTiles = voidWaitingTiles.map(tile => ({
-              tile,
-              remaining: 4 - (usedCounts.get(getTileKey(tile.suit, tile.value)) || 0) + (tile.suit === voidTile.suit && tile.value === voidTile.value ? 1 : 0),
-              probability: 'N/A'
-            }));
+            waitingTiles = voidWaitingTiles.map(tile => {
+              const remaining = 4 - (usedCounts.get(getTileKey(tile.suit, tile.value)) || 0) + (tile.suit === voidTile.suit && tile.value === voidTile.value ? 1 : 0);
+              const prob = wallCount > 0 ? (remaining / wallCount * 100).toFixed(1) : '0';
+              return {
+                tile,
+                remaining,
+                probability: `${prob}%`
+              };
+            });
           }
           
           bestDiscard = { tile: voidTile, reason: t.huaZhu, ukeire, ukeireTiles };
@@ -155,11 +163,15 @@ export const analyzeGame = (state: GameState, lang: Language = 'en'): AnalysisRe
           
           // 如果打出推荐牌后是听牌，显示待牌列表
           if (result.waitingTiles.length > 0) {
-            waitingTiles = result.waitingTiles.map(tile => ({
-              tile,
-              remaining: 4 - (usedCounts.get(getTileKey(tile.suit, tile.value)) || 0) + (tile.suit === result.tile.suit && tile.value === result.tile.value ? 1 : 0),
-              probability: 'N/A'
-            }));
+            waitingTiles = result.waitingTiles.map(tile => {
+              const remaining = 4 - (usedCounts.get(getTileKey(tile.suit, tile.value)) || 0) + (tile.suit === result.tile.suit && tile.value === result.tile.value ? 1 : 0);
+              const prob = wallCount > 0 ? (remaining / wallCount * 100).toFixed(1) : '0';
+              return {
+                tile,
+                remaining,
+                probability: `${prob}%`
+              };
+            });
           }
         }
       }
@@ -174,7 +186,7 @@ export const analyzeGame = (state: GameState, lang: Language = 'en'): AnalysisRe
   if (mode === GameMode.Sichuan) {
     suggestions = analyzeSichuan(hand, melds, voidSuit, lang);
   } else {
-    suggestions = analyzeMCR(hand, melds, lang);
+    suggestions = analyzeMCR(hand, melds, lang, wallCount);
   }
   
   // 6. 如果已和牌，显示实际番种而非建议
@@ -197,6 +209,13 @@ export const analyzeGame = (state: GameState, lang: Language = 'en'): AnalysisRe
   // 7. 修正缺少牌的显示 - 听牌时显示待牌而非缺牌
   if (isReady && waitingTiles.length > 0 && suggestions.length > 0) {
     suggestions[0].missingTiles = waitingTiles.map(w => w.tile);
+  }
+
+  // 8. 牌墙警告
+  if (wallCount <= 10 && wallCount > 0) {
+    warnings.push(lang === 'zh' ? `牌墙仅剩${wallCount}张，注意流局风险` : `Only ${wallCount} tiles left in wall, beware of draw`);
+  } else if (wallCount === 0) {
+    warnings.push(lang === 'zh' ? '牌墙已空' : 'Wall is empty');
   }
 
   return {
