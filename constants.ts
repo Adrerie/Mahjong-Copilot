@@ -88,28 +88,53 @@ export const TEXT = {
     mixedOneSuit: 'Mixed One Suit',
     allPungs: 'All Pungs',
     fourConcealedPungs: 'Four Concealed Pungs',
+    quadrupleChow: 'Quadruple Chow', // Yi Se Si Tong Shun 48番
+    fourPureShiftedPungs: 'Four Pure Shifted Pungs', // Yi Se Si Jie Gao 48番
     mixedTripleChow: 'Mixed Triple Chow', // San Se San Tong Shun
+    pureTripleChow: 'Pure Triple Chow', // Yi Se San Tong Shun
+    pureShiftedPungs: 'Pure Shifted Pungs', // Yi Se San Jie Gao
+    pureShiftedChows: 'Pure Shifted Chows', // Yi Se San Bu Gao
     mixedShiftedChows: 'Mixed Shifted Chows', // San Se San Bu Gao
     fiveGates: 'Five Types', // Wu Men Qi
     mixedShiftedPungs: 'Mixed Shifted Pungs',
+    triplePung: 'Triple Pung', // San Tong Ke
+    mixedStraight: 'Mixed Straight', // Hua Long
     allSimples: 'All Simples',
     noHonors: 'No Honors',
+    pureDoubleChow: 'Pure Double Chow', // Yi Ban Gao
+    shortStraight: 'Short Straight', // Lian Liu
+    twoTerminalChows: 'Two Terminal Chows', // Lao Shao Fu
     terminalsChows: 'Terminals & Chows', // Quan Dai Yao
     lastTileDraw: 'Last Tile Draw',
     lastTileClaim: 'Last Tile Claim',
     lastTileHint: 'Wall nearly empty - last tile bonus possible!',
-    // Sichuan
-    pingHu: 'Ping Hu (Sequence)',
-    duiDuiHu: 'Dui Dui Hu (All Pungs)',
-    qingYiSe: 'Qing Yi Se (Full Flush)',
-    qingDui: 'Qing Dui (Flush + Pungs)',
-    qiDui: 'Qi Dui (7 Pairs)',
-    longQiDui: 'Long Qi Dui (7 Pairs + Root)',
-    jinGouDiao: 'Jin Gou Diao (Single Wait)',
-    daiYaoJiu: 'Dai Yao Jiu (Terminals)',
-    root: 'Root',
-    huaZhu: 'Flower Pig (Void Suit present)',
-    illegal: 'Illegal',
+    // Sichuan (成都玩法)
+    pingHu: 'Basic Win',  // 基本和/鸡和 1番
+    menQianQing: 'Concealed Hand', // 门前清 2番 (仅自摸)
+    duanYaoJiu: 'All Simples', // 断幺九 2番
+    duiDuiHu: 'All Pungs', // 对对胡 2番
+    daiYaoJiu: 'All Terminals & Honors', // 带幺九 4番
+    qingYiSe: 'Full Flush', // 清一色 4番
+    jinGouDiao: 'Single Wait', // 金钩钓 4番
+    qiDui: 'Seven Pairs', // 七对 4番
+    longQiDui: 'Seven Pairs + Root', // 龙七对 (七对+根)
+    jiangDui: 'All 258 Pungs', // 将对 8番 (只用2,5,8的对对和)
+    qingDui: 'Pure Pungs', // 清对 8番 (清一色+对对和)
+    qingYaoJiu: 'Pure Terminals', // 清幺九 16番
+    qingJinGou: 'Pure Single Wait', // 清金钩钓 16番
+    qingQiDui: 'Pure Seven Pairs', // 清七对 16番
+    qingLongQiDui: 'Pure Dragon Seven Pairs', // 清龙七对
+    tianHu: 'Heavenly Win', // 天和 64番封顶
+    diHu: 'Earthly Win', // 地和 32番
+    root: 'Root', // 根 (+1根)
+    ziMo: 'Self-Draw', // 自摸 (+1番或+1根)
+    gangShangHua: 'Win on Kong', // 杠上开花 (+1根)
+    gangShangPao: 'Rob from Kong Discard', // 杠上炮 (+1根)
+    qiangGang: 'Robbing the Kong', // 抢杠 (+1根)
+    haiDi: 'Last Tile', // 海底捞月 (+1根)
+    heJueZhang: 'Win on Last Tile', // 和绝张 (+1根)
+    huaZhu: 'Flower Pig', // 花猪 (有缺未打)
+    illegal: 'Illegal'
   },
   zh: {
     mcr: '国标麻将',
@@ -182,27 +207,52 @@ export const TEXT = {
     mixedOneSuit: '混一色',
     allPungs: '碰碰和',
     fourConcealedPungs: '四暗刻',
+    quadrupleChow: '一色四同顺', // 48番
+    fourPureShiftedPungs: '一色四节高', // 48番
     mixedTripleChow: '三色三同顺',
+    pureTripleChow: '一色三同顺',
+    pureShiftedPungs: '一色三节高',
+    pureShiftedChows: '一色三步高',
     mixedShiftedChows: '三色三步高',
     fiveGates: '五门齐',
     mixedShiftedPungs: '三色三节高',
+    triplePung: '三同刻',
+    mixedStraight: '花龙',
     allSimples: '断幺',
     noHonors: '无字',
+    pureDoubleChow: '一般高',
+    shortStraight: '连六',
+    twoTerminalChows: '老少副',
     terminalsChows: '全带幺',
     lastTileDraw: '妙手回春',
     lastTileClaim: '海底捞月',
     lastTileHint: '牌墙将尽，可能获得海底番！',
-    // Sichuan
-    pingHu: '平胡',
-    duiDuiHu: '对对胡',
-    qingYiSe: '清一色',
-    qingDui: '清对',
-    qiDui: '七对',
-    longQiDui: '龙七对',
-    jinGouDiao: '金钩钓',
-    daiYaoJiu: '带幺九',
-    root: '根',
-    huaZhu: '花猪 (有缺未打)',
+    // Sichuan (成都玩法)
+    pingHu: '基本和', // 1番 (无番和/鸡和)
+    menQianQing: '门前清', // 2番 (仅自摸成立)
+    duanYaoJiu: '断幺九', // 2番
+    duiDuiHu: '对对胡', // 2番
+    daiYaoJiu: '带幺九', // 4番
+    qingYiSe: '清一色', // 4番
+    jinGouDiao: '金钩钓', // 4番
+    qiDui: '七对', // 4番
+    longQiDui: '龙七对', // 七对+根
+    jiangDui: '将对', // 8番 (只用2,5,8)
+    qingDui: '清对', // 8番 (清一色+对对和)
+    qingYaoJiu: '清幺九', // 16番
+    qingJinGou: '清金钩钓', // 16番
+    qingQiDui: '清七对', // 16番
+    qingLongQiDui: '清龙七对', // 清一色+龙七对
+    tianHu: '天和', // 64番封顶
+    diHu: '地和', // 32番
+    root: '根', // +1根
+    ziMo: '自摸', // +1番或+1根
+    gangShangHua: '杠上开花', // +1根
+    gangShangPao: '杠上炮', // +1根
+    qiangGang: '抢杠', // +1根
+    haiDi: '海底捞月', // +1根
+    heJueZhang: '和绝张', // +1根
+    huaZhu: '花猪', // 有缺未打
     illegal: '无法和牌',
   }
 };
@@ -363,6 +413,7 @@ export const MCR_1_FAN: MCRPattern[] = [
   { id: 'kanZhang', nameZh: '坎张', nameEn: 'Closed Wait', fan: 1, description: '单听顺子中间一张', excludes: [] },
   { id: 'danDiaoJiang', nameZh: '单钓将', nameEn: 'Single Wait', fan: 1, description: '钓单张将牌', excludes: [] },
   { id: 'ziMo', nameZh: '自摸', nameEn: 'Self-Drawn', fan: 1, description: '自己摸牌和牌', excludes: [] },
+  { id: 'huaPai', nameZh: '花牌', nameEn: 'Flower Tiles', fan: 1, description: '每有一张花牌(春夏秋冬梅兰竹菊)加1番', excludes: [] },
 ];
 
 // 所有国标番种汇总

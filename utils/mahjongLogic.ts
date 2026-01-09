@@ -40,7 +40,7 @@ import { checkWinning } from './winningChecker';
 
 import { calculateBestDiscard } from './discardAnalyzer';
 
-import { analyzeSichuan } from './sichuanAnalyzer';
+import { analyzeSichuan, recognizeSichuanPatterns } from './sichuanAnalyzer';
 
 import { 
   recognizeMCRPatterns, 
@@ -191,18 +191,32 @@ export const analyzeGame = (state: GameState, lang: Language = 'en'): AnalysisRe
   
   // 6. 如果已和牌，显示实际番种而非建议
   if (isWinning) {
-    const recognized = recognizeMCRPatterns(hand, melds);
-    const { totalFan, details } = calculateTotalFan(recognized);
-    
-    if (recognized.length > 0) {
+    if (mode === GameMode.Sichuan) {
+      // 四川麻将：使用四川麻将的番型识别
+      const scResult = recognizeSichuanPatterns(hand, melds, voidSuit, lang);
       suggestions = [{
         name: lang === 'zh' ? '已和牌' : 'Winning Hand',
-        baseFan: totalFan,
-        fan: totalFan,
+        baseFan: scResult.totalFan,
+        fan: scResult.totalFan,
         probability: 100,
         missingTiles: [],
-        patternDetails: details
+        patternDetails: scResult.details
       }];
+    } else {
+      // 国标麻将：使用MCR番型识别
+      const recognized = recognizeMCRPatterns(hand, melds);
+      const { totalFan, details } = calculateTotalFan(recognized);
+      
+      if (recognized.length > 0) {
+        suggestions = [{
+          name: lang === 'zh' ? '已和牌' : 'Winning Hand',
+          baseFan: totalFan,
+          fan: totalFan,
+          probability: 100,
+          missingTiles: [],
+          patternDetails: details
+        }];
+      }
     }
   }
   
