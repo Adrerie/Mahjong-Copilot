@@ -89,13 +89,14 @@ const InputScreen: React.FC<Props> = ({ mode, lang, setLang, onBack }) => {
   };
 
   const handleReset = () => {
-    if (confirm(t.resetConfirm)) {
-      setHand([]);
-      setMelds([]);
-      setDiscards([]);
-      setWallCount(mode === GameMode.MCR ? INITIAL_WALL_MCR : INITIAL_WALL_SICHUAN);
-      setVoidSuit(null);
-    }
+    // 直接重置，不再弹出确认框（避免某些环境下confirm不工作）
+    setHand([]);
+    setMelds([]);
+    setDiscards([]);
+    setWallCount(mode === GameMode.MCR ? INITIAL_WALL_MCR : INITIAL_WALL_SICHUAN);
+    setVoidSuit(null);
+    setAnalysis(null);
+    setShowKeyboard(false);
   };
 
   const handleAnalyze = () => {
