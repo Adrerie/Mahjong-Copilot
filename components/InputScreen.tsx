@@ -49,6 +49,9 @@ const InputScreen: React.FC<Props> = ({ mode, lang, setLang, onBack }) => {
     const key = `${tile.value}${tile.suit}`;
     const currentCount = tileCounts.get(key) || 0;
     
+    // 每种牌最多只有4张
+    if (currentCount >= 4) return;
+    
     if (activeZone === 'hand') {
       if (totalTiles >= 14) return; // Basic check
       setHand(prev => [...prev, tile]);
