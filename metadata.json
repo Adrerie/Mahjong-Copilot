@@ -1,0 +1,5 @@
+{
+  "name": "Mahjong Copilot",
+  "description": "A decision support tool for Chinese Official (MCR) and Sichuan (Blood Battle) Mahjong, featuring strategy analysis, scoring, and probability calculation.",
+  "requestFramePermissions": []
+}

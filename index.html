@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mahjong Copilot</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Nunito:wght@400;700;900&family=Noto+Serif+SC:wght@700&display=swap" rel="stylesheet">
+    <style>
+      /* Base styles */
+      body {
+        font-family: 'Nunito', sans-serif;
+      }
+      .font-mono {
+        font-family: 'JetBrains Mono', monospace;
+      }
+      .font-serif-cn {
+        font-family: 'Noto Serif SC', serif;
+      }
+      
+      /* Hide scrollbar for clean UI but keep functionality */
+      .no-scrollbar::-webkit-scrollbar {
+        display: none;
+      }
+      .no-scrollbar {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+      }
+
+      /* Neubrutalism Shadow Utility */
+      .shadow-neu {
+        box-shadow: 4px 4px 0px 0px #000000;
+      }
+      .shadow-neu-sm {
+        box-shadow: 2px 2px 0px 0px #000000;
+      }
+      
+      /* Animation classes */
+      @keyframes pop {
+        0% { transform: scale(0.9); }
+        50% { transform: scale(1.1); }
+        100% { transform: scale(1); }
+      }
+      .animate-pop {
+        animation: pop 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "react": "https://esm.sh/react@^19.2.3"
+  }
+}
+</script>
+</head>
+  <body class="bg-[#F0F8FF] text-[#37474F] overflow-hidden selection:bg-[#CCFF00] selection:text-black">
+    <div id="root"></div>
+  </body>
+</html>
