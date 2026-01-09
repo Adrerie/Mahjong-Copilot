@@ -57,7 +57,7 @@ const AnalysisResultModal: React.FC<Props> = ({ result, lang, onClose }) => {
                    <p className="text-xs text-gray-400 font-mono">{result.bestDiscard.reason}</p>
                    <div className="mt-2 inline-flex items-center gap-2 self-center sm:self-start bg-green-50 text-green-700 px-3 py-1 rounded-lg border border-green-100">
                        <span className="text-xs font-bold uppercase">{t.efficiency}</span>
-                       <span className="font-mono font-black">+15%</span>
+                       <span className="font-mono font-black">{result.bestDiscard.ukeireTiles}种{result.bestDiscard.ukeire}张</span>
                    </div>
                </div>
             </div>

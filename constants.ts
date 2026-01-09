@@ -87,6 +87,7 @@ export const TEXT = {
     pureStraight: 'Pure Straight',
     mixedOneSuit: 'Mixed One Suit',
     allPungs: 'All Pungs',
+    fourConcealedPungs: 'Four Concealed Pungs',
     mixedTripleChow: 'Mixed Triple Chow', // San Se San Tong Shun
     mixedShiftedChows: 'Mixed Shifted Chows', // San Se San Bu Gao
     fiveGates: 'Five Types', // Wu Men Qi
@@ -177,6 +178,7 @@ export const TEXT = {
     pureStraight: '清龙',
     mixedOneSuit: '混一色',
     allPungs: '碰碰和',
+    fourConcealedPungs: '四暗刻',
     mixedTripleChow: '三色三同顺',
     mixedShiftedChows: '三色三步高',
     fiveGates: '五门齐',
@@ -225,80 +227,82 @@ export interface MCRPattern {
   nameEn: string;
   fan: number;
   description: string;
-  excludes: string[]; // 不重复计分原则 - 包含此番型时，这些番不再计算
+  excludes: string[]; // 不计 - 包含此番型时，这些番不再计算
+  includes?: string[]; // 另计 - 即使满足不计条件，这些番仍然单独计算
 }
 
 // 88番 (Top Tier)
 export const MCR_88_FAN: MCRPattern[] = [
-  { id: 'daSiXi', nameZh: '大四喜', nameEn: 'Big Four Winds', fan: 88, description: '和牌时4副风刻(杠)', excludes: ['xiaoSiXi', 'sanFengKe', 'pengPengHu', 'quanFengKe', 'menFengKe', 'yaoJiuKe'] },
-  { id: 'daSanYuan', nameZh: '大三元', nameEn: 'Big Three Dragons', fan: 88, description: '和牌时3副箭刻(杠)', excludes: ['xiaoSanYuan', 'jianKe', 'shuangJianKe'] },
-  { id: 'lvYiSe', nameZh: '绿一色', nameEn: 'All Green', fan: 88, description: '由23468条及发财组成的和牌', excludes: ['hunYiSe', 'qingYiSe'] },
-  { id: 'jiuLianBaoDeng', nameZh: '九莲宝灯', nameEn: 'Nine Gates', fan: 88, description: '门前清时特定牌型1112345678999+任意同花色牌', excludes: ['qingYiSe', 'menQianQing', 'yaoJiuKe'] },
-  { id: 'siGang', nameZh: '四杠', nameEn: 'Four Kongs', fan: 88, description: '和牌时4个杠', excludes: ['sanGang', 'shuangMingGang', 'shuangAnGang', 'mingGang', 'danDiaoJiang'] },
-  { id: 'lianQiDui', nameZh: '连七对', nameEn: 'Seven Shifted Pairs', fan: 88, description: '由一种花色序数牌组成的7个连续对子', excludes: ['qingYiSe', 'qiDui', 'menQianQing', 'danDiaoJiang'] },
-  { id: 'shiSanYao', nameZh: '十三幺', nameEn: 'Thirteen Orphans', fan: 88, description: '由全部幺九牌及字牌各一张组成,另有一张重复', excludes: ['wuMenQi', 'menQianQing', 'danDiaoJiang', 'hunYaoJiu'] },
+  { id: 'daSiXi', nameZh: '大四喜', nameEn: 'Big Four Winds', fan: 88, description: '和牌时4副风刻(杠)', excludes: ['xiaoSiXi', 'sanFengKe', 'pengPengHu', 'quanFengKe', 'menFengKe', 'yaoJiuKe'], includes: ['hunYaoJiu', 'hunYiSe', 'ziYiSe'] },
+  { id: 'daSanYuan', nameZh: '大三元', nameEn: 'Big Three Dragons', fan: 88, description: '和牌时3副箭刻(杠)', excludes: ['xiaoSanYuan', 'jianKe', 'shuangJianKe'], includes: ['quanDaiYao', 'ziYiSe'] },
+  { id: 'lvYiSe', nameZh: '绿一色', nameEn: 'All Green', fan: 88, description: '由23468条及发财组成的和牌', excludes: ['hunYiSe', 'qingYiSe'], includes: ['siGuiYi', 'jianKe', 'qingYiSe', 'yiSeSanJieGao', 'pengPengHu', 'duanYao'] },
+  { id: 'jiuLianBaoDeng', nameZh: '九莲宝灯', nameEn: 'Nine Gates', fan: 88, description: '门前清时特定牌型1112345678999+任意同花色牌', excludes: ['qingYiSe', 'menQianQing', 'buQiuRen', 'yaoJiuKe'], includes: ['siGuiYi', 'qingLong', 'shuangAnKe', 'lianLiu'] },
+  { id: 'siGang', nameZh: '四杠', nameEn: 'Four Kongs', fan: 88, description: '和牌时4个杠', excludes: ['sanGang', 'shuangMingGang', 'shuangAnGang', 'mingGang', 'danDiaoJiang', 'pengPengHu'], includes: ['siAnKe', 'quanDa', 'sanSeSanJieGao', 'shuangTongKe', 'yaoJiuKe', 'hunYaoJiu', 'sanTongKe', 'wuMenQi', 'jianKe'] },
+  { id: 'lianQiDui', nameZh: '连七对', nameEn: 'Seven Shifted Pairs', fan: 88, description: '由一种花色序数牌组成的7个连续对子', excludes: ['qingYiSe', 'qiDui', 'menQianQing', 'buQiuRen', 'pingHu', 'danDiaoJiang'], includes: ['duanYao'] },
+  { id: 'shiSanYao', nameZh: '十三幺', nameEn: 'Thirteen Orphans', fan: 88, description: '由全部幺九牌及字牌各一张组成,另有一张重复', excludes: ['wuMenQi', 'menQianQing', 'buQiuRen', 'danDiaoJiang', 'hunYaoJiu'] },
 ];
 
 // 64番
 export const MCR_64_FAN: MCRPattern[] = [
-  { id: 'xiaoSiXi', nameZh: '小四喜', nameEn: 'Little Four Winds', fan: 64, description: '和牌时3副风刻(杠)加1对风将', excludes: ['sanFengKe', 'yaoJiuKe'] },
-  { id: 'xiaoSanYuan', nameZh: '小三元', nameEn: 'Little Three Dragons', fan: 64, description: '和牌时2副箭刻(杠)加1对箭将', excludes: ['shuangJianKe', 'jianKe'] },
-  { id: 'ziYiSe', nameZh: '字一色', nameEn: 'All Honors', fan: 64, description: '由字牌组成的和牌', excludes: ['pengPengHu', 'queBuKao', 'hunYaoJiu', 'yaoJiuKe'] },
-  { id: 'siAnKe', nameZh: '四暗刻', nameEn: 'Four Concealed Pungs', fan: 64, description: '4个暗刻(杠)', excludes: ['pengPengHu', 'menQianQing', 'shuangAnGang', 'sanAnKe'] },
-  { id: 'yiSeShuangLongHui', nameZh: '一色双龙会', nameEn: 'Pure Terminal Chows', fan: 64, description: '由一种花色的123、789各两组及5作将组成', excludes: ['qingYiSe', 'pingHu', 'yiBanGao', 'laoShaoFu', 'wuZi'] },
+  { id: 'qingYaoJiu', nameZh: '清幺九', nameEn: 'All Terminals', fan: 64, description: '由序数牌一、九组成的刻子和牌', excludes: ['pengPengHu', 'hunYaoJiu', 'shuangTongKe', 'wuZi', 'yaoJiuKe'], includes: ['qiDui', 'siGuiYi'] },
+  { id: 'xiaoSiXi', nameZh: '小四喜', nameEn: 'Little Four Winds', fan: 64, description: '和牌时3副风刻(杠)加1对风将', excludes: ['sanFengKe', 'yaoJiuKe'], includes: ['pengPengHu'] },
+  { id: 'xiaoSanYuan', nameZh: '小三元', nameEn: 'Little Three Dragons', fan: 64, description: '和牌时2副箭刻(杠)加1对箭将', excludes: ['shuangJianKe', 'jianKe', 'queYiMen'], includes: ['hunYaoJiu', 'shuangTongKe'] },
+  { id: 'ziYiSe', nameZh: '字一色', nameEn: 'All Honors', fan: 64, description: '由字牌组成的和牌', excludes: ['pengPengHu', 'hunYaoJiu', 'yaoJiuKe'], includes: ['shuangJianKe'] },
+  { id: 'siAnKe', nameZh: '四暗刻', nameEn: 'Four Concealed Pungs', fan: 64, description: '4个暗刻(杠)', excludes: ['pengPengHu', 'menQianQing', 'buQiuRen', 'shuangAnGang', 'sanAnKe', 'shuangAnKe'] },
+  { id: 'yiSeShuangLongHui', nameZh: '一色双龙会', nameEn: 'Pure Terminal Chows', fan: 64, description: '由一种花色的123、789各两组及5作将组成', excludes: ['qingYiSe', 'pingHu', 'yiBanGao', 'laoShaoFu', 'wuZi', 'queYiMen'] },
 ];
 
 // 48番
 export const MCR_48_FAN: MCRPattern[] = [
-  { id: 'yiSeSiTongShun', nameZh: '一色四同顺', nameEn: 'Quadruple Chow', fan: 48, description: '一种花色4组相同序数的顺子', excludes: ['yiSeSanTongShun', 'yiBanGao', 'siGuiYi'] },
-  { id: 'yiSeSiJieGao', nameZh: '一色四节高', nameEn: 'Four Pure Shifted Pungs', fan: 48, description: '一种花色4个依次递增1的刻子', excludes: ['yiSeSanJieGao', 'pengPengHu'] },
+  { id: 'yiSeSiTongShun', nameZh: '一色四同顺', nameEn: 'Quadruple Chow', fan: 48, description: '一种花色4组相同序数的顺子', excludes: ['yiSeSanTongShun', 'yiBanGao', 'siGuiYi'], includes: ['lvYiSe', 'qingYiSe', 'duanYao', 'pingHu'] },
+  { id: 'yiSeSiJieGao', nameZh: '一色四节高', nameEn: 'Four Pure Shifted Pungs', fan: 48, description: '一种花色4个依次递增1的刻子', excludes: ['yiSeSanJieGao', 'pengPengHu'], includes: ['tuiBuDao', 'xiaoYuWu', 'yaoJiuKe'] },
 ];
 
 // 32番
 export const MCR_32_FAN: MCRPattern[] = [
-  { id: 'yiSeSiBuGao', nameZh: '一色四步高', nameEn: 'Four Shifted Chows', fan: 32, description: '一种花色4组依次递增1或2的顺子', excludes: ['yiSeSanBuGao', 'lianLiu'] },
-  { id: 'sanGang', nameZh: '三杠', nameEn: 'Three Kongs', fan: 32, description: '3个杠', excludes: ['shuangMingGang', 'shuangAnGang', 'mingGang'] },
-  { id: 'hunYaoJiu', nameZh: '混幺九', nameEn: 'All Terminals and Honors', fan: 32, description: '由幺九牌和字牌组成的和牌', excludes: ['pengPengHu', 'quanDaiYao', 'yaoJiuKe'] },
+  { id: 'yiSeSiBuGao', nameZh: '一色四步高', nameEn: 'Four Shifted Chows', fan: 32, description: '一种花色4组依次递增1或2的顺子', excludes: ['yiSeSanBuGao', 'lianLiu'], includes: ['hunYiSe', 'pingHu'] },
+  { id: 'sanGang', nameZh: '三杠', nameEn: 'Three Kongs', fan: 32, description: '3个杠', excludes: ['shuangMingGang', 'shuangAnGang', 'mingGang'], includes: ['xiaoYuWu', 'sanSeSanJieGao'] },
+  { id: 'hunYaoJiu', nameZh: '混幺九', nameEn: 'All Terminals and Honors', fan: 32, description: '由幺九牌和字牌组成的和牌', excludes: ['pengPengHu', 'quanDaiYao', 'yaoJiuKe'], includes: ['sanTongKe', 'jianKe', 'wuMenQi', 'qiDui', 'siGuiYi', 'queYiMen'] },
 ];
 
 // 24番
 export const MCR_24_FAN: MCRPattern[] = [
-  { id: 'qiDui', nameZh: '七对', nameEn: 'Seven Pairs', fan: 24, description: '由7个对子组成的和牌', excludes: ['menQianQing', 'danDiaoJiang'] },
-  { id: 'qiXingBuKao', nameZh: '七星不靠', nameEn: 'Greater Honors and Knitted Tiles', fan: 24, description: '7个单张的东南西北中发白加3种花色不相邻的7张序数牌', excludes: ['quanBuKao', 'wuMenQi', 'menQianQing'] },
-  { id: 'quanShuangKe', nameZh: '全双刻', nameEn: 'All Even Pungs', fan: 24, description: '由2、4、6、8序数牌组成的刻子和牌', excludes: ['pengPengHu', 'duanYao'] },
-  { id: 'qingYiSe', nameZh: '清一色', nameEn: 'Full Flush', fan: 24, description: '由同一种花色序数牌组成的和牌', excludes: ['wuZi'] },
-  { id: 'yiSeSanTongShun', nameZh: '一色三同顺', nameEn: 'Pure Triple Chow', fan: 24, description: '一种花色3组相同序数的顺子', excludes: ['yiBanGao'] },
-  { id: 'yiSeSanJieGao', nameZh: '一色三节高', nameEn: 'Pure Shifted Pungs', fan: 24, description: '一种花色3个依次递增1的刻子', excludes: [] },
-  { id: 'quanDa', nameZh: '全大', nameEn: 'Upper Tiles', fan: 24, description: '由789组成的和牌', excludes: ['wuZi', 'daYuWu'] },
-  { id: 'quanZhong', nameZh: '全中', nameEn: 'Middle Tiles', fan: 24, description: '由456组成的和牌', excludes: ['wuZi', 'duanYao'] },
-  { id: 'quanXiao', nameZh: '全小', nameEn: 'Lower Tiles', fan: 24, description: '由123组成的和牌', excludes: ['wuZi', 'xiaoYuWu'] },
+  { id: 'qiDui', nameZh: '七对', nameEn: 'Seven Pairs', fan: 24, description: '由7个对子组成的和牌', excludes: ['menQianQing', 'buQiuRen', 'danDiaoJiang'], includes: ['wuMenQi', 'lvYiSe', 'qingYiSe', 'quanShuangKe', 'tuiBuDao'] },
+  { id: 'qiXingBuKao', nameZh: '七星不靠', nameEn: 'Greater Honors and Knitted Tiles', fan: 24, description: '7个单张的东南西北中发白加3种花色不相邻的7张序数牌', excludes: ['quanBuKao', 'wuMenQi', 'menQianQing', 'buQiuRen', 'danDiaoJiang'] },
+  { id: 'quanShuangKe', nameZh: '全双刻', nameEn: 'All Even Pungs', fan: 24, description: '由2、4、6、8序数牌组成的刻子和牌', excludes: ['pengPengHu', 'duanYao'], includes: ['tuiBuDao', 'shuangTongKe'] },
+  { id: 'qingYiSe', nameZh: '清一色', nameEn: 'Full Flush', fan: 24, description: '由同一种花色序数牌组成的和牌', excludes: ['wuZi'], includes: ['qingLong', 'yiBanGao', 'siGuiYi', 'pingHu'] },
+  { id: 'yiSeSanTongShun', nameZh: '一色三同顺', nameEn: 'Pure Triple Chow', fan: 24, description: '一种花色3组相同序数的顺子', excludes: ['yiBanGao'], includes: ['quanXiao', 'quanDaiYao', 'pingHu', 'queYiMen', 'xiXiangFeng'] },
+  { id: 'yiSeSanJieGao', nameZh: '一色三节高', nameEn: 'Pure Shifted Pungs', fan: 24, description: '一种花色3个依次递增1的刻子', excludes: [], includes: ['hunYiSe', 'siGuiYi'] },
+  { id: 'quanDa', nameZh: '全大', nameEn: 'Upper Tiles', fan: 24, description: '由789组成的和牌', excludes: ['wuZi', 'daYuWu'], includes: ['sanSeSanTongShun', 'quanDaiYao', 'pingHu', 'yiBanGao'] },
+  { id: 'quanZhong', nameZh: '全中', nameEn: 'Middle Tiles', fan: 24, description: '由456组成的和牌', excludes: ['wuZi', 'duanYao'], includes: ['pengPengHu', 'sanSeSanJieGao', 'shuangTongKe'] },
+  { id: 'quanXiao', nameZh: '全小', nameEn: 'Lower Tiles', fan: 24, description: '由123组成的和牌', excludes: ['wuZi', 'xiaoYuWu'], includes: ['yiSeSiTongShun', 'quanDaiYao', 'queYiMen', 'pingHu'] },
 ];
 
 // 16番
 export const MCR_16_FAN: MCRPattern[] = [
-  { id: 'qingLong', nameZh: '清龙', nameEn: 'Pure Straight', fan: 16, description: '同一种花色123、456、789的顺子', excludes: ['lianLiu', 'laoShaoFu'] },
-  { id: 'sanSeShuangLongHui', nameZh: '三色双龙会', nameEn: 'Three-Suited Terminal Chows', fan: 16, description: '两种花色的123、789各一副加第三种花色5作将', excludes: ['pingHu', 'laoShaoFu', 'wuZi', 'xiBuKao'] },
-  { id: 'yiSeSanBuGao', nameZh: '一色三步高', nameEn: 'Pure Shifted Chows', fan: 16, description: '一种花色3组依次递增1或2的顺子', excludes: [] },
-  { id: 'quanDaiWu', nameZh: '全带五', nameEn: 'All Fives', fan: 16, description: '每副牌及将牌都有5的序数牌', excludes: ['duanYao'] },
-  { id: 'sanTongKe', nameZh: '三同刻', nameEn: 'Triple Pung', fan: 16, description: '3种花色3个相同序数的刻子', excludes: [] },
+  { id: 'qingLong', nameZh: '清龙', nameEn: 'Pure Straight', fan: 16, description: '同一种花色123、456、789的顺子', excludes: ['lianLiu', 'laoShaoFu'], includes: ['pingHu', 'queYiMen', 'xiXiangFeng'] },
+  { id: 'sanSeShuangLongHui', nameZh: '三色双龙会', nameEn: 'Three-Suited Terminal Chows', fan: 16, description: '两种花色的123、789各一副加第三种花色5作将', excludes: ['pingHu', 'laoShaoFu', 'wuZi', 'xiXiangFeng'] },
+  { id: 'yiSeSanBuGao', nameZh: '一色三步高', nameEn: 'Pure Shifted Chows', fan: 16, description: '一种花色3组依次递增1或2的顺子', excludes: [], includes: ['quanDaiWu', 'pingHu', 'xiXiangFeng'] },
+  { id: 'quanDaiWu', nameZh: '全带五', nameEn: 'All Fives', fan: 16, description: '每副牌及将牌都有5的序数牌', excludes: ['duanYao'], includes: ['quanZhong', 'sanSeSanTongShun', 'siGuiYi', 'pingHu', 'yiBanGao'] },
+  { id: 'sanTongKe', nameZh: '三同刻', nameEn: 'Triple Pung', fan: 16, description: '3种花色3个相同序数的刻子', excludes: [], includes: ['quanShuangKe', 'quanZhong'] },
   { id: 'sanAnKe', nameZh: '三暗刻', nameEn: 'Three Concealed Pungs', fan: 16, description: '3个暗刻', excludes: ['shuangAnKe'] },
 ];
 
 // 12番
 export const MCR_12_FAN: MCRPattern[] = [
-  { id: 'quanBuKao', nameZh: '全不靠', nameEn: 'Lesser Honors and Knitted Tiles', fan: 12, description: '由单张3种花色序数牌147、258、369不能相邻及孤张字牌组成', excludes: ['wuMenQi', 'menQianQing'] },
-  { id: 'zuHeLong', nameZh: '组合龙', nameEn: 'Knitted Straight', fan: 12, description: '3种花色的147、258、369组合成龙', excludes: [] },
-  { id: 'daYuWu', nameZh: '大于五', nameEn: 'Upper Four', fan: 12, description: '由6789组成的和牌', excludes: ['wuZi'] },
-  { id: 'xiaoYuWu', nameZh: '小于五', nameEn: 'Lower Four', fan: 12, description: '由1234组成的和牌', excludes: ['wuZi'] },
-  { id: 'sanFengKe', nameZh: '三风刻', nameEn: 'Big Three Winds', fan: 12, description: '3副风刻(杠)', excludes: ['yaoJiuKe'] },
+  { id: 'quanBuKao', nameZh: '全不靠', nameEn: 'Lesser Honors and Knitted Tiles', fan: 12, description: '由单张3种花色序数牌147、258、369不能相邻及孤张字牌组成', excludes: ['wuMenQi', 'menQianQing', 'buQiuRen', 'danDiaoJiang'], includes: ['zuHeLong'] },
+  { id: 'zuHeLong', nameZh: '组合龙', nameEn: 'Knitted Straight', fan: 12, description: '3种花色的147、258、369组合成龙', excludes: [], includes: ['pingHu', 'wuMenQi', 'jianKe'] },
+  { id: 'daYuWu', nameZh: '大于五', nameEn: 'Upper Four', fan: 12, description: '由6789组成的和牌', excludes: ['wuZi'], includes: ['sanSeSanTongShun', 'yiBanGao', 'pingHu'] },
+  { id: 'xiaoYuWu', nameZh: '小于五', nameEn: 'Lower Four', fan: 12, description: '由1234组成的和牌', excludes: ['wuZi'], includes: ['qingYiSe', 'yiSeSanJieGao', 'tuiBuDao', 'siGuiYi'] },
+  { id: 'sanFengKe', nameZh: '三风刻', nameEn: 'Big Three Winds', fan: 12, description: '3副风刻(杠)', excludes: ['yaoJiuKe'], includes: ['ziYiSe', 'jianKe'] },
 ];
 
 // 8番 (起和线 - Minimum for MCR)
 export const MCR_8_FAN: MCRPattern[] = [
-  { id: 'huaLong', nameZh: '花龙', nameEn: 'Mixed Straight', fan: 8, description: '3种花色的3组顺子连成1到9', excludes: [] },
-  { id: 'tuiBuDao', nameZh: '推不倒', nameEn: 'Reversible Tiles', fan: 8, description: '由1234589筒、245689条、白板组成的和牌', excludes: ['queYiMen'] },
-  { id: 'sanSeSanTongShun', nameZh: '三色三同顺', nameEn: 'Mixed Triple Chow', fan: 8, description: '3种花色相同序数的顺子', excludes: [] },
-  { id: 'sanSeSanJieGao', nameZh: '三色三节高', nameEn: 'Mixed Shifted Pungs', fan: 8, description: '3种花色依次递增1的刻子', excludes: [] },
+  { id: 'huaLong', nameZh: '花龙', nameEn: 'Mixed Straight', fan: 8, description: '3种花色的3组顺子连成1到9', excludes: [], includes: ['yiBanGao', 'pingHu'] },
+  { id: 'tuiBuDao', nameZh: '推不倒', nameEn: 'Reversible Tiles', fan: 8, description: '由1234589筒、245689条、白板组成的和牌', excludes: ['queYiMen'], includes: ['shuangTongKe', 'wuZi', 'yaoJiuKe', 'qingYiSe', 'qiDui'] },
+  { id: 'sanSeSanTongShun', nameZh: '三色三同顺', nameEn: 'Mixed Triple Chow', fan: 8, description: '3种花色相同序数的顺子', excludes: ['xiXiangFeng'], includes: ['pingHu', 'lianLiu'] },
+  { id: 'sanSeSanJieGao', nameZh: '三色三节高', nameEn: 'Mixed Shifted Pungs', fan: 8, description: '3种花色依次递增1的刻子', excludes: [], includes: ['quanDa', 'pengPengHu', 'shuangTongKe', 'yaoJiuKe'] },
   { id: 'wuFanHu', nameZh: '无番和', nameEn: 'Chicken Hand', fan: 8, description: '除门前清和自摸外无其他番种', excludes: [] },
   { id: 'miaoShouHuiChun', nameZh: '妙手回春', nameEn: 'Last Tile Draw', fan: 8, description: '自摸牌墙上最后一张牌和牌', excludes: ['ziMo'] },
   { id: 'haiDiLaoYue', nameZh: '海底捞月', nameEn: 'Last Tile Claim', fan: 8, description: '和别家打出的牌墙上最后一张牌', excludes: [] },
@@ -308,10 +312,10 @@ export const MCR_8_FAN: MCRPattern[] = [
 
 // 6番
 export const MCR_6_FAN: MCRPattern[] = [
-  { id: 'pengPengHu', nameZh: '碰碰和', nameEn: 'All Pungs', fan: 6, description: '由4副刻子(杠)组成的和牌', excludes: [] },
-  { id: 'hunYiSe', nameZh: '混一色', nameEn: 'Half Flush', fan: 6, description: '由一种花色序数牌及字牌组成的和牌', excludes: [] },
-  { id: 'sanSeSanBuGao', nameZh: '三色三步高', nameEn: 'Mixed Shifted Chows', fan: 6, description: '3种花色依次递增1的顺子', excludes: [] },
-  { id: 'wuMenQi', nameZh: '五门齐', nameEn: 'All Types', fan: 6, description: '和牌时万、筒、条、风、箭全有', excludes: [] },
+  { id: 'pengPengHu', nameZh: '碰碰和', nameEn: 'All Pungs', fan: 6, description: '由4副刻子(杠)组成的和牌', excludes: [], includes: ['yiSeSanJieGao', 'shuangTongKe', 'tuiBuDao'] },
+  { id: 'hunYiSe', nameZh: '混一色', nameEn: 'Half Flush', fan: 6, description: '由一种花色序数牌及字牌组成的和牌', excludes: [], includes: ['jianKe', 'laoShaoFu'] },
+  { id: 'sanSeSanBuGao', nameZh: '三色三步高', nameEn: 'Mixed Shifted Chows', fan: 6, description: '3种花色依次递增1的顺子', excludes: [], includes: ['quanDaiWu', 'siGuiYi'] },
+  { id: 'wuMenQi', nameZh: '五门齐', nameEn: 'All Types', fan: 6, description: '和牌时万、筒、条、风、箭全有', excludes: [], includes: ['quanDaiYao', 'jianKe', 'xiXiangFeng'] },
   { id: 'quanQiuRen', nameZh: '全求人', nameEn: 'Melded Hand', fan: 6, description: '4副全部吃碰明杠，和别家打出的牌', excludes: ['danDiaoJiang'] },
   { id: 'shuangAnGang', nameZh: '双暗杠', nameEn: 'Two Concealed Kongs', fan: 6, description: '2个暗杠', excludes: [] },
   { id: 'shuangJianKe', nameZh: '双箭刻', nameEn: 'Two Dragon Pungs', fan: 6, description: '2副箭刻(杠)', excludes: [] },
@@ -336,11 +340,13 @@ export const MCR_2_FAN: MCRPattern[] = [
   { id: 'shuangTongKe', nameZh: '双同刻', nameEn: 'Double Pung', fan: 2, description: '2种花色相同序数的刻子', excludes: [] },
   { id: 'shuangAnKe', nameZh: '双暗刻', nameEn: 'Two Concealed Pungs', fan: 2, description: '2个暗刻', excludes: [] },
   { id: 'duanYao', nameZh: '断幺', nameEn: 'All Simples', fan: 2, description: '和牌时无幺九牌及字牌', excludes: ['wuZi'] },
+  { id: 'anGang', nameZh: '暗杠', nameEn: 'Concealed Kong', fan: 2, description: '自摸4张相同的牌开杠', excludes: [] },
 ];
 
 // 1番
 export const MCR_1_FAN: MCRPattern[] = [
   { id: 'yiBanGao', nameZh: '一般高', nameEn: 'Pure Double Chow', fan: 1, description: '同一种花色2组相同序数的顺子', excludes: [] },
+  { id: 'xiXiangFeng', nameZh: '喜相逢', nameEn: 'Mixed Double Chow', fan: 1, description: '2种花色相同序数的顺子', excludes: [] },
   { id: 'lianLiu', nameZh: '连六', nameEn: 'Short Straight', fan: 1, description: '同一种花色6张连续的序数牌', excludes: [] },
   { id: 'laoShaoFu', nameZh: '老少副', nameEn: 'Two Terminal Chows', fan: 1, description: '同一种花色123和789两组顺子', excludes: [] },
   { id: 'yaoJiuKe', nameZh: '幺九刻', nameEn: 'Pung of Terminals or Honors', fan: 1, description: '幺九牌或字牌的刻子(杠)', excludes: [] },

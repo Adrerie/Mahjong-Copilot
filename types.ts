@@ -46,6 +46,8 @@ export interface AnalysisResult {
   bestDiscard?: {
     tile: Tile;
     reason: string;
+    ukeire: number; // 进张数 (有效牌的数量)
+    ukeireTiles: number; // 进张种类数 (有效牌的种类数量)
   };
   suggestions: FanSuggestion[];
   scoreEstimate?: number; // Fan
