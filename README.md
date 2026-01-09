@@ -1,13 +1,15 @@
 <div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
 
 # 🀄 Mahjong Copilot 麻将助手
 
-**智能麻将分析工具 | 支持国标麻将 & 四川血战**
+**智能麻将分析工具** | **国标麻将** 🇨🇳 **四川血战** 🔴
 
 [![React](https://img.shields.io/badge/React-19.2-61DAFB?logo=react)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?logo=typescript)](https://www.typescriptlang.org/)
 [![Vite](https://img.shields.io/badge/Vite-6.2-646CFF?logo=vite)](https://vitejs.dev/)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
+[English](README.md) | [中文](README.md)
 
 </div>
 
