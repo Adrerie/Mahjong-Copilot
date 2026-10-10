@@ -269,6 +269,12 @@ export const decodeEntryState = (raw: string | null, mode: GameMode): GameState 
   const discards = tileArray(state.discards);
   const melds = meldArray(state.melds);
   if (!hand || !discards || !melds) return null;
+  // IDs are used as React keys and as deletion targets. Reject corrupted storage
+  // instead of allowing one click to remove multiple tiles or melds.
+  const tileIds = [...hand, ...discards, ...melds.flatMap(meld => meld.tiles)].map(tile => tile.id);
+  const meldIds = melds.map(meld => meld.id);
+  if (tileIds.some(id => id.length === 0) || new Set(tileIds).size !== tileIds.length ||
+      meldIds.some(id => id.length === 0) || new Set(meldIds).size !== meldIds.length) return null;
   if (!('wallCount' in state) || typeof state.wallCount !== 'number') return null;
 
   let voidSuit: Suit | null = null;
