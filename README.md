@@ -235,6 +235,17 @@ npx cap open ios      # 用 Xcode 打开
 
 ---
 
+## 贡献者 / Contributors
+
+- [@Adrerie](https://github.com/Adrerie) — 项目维护者
+- [@L04-ZJ](https://github.com/L04-ZJ) — 项目审阅、测试与改进协作
+
+GitHub 自动统计的 Contributors/贡献图由实际提交作者及合并记录决定，README 列名不会代替 Git 提交归属。
+
+## 自动验证与构建
+
+GitHub Actions 工作流：[Verify and package](.github/workflows/verify-and-package.yml)。在分支推送或 PR 时运行 `npm test`、`npm run typecheck`、`npm run build`，并打包 `web-dist` 与 `mahjong-copilot-debug-apk` 两种可下载的运行产物。Debug APK 供测试安装，**不是正式签名发行包**。构建是否成功以 [Actions 页面](https://github.com/Adrerie/Mahjong-Copilot/actions)的实时结果为准。
+
 ## 📄 开源协议
 
 GPL-3.0 License © 2026 [Adrerie](https://github.com/Adrerie)
