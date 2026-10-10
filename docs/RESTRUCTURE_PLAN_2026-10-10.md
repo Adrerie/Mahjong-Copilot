@@ -1,61 +1,47 @@
-# Mahjong Copilot · 精简重组与 P1 交接计划
-2026-10-10 · 当前工作分支：`feat/p1-foundation-ci-20261010`。
+# Mahjong Copilot · P2 四川规则修补计划
+更新：2026-10-10 · 分支：`feat/p2-sichuan-rules-20261010`
 
-> **先读 [AGENTS.md](../AGENTS.md)。** 本文只保留尚待执行的具体操作、验证牌例和明确限制。P0 旧排查详见 [ISSUE_AUDIT](ISSUE_AUDIT_2026-10-10.md) 和 [REPAIR_PLAN](REPAIR_PLAN.md)。当前阶段只执行 P1，不提前解决川麻/国标全部计番。
+> DeepSeek 先读 [AGENTS.md](../AGENTS.md) 及 [tests/regression.ts](../tests/regression.ts)。**P2 只修四川牌型、倍率与相关测试，不重构 MCR 或整个 UI。**
 
-## 阶段状态与已经落地的内容
+## 已完成：P0 / P1
 
-| 阶段 | 状态 | 下一步 |
-|---|---|---|
-| P0 代码基线 | 已完成 | 17项正确行为守卫 + 18项既有问题行为快照；旧审计归档。DeepSeek 报告 `npm ci/test/typecheck/build` 通过，本轮修改仍需 CI 独立验证 |
-| **P1 结果状态与误导性展示** | **本分支已修改，待 CI 验证** | `AnalysisResult.status` 区分 `invalid/incomplete/notReady/ready/deadWait/completeShapeScoreUnverified`；无效输入向听置 null，死叫 isReady=false，UI 删除伪成功率百分比，并更新守卫 |
-| **P1 录牌与手机交互** | **本分支已完成，390×844 已实测** | 见下方「P1 已完成」；待本地提交与 CI |
-| Actions 与打包 | 已添加工作流，待实际运行验证 | `web-dist` 和 **仅供测试的 Android Debug APK**，不做 Release 签名、发布或 Play Store |
-| P2 四川规则 / P3 国标计番 / P4 其他 | 未开始 | 本次禁止提前展开 |
+- P0：17 项既有正确行为守卫、18 项错误行为快照，保留于 tests；它们不是18项已修缺陷。
+- P1：文本录牌、撤销、双模式局面恢复、异常反馈、死叫与无效局面状态、键盘内分析及副露删除已经完成；[成功 CI](https://github.com/Adrerie/Mahjong-Copilot/actions/runs/38062482258) 证实 27 项守卫、类型检查、Web 构建、Android Debug APK 构建通过。手机390×844已由 DeepSeek 报告测试；真机和离线仍未验证。
+- **本分支直接修复（待本分支 CI 再验收）**：恢复数据拒绝重复/空牌 ID 与副露 ID；可交互牌面使用原生 button，补键盘操作和读屏标签。已添加重复 ID 回归。保留原 UI。
+- 已从旧计划删除 P0/P1 冗长步骤、重复 Changelog 和过期的“等待 CI”声明；旧计划文件只保留这一份。
 
-此处已有五类变更：`types.ts`、`utils/mahjongLogic.ts`、`components/AnalysisResultModal.tsx`、`tests/regression.ts`、`AGENTS.md`。另在 `README.md` 添加 [@L04-ZJ](https://github.com/L04-ZJ) 的贡献者署名，并新增 `.github/workflows/verify-and-package.yml`。这些都已提交在独立分支，未合并 `main`。**GitHub Contributors 自动列表需以真实提交作者为准，README 列名不会改变其统计。**
+## P2 规则依据：一套可验证的参考口径
 
-## P1 已完成：录牌与手机交互（2026-10-10）
+本阶段选择 [Hi8 血战到底牌桌规则](https://hi8.com/g/sichuanmajiang) 作**示例规则口径**，不是四川/重庆全部地区标准：平胡0、对对胡1、清一色2、七对2、带幺九2、金钩钓2（包含对对胡）、每根+1；**封顶4指数番，即最多16倍**。具体叠加/替代关系均应核对原页面。另见 [腾讯云社区四川麻将实例](https://cloud.tencent.cn/developer/article/1069132)，其口径存在差异，**不混算**。
 
-新增唯一纯函数模块 [utils/entryEditing.ts](../utils/entryEditing.ts)：牌串解析、候选局面先整体校验再提交（`planTextHand` / `planTileAdd`）、按玩法的局面编解码。规则口径仍复用 `validateGameState`，没有第二套判断。
+- 同时保留 `ruleId`、`ruleSource` 与“此计番为参考规则，非真实结算”说明。若来源不足以确认某复合牌型的叠加/排斥，以**待核**输出，不制造精确倍数。
+- 先用最少字段表达 `patterns`、`baseExponent`、`roots`、`uncappedExponent`、`cappedExponent`、`multiplier`，避免现有“6番=64倍”与“8番是8倍”混用。只在四川模式使用，不能影响国标总番。
+- 不支持完整四家输赢流水账、查花猪赔付、杠收支、事件上下文自动推断；不建立通用规则 DSL、多场规引擎或 UI 选择器矩阵。
 
-- **文本录牌**：`components/InputScreen.tsx` 增加粘贴/应用入口，接受 `33344466699977s`、`33344466699977条`、`123m456p789s11z`；1–14 张等效牌可作中间态录入。失败时在顶部固定条给出具体原因并**保留原手牌**，成功只替换暗手，不动副露与牌河。
-- **一步撤销**：所有写入只有一个 `commit()`，只保留最近一次有效局面的一个快照（手牌/副露/牌河/墙数/定缺/文本替换/重置）。用掉即失效，无历史栈、无重做。
-- **局面恢复**：以 `GameState` 为模型、每种玩法一个 `mahjong-copilot.entry.v1.<mode>` 键；初始值直接来自存储，首次写入不会用空局面覆盖旧数据；旧版本、结构损坏、玩法不符、超四张一律忽略为空局面。
-- **失败提示与移动端**：第五张（含吃牌第二、三张）、14 张等效上限、四副面子上限、川麻无字/不能吃、吃牌跨度均给出具体原因；副露改为点整副只选中、右上角 `×` 才删除；键盘面板内直接提供「分析」入口；点区域时自动把该区域滚到键盘上方；墙数按玩法夹在 0–144/0–108。视觉沿用原配色、拟物牌面与圆角卡片。
-- **测试**：`tests/regression.ts` 新增 P1 录入门槛一节（复核后27项守卫 + 18项问题快照），覆盖解析正反例、原子替换、副露/牌河四张上限、14张与四副面子上限、吃牌跨度、川麻门槛、局面往返与损坏数据，以及恢复后副露ID不重复、三门中间局面允许录入但不得和牌。
+## 按顺序执行的最小修补
 
-**实测（390×844，Chrome CDP + `npm run dev`）**：粘贴 `33344466699977条` → 14/14；刷新后重进与返回后再进均恢复 14 张；删一张→撤销回 14 张且撤销按钮随即失效；重置→撤销恢复；`8888m123p` 点第 5 张 8 万报「8万 已经有 4 张」且牌数不变；吃 8 万报跨度错误、吃 7 万报超四张、吃 5 万成功；点面子本体不删除、`×` 删除后可撤销；牌河加牌不计等效张数、点牌删除可撤销；键盘展开时面板内「分析」可点且弹窗无 90%/95%；`123m456p` 中间态分析显示「牌数未齐」且不显示数字向听；两种损坏存储与旧版本均安全空局面启动；`scrollWidth == clientWidth == 390`，无横向溢出。
+**P2a（先做，且必须附正反例）**
 
-## GitHub Actions：验证与可下载打包
+1. 查看 `utils/sichuanAnalyzer.ts`、`utils/winningChecker.ts`、`constants.ts`、`utils/mahjongLogic.ts`。把“结构可和”和“按该规则可计番”区分，使用合法面子拆分，而不是统计存在几张刻子便推断碰碰胡。
+2. 修复 **S03 明碰重复计刻**：`碰111p+碰999p + 暗手123456m77p` 不是对对胡。
+3. 修复 **S05 七对四张计双对、三根**：`11114444777799s` 有三组四张、能组成七对；分清“根”与“副露杠”。
+4. 修复 **S04 带幺九拆分**：`12378911m123789p` 的 123/789 顺子含幺九，不能仅检测牌值都是1/9。
+5. 修复 **S01 清对**：`33344466699977s` 是清对、无根。按所选 Hi8 参考口径：清一色2 + 对对胡1 = **3指数番，8倍**；不要再报6番64倍，也不要将它称为四川/重庆统一规则。清七对及其它复合番种是否单独覆盖或累加，需参照该规则说明，禁止双计。
+6. 输入非法、未定缺/定缺仍在、三门未清、有字牌、胡牌所需上下文缺失时不输出虚构结算；已有 P1 状态和参考提示继续保留。
 
-文件：[`.github/workflows/verify-and-package.yml`](../.github/workflows/verify-and-package.yml)。触发条件为推送 `main`/`plan/**`/`feat/**`、PR 或手动 `workflow_dispatch`。
+**P2b（只在 P2a 正确后做）**
 
-- Web 任务：Node 22 → `npm ci` → `npm test` → `npm run typecheck` → `npm run build` → 上传 `web-dist`。
-- Android 任务：通过 Web 后，JDK 21 + Android SDK → `npm ci` → `npm run build` → `npx cap sync android` → `./gradlew assembleDebug` → 上传 `mahjong-copilot-debug-apk`。
-- **CI 未实际出现绿色结果之前不宣称通过**。如果失败，只针对具体构建错误最小修复（检查 SDK 36/Gradle 8.14.3/Capacitor 8 的兼容性），不引入打包框架。Debug APK 不需要发布签名，不配置密钥，不自动创建 GitHub Release；Android 真机/离线仍需人工验收。
-- 本工作分支上的工作流**不等于已经修改 main 的工作流**；只有工作分支触发后可以看到其结果，主分支需授权合并才会长期生效。
+1. 最小统一根数、番型组合、封顶倍率，优先复用当前 TypeScript 工具；确实必须抽象时只允许小型纯函数，不搞新规则引擎。
+2. 对超出来源说明的自摸、杠上花、海底等加番输出“上下文待补”，不假定事件已发生。
+3. 现有 `analyzeSichuan` 尚有“95%/90%”的硬编码估计。界面已隐藏百分比；不要把这些数字当真实概率，也不要为它增加模拟器。必要时删掉在生产逻辑中未再使用的伪概率常量，而非升级成概率预测功能。
 
-## P2–P4 以后再做：保留必要边界而不提前施工
+## 验收与清理
 
-- **P2 四川**：先选有来源的**一套**参考规则再算指数番/根/封顶；检查 `33344466699977s` 清对无根、`11114444777799s` 三根七对、含两碰与暗手顺子的非对对胡、`12378911m123789p` 的带幺九。不能凭重庆地名假定16倍。
-- **P3 国标（分小批）**：P3a 补真实和牌上下文、全不靠/七星不靠/组合龙与合法拆分；P3b 修明暗刻杠、四张七对、不重复计番与已知错计；P3c 按价值补81番缺口。对照 [PyMahjongGB](https://github.com/ailab-pku/PyMahjongGB) 和 [GB-Mahjong](https://github.com/zheng-fan/GB-Mahjong)，但要核对争议规则。
-- **P4 收尾**：本地替换 Tailwind CDN、Android 真机/离线测试、README/版本号清理及必要性能验证。**CI 验证与 Debug 打包已应用户要求提前开展**，无需到 P4 再重复建 CI。
+- 每修一条 S01/S03/S04/S05，把对应 `defect(...)` **旧错误快照**转换成正确断言，保留 P3 快照不动。补反例：有顺子的非对对胡、副露重复占牌、将牌不含幺九、清对无根、四张牌恰两对、封顶前后倍率。
+- `npm test`、`npm run typecheck`、`npm run build`、GitHub Actions Web + Debug APK 全部验证；CI 产物不等于真机功能已测。未测试的场景直接标注。
+- 交付一页以内的审查摘要：采用的规则来源与版本、修改文件、通过的牌例、待核事项、精简清单。完成后删掉本计划中的已执行步骤，**不额外创建 P2a/P2b 两份计划**，不自动开始 P3。
 
-参考来源边界：[MahjongRepository/mahjong](https://github.com/MahjongRepository/mahjong) 为日麻，仅参考向听；[sichuan-mahjong-analyzer](https://github.com/luxinghong/sichuan-mahjong-analyzer) 的许可文件与 README 表述不一致，未厘清不复制；[PaiForge UI](https://github.com/PaiForge/mahjong-react-ui) 可参考可访问性，但牌图权利另核；[majiang_calculator](https://github.com/alanfeiyuchang/majiang_calculator) 仅供个人使用，不复制代码、测试或模型。
+## P3 / P4 暂缓
 
-## 本轮边界与精简记录
-
-1. 已有 P1 基础修复（状态体系、死叫、去掉伪成功率）保留未改，本轮只做交互余项。
-2. 新增文件只有 `utils/entryEditing.ts` 一个；未新增依赖、配置、框架、第二个状态机或复杂撤销记录；主屏未重设计。
-3. 每批运行 `npm ci`、`npm test`、`npm run typecheck`、`npm run build`、`git diff --check`；本地提交需授权，**不推送、不合并 `main`、不发布 APK**。
-4. 验证用的 CDP 截图与浏览器 profile 都在系统临时目录，未进入仓库；P0 的 18 项 `defect` 是旧错误输出的观测快照，修算法时才转成正确断言。
-5. 仍有 MCR 不求人/平和/8番与地区倍率争议；P1 的 UI 不显示“已可正式结算”，无来源的 90/95% 不以“概率”展示。**不自动进入 P2/P3。**
-
-## 交接记录
-
-- P0：17项已修行为守卫、18项问题快照；文档核对已完成。P0 修复后复核提交 `1e0fa357`。
-- P1 基础：修复无效输入的数值占位、死叫听牌标记、误导性百分比展示；本分支增加状态测试。
-- P1 交互余项（本轮）：文本录牌、一步撤销、按玩法局面恢复、添加失败提示与吃牌数量校验、键盘内分析入口与遮挡滚动、副露显式删除；390×844 实测记录见上。
-- 用户新授权：在 README 署名 [@L04-ZJ](https://github.com/L04-ZJ)，启用 GitHub Actions Web + Android Debug 打包；仅在该工作分支提交，不触及 `main`。
-- P1 复核：仅修新增录入代码。副露ID改为跨刷新唯一，避免恢复后新增副露与旧ID相同而连带删除；川麻文本录入允许保留三门中间态，与逐张录入一致，分析仍阻止定缺未清的和牌；超张提示显示已见数量与本次添加数量，不把2+3误称为已经有4张。本轮浏览器工具连接关闭，未重做手机UI实测；以纯函数回归、类型检查和构建核验。
+- P3 国标：补和牌上下文、特殊牌型、合法拆分和81番中缺失部分；先用 PyMahjongGB 与 GB-Mahjong 核验测试，不在 P2 动这些模块。
+- P4：本地化 Tailwind CDN、Android 真机/离线验证与旧 README 的过期功能声明。GitHub Actions 已实现，不需再建第二套 CI。
