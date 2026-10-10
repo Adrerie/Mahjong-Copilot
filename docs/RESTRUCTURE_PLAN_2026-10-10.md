@@ -1,156 +1,75 @@
-# Mahjong Copilot · 参考项目驱动的精简重组计划
-更新：2026-10-10。适用分支：`plan/reference-guided-restructure-20261010`。
+# Mahjong Copilot · 精简重组与 P1 交接计划
+2026-10-10 · 当前工作分支：`feat/p1-foundation-ci-20261010`。
 
-**性质：交给 DeepSeek 的实施计划，不是已完成修复。** 与 [AGENTS.md](../AGENTS.md) 同读。旧 [REPAIR_PLAN](REPAIR_PLAN.md) 和 [ISSUE_AUDIT](ISSUE_AUDIT_2026-10-10.md) 保留问题证据；若旧行号、文件状态与当前代码矛盾，以实际源码和回归测试为准。
+> **先读 [AGENTS.md](../AGENTS.md)。** 本文只保留尚待执行的具体操作、验证牌例和明确限制。P0 旧排查详见 [ISSUE_AUDIT](ISSUE_AUDIT_2026-10-10.md) 和 [REPAIR_PLAN](REPAIR_PLAN.md)。当前阶段只执行 P1，不提前解决川麻/国标全部计番。
 
-## 0. 目标、优先级与不做事项
+## 阶段状态与已经落地的内容
 
-- **产品定位**：浏览器/Capacitor 中的轻量麻将手牌分析工具，支持国标 MCR 与四川血战。最重要的是不说错、录得快、看得懂，而不是一口气实现所有玩法。
-- **保留 UI**：当前霓虹色彩、深蓝主色、拟物牌、圆角卡片和动效是现有设计资产；仅修正交互、可访问性和信息组织。不得仿制参考 App 的完整布局/图案或整体换肤。
-- **不做**：OCR/摄像头、YOLO、复杂 AI 对手模拟、精确概率预测、真人局跟踪、联网账户/云同步、微服务、规则 DSL/插件化、完整状态机、React Native 迁移、跨语言生产运行时、一次性重构81番。
-- **交付方式**：分阶段、每阶段只实现当前指定范围；先测试再修复，报告证据后暂停等待下一批授权。禁止擅自合并 `main`、发布 APK、删用户原改动。
-- **分阶段顺序**：P0 审计与测试基线 → P1 录牌可用性与结果状态 → P2 四川参考规则计番 → P3 国标计番分组修复 → P4 构建/移动端与清理。P2/P3 可依赖 P0 牌例，不能在没有规则依据时提前宣称算番完成。
-
-## 1. 六个参考仓库：已核验的文件级参考
-
-| 仓库与参考文件 | 本项目借鉴 | 不得误用 |
+| 阶段 | 状态 | 下一步 |
 |---|---|---|
-| [ailab-pku/PyMahjongGB](https://github.com/ailab-pku/PyMahjongGB) · `MahjongGB/__init__.pyi`, `MahjongGB/mahjong-algorithm/fan_calculator.cpp`, `shanten.cpp`, `unit_test.cpp` | MCR 和牌上下文：`pack/hand/winTile/flowerCount/isSelfDrawn/is4thTile/isAboutKong/isWallLast/seatWind/prevalentWind`；全不靠/组合龙和特例验证 | MIT + 内含上游 MIT；只是 oracle 候选，不代表所有地方细则唯一标准；不得把 C++/Python 运行时直接塞入前端 |
-| [zheng-fan/GB-Mahjong](https://github.com/zheng-fan/GB-Mahjong) · `mahjong/fan.h`, `fan.cpp`, `handtiles.cpp`, `unit_test.cpp` | 输出具体番种所占用的面子组合、枚举和牌拆分及不计判定；用作与 PyMahjongGB 的交叉对照 | MIT；README 指出国标细节有不同解释，发生分歧应查规则来源，不盲选较大分数 |
-| [MahjongRepository/mahjong](https://github.com/MahjongRepository/mahjong) · `mahjong/shanten.py`, `hand_calculating/divider.py`, `tests` | 34维牌计数、DFS/记忆化、七对/国士边界及正反例测试组织 | MIT；**日麻牌理**：七对的“7种不同对子”等条件和某些国标/四川规则不一致，绝不可原样抄分数表 |
-| [luxinghong/sichuan-mahjong-analyzer](https://github.com/luxinghong/sichuan-mahjong-analyzer) · `hand_analyzer.py`, `jinting_analyzer.py`, `meld_analyzer.py`, `test_jinting.py` | 定缺、27种数牌、碰杠后的暗手张数、可读搭子建议；独立参考选叫思路 | 不含完整、可复核川渝倍率引擎；仓库 LICENSE 为 MIT、README 却写“仅供学习和个人使用”，**许可冲突未清楚前不复制源码** |
-| [PaiForge/mahjong-react-ui](https://github.com/PaiForge/mahjong-react-ui) · `src/components/Hai/Hai.tsx`, `Furo/Furo.tsx`, `Tehai/Tehai.tsx`, `src/components/Hai/Hai.alt.test.tsx` | 可点击牌与展示牌区别、牌名读屏、牌尺寸/选中状态、副露方向和暗杠显示；测试可访问性 | README/package 声明 MIT，根目录未找到 LICENSE 文件；素材/第三方牌图另核版权。不要引入其 React Native 栈或复制原画 |
-| [alanfeiyuchang/majiang_calculator](https://github.com/alanfeiyuchang/majiang_calculator) · `majiang calculator/MCRScoring.swift`, `MahjongScoring.swift`, `SettingsView.swift`, `Tests/MCRScoringTests.swift`, `Tests/ScoringTests.swift` | 学习规则上下文、每个面子的唯一占用、不重复计番的验收设计、自摸/点炮与规则项 UI；用其测试分类作为启发 | README 明确“源码仅供个人使用”，识牌模型仍有第三方限制；**禁止直接复制实现、测试集合、图片、权重**。对 README 的“81番全部完成”只当自述，不代替验证 |
+| P0 代码基线 | 已完成 | 17项正确行为守卫 + 18项既有问题行为快照；旧审计归档。DeepSeek 报告 `npm ci/test/typecheck/build` 通过，本轮修改仍需 CI 独立验证 |
+| **P1 结果状态与误导性展示** | **本分支已修改，待 CI 验证** | `AnalysisResult.status` 区分 `invalid/incomplete/notReady/ready/deadWait/completeShapeScoreUnverified`；无效输入向听置 null，死叫 isReady=false，UI 删除伪成功率百分比，并更新守卫 |
+| **P1 录牌与手机交互** | **待 DeepSeek 实施** | 见下方精简待办 |
+| Actions 与打包 | 已添加工作流，待实际运行验证 | `web-dist` 和 **仅供测试的 Android Debug APK**，不做 Release 签名、发布或 Play Store |
+| P2 四川规则 / P3 国标计番 / P4 其他 | 未开始 | 本次禁止提前展开 |
 
-**规则依据高于程序输出。** 国标优先核对[世界麻将组织规则](https://www.mindmahjong.com/adobe/ZC2021.pdf)及目标比赛细则；四川与重庆须写明具体平台/牌桌参考规则和版本，禁止从“重庆”地域名直接推出清对16倍。上述仓库只是实现和测试参考，不能当地方统一计番标准。
+此处已有五类变更：`types.ts`、`utils/mahjongLogic.ts`、`components/AnalysisResultModal.tsx`、`tests/regression.ts`、`AGENTS.md`。另在 `README.md` 添加 [@L04-ZJ](https://github.com/L04-ZJ) 的贡献者署名，并新增 `.github/workflows/verify-and-package.yml`。这些都已提交在独立分支，未合并 `main`。**GitHub Contributors 自动列表需以真实提交作者为准，README 列名不会改变其统计。**
 
-**文件级核验补充（2026-10-10，逐文件读取许可证原文）**：PyMahjongGB 为**两份独立 MIT**（根 `LICENSE` © Yunlong Lu，`mahjong-algorithm/LICENSE` © Jeff Wang），实际复用须同时保留两套声明；GB-Mahjong 为 MIT（© Zheng Fan，README 一致）；MahjongRepository/mahjong 为 MIT；sichuan-mahjong-analyzer 的 `LICENSE`（MIT © 陆星宏）与 README「仅供学习和个人使用」**直接矛盾**，澄清前只读思路。路径更正：GB-Mahjong 的单元测试在**仓库根** `unit_test.cpp`，不在 `mahjong/` 下。
+## P1 剩余工作：按最小范围实施
 
-**测试组织可借鉴的三点（不复制内容）**：① GB-Mahjong 的「番 → 占用面子实例」双表与**集合式不计**（番相同且 pack 相同才剔除）是满足「同一实体面子不得重复占位 / 套算一次」的可参照设计；② MahjongRepository 的声明式数据表（`parametrize` + 具名 id）、完整向听梯度、成体系负例（副露时忽略国士、5/6 张同牌、3 的倍数张数、空手），可迁移为清对/七对/龙七对/金钩钓等特殊和型的梯度用例；③ GB-Mahjong 在期望值旁记录规则口径分歧、允许同一牌形两套合法期望。反面教材：PyMahjongGB 的「打印无断言」、GB-Mahjong 失败时 `exit(0)`、川麻仓库的打印即测试。
+### 1. 文本录入（优先）
 
-## 2. P0 已完成：验证基线 + 测试与问题归档（2026-10-10）
+文件：`components/InputScreen.tsx`；可加**一个** `utils/parseTileText.ts` 纯函数。
 
-审计基线为 `main` 的 `99ef8af`（Codex 修复已在内），本轮证据补在分支 `plan/reference-guided-restructure-20261010`。`utils/inputValidation.ts`、`tests/regression.ts`、`npm test`、`npm run typecheck` 均已存在；历史盘点中「缺 LICENSE / 无测试脚本 / 开发端口 5173」已过时。
+- 接受 `33344466699977s`、`33344466699977条` 和 `123m456p789s11z`。统一牌串语法：一组数字紧随花色后缀，万=m/万、筒=p/筒、条=s/条、字=z（1–7遵循现有索引）。
+- 支持 **1–14 张等效牌的录入中间态**，如 `123m456p789s11z` 是11张、允许录入但不可分析成13/14张牌局。输入解析的合法性校验与“点击分析时必须13/14张”的条件分开。
+- 输入出错（未知符号、超出牌值、超14等效张、手牌＋副露＋牌河同种第5张）应拒绝并显示原因，**保留原手牌，不允许部分替换**；确认成功后只替换暗手，不自动删除副露或牌河。
+- 牌面输入与文本编辑使用同一个手牌状态；不建立额外同步状态机。先做一个明确的“粘贴/应用”入口，不做 OCR 或全文智能推断。
 
-**基线命令结果（本地实测）**：`npm ci` 成功（169 包）；`npm test` 17 项守卫通过 + 18 项缺陷快照（经复核，移除仅检查测试辅助对象的伪类型快照）；`npm run typecheck` 通过；`npm run build` 通过（45 模块，273.07 kB / gzip 84.45 kB）。
+### 2. 一步撤销与局面恢复
 
-**测试入口**：`npm test` → `scripts/test.mjs`（esbuild 打包 `tests/regression.ts` 后执行）。
-- `test(...)`：必须成立的守卫，回退即退出码非 0。
-- `defect(id, owner, ...)`：**已确认错误的行为快照**，打印规则预期与当前实际并断言当前值。修好某条后该断言会失败，这是预期现象：把断言改成正确值、删除对应说明即可。
+- 对**最近一次**有效变更保留一个快照（手牌增删、副露增删、牌河、文本替换、清空以及定缺/墙数等），提供撤销按钮；不需要完整操作历史、重做系统、命令模式。
+- 以现有 `GameState` 为存储模型，每种玩法一个本地存储键，附 `version:1`；页面刷新、返回玩法首页再进入可恢复。恢复时检查结构/牌值/玩法，损坏或旧格式安全忽略或提示；刷新恢复不误写空状态覆盖旧数据。
+- 不迁移到 Redux、Zustand、IndexedDB、云端账号或数据库。
 
-### 2.1 旧审计问题状态（保留原问题 ID）
+### 3. 添加失败与移动端可用性
 
-| 状态 | 问题 | 证据 |
-|---|---|---|
-| 已修 | A01 单钓听牌向听、A02 15 等效张误判和牌、A03 七对向听公式 | 守卫 `standard single wait…`、`extra concealed tile…`、`four pairs and five singles…` |
-| 已修 | A05 输入合法性：第五张、非法碰/吃/杠、无效牌值、超量副露与等效张数 | 守卫 `five copies and malformed melds…`、`melds are rejected tile by tile…`、`tile values outside the deck…`、`a kong counts as three effective tiles…` |
-| 已修 | A06 碰杠后暗手张数与弃牌入口 | 守卫 `seven concealed tiles with two melds…`、`eight concealed tiles…` |
-| 已修 | A07 待牌未计副露占用 | 守卫 `wait cannot require a fifth copy in melds` |
-| 已修 | A08 弃牌仍是已知牌 | 守卫 `discards stay known…`（死叫牌例） |
-| 已修 | A10（API 侧）空牌/单张不得报 `isValid` | 守卫 `empty and one-tile MCR API inputs…` |
-| 已修 | S02 定缺与三门花色不得和 | 守卫 `Sichuan void suit prevents winning…`、`Sichuan cannot win while…` |
-| 部分修 | A09 概率口径：API 已返回「未见张数，非摸牌概率」，建议层仍有固定 95%/90% | 归 P1/P4 |
-| 部分修 | A10（界面侧）结构成牌与 8 番起和仍共用 `isWinning` | 缺陷 `M01+A10`、`M05+A10`；守卫 `structural completeness and eight-fan eligibility…` 固定了当前分离方式 |
-| 未修 | A04 特殊和型结构（全不靠/七星不靠/组合龙） | 缺陷 `A04` |
-| 未修 | M01 番种覆盖（大三元、清龙、三色三同顺等） | 缺陷 `M01`、`M01+M05`、`M01+A10` |
-| 未修 | M02 明碰当暗刻、误判碰碰和 | 缺陷 `M02` |
-| 未修 | M03 明暗杠双计、四归一含杠、`Meld` 无杠种类 | 行为缺陷 `M03`；杠种类缺失由 `types.ts` 静态核对，不用测试辅助对象的 keys 代替生产类型检查 |
-| 未修 | M04 不求人无自摸条件 | 缺陷 `M04` |
-| 未修 | M05 全带幺/平和不看合法拆分 | 缺陷 `M05+A10`、`M05`、`M01+M05` |
-| 未修 | M06 四张同牌按一对计 | 缺陷 `M06` |
-| 未修 | M07 三风刻判据；明碰计暗刻 | 缺陷 `M07`（箭刻暗手部分仅静态确认） |
-| 待证实 | M08 不计/另计为全局 ID 过滤；M09 `calculateMCRExtras` 重复拼入副露并 `slice` 截断 | 静态确认（`utils/mcrPatterns.ts:61–121`、`:433–449`），本轮未构造牌例 |
-| 未修 | S01 清对 6 番/64 倍口径 | 缺陷 `S01` |
-| 未修 | S03 刻子重复计、S04 带幺九、S05 三根七对 | 缺陷 `S03`、`S04`、`S05`；S04 只确认存在带幺九拆分，番数待参考规则确定 |
-| 未修 | S06 规则预设与配置（`SICHUAN_RULES` 未成为识别器统一来源） | 静态确认（`constants.ts:510`、`utils/sichuanAnalyzer.ts`），归 P2 |
-| 未修 | 建议层三项：`costToMakeSeq` 只判「存在」、五门齐重复计顺子、海底按 13/14 暗手 | 缺陷 `P3-建议`×3 |
+- `addTile` 的静默失败全部显示具体错误：第五张、14张上限、四副面子上限、川麻不能吃/含字牌、吃牌第二/第三张超过四张等。**先检查预期添加的所有牌，再整体提交**。
+- 让副露能清楚地选择/删除；避免误触即删整副；键盘展开时仍能分析或明确收起键盘后分析；墙数夹在玩法合法范围。
+- 桌面中文/英文文案、无障碍标签与按钮语义用最小改动补齐；保持原有配色、麻将牌素材、卡片及动效，不重设计主屏。
+- 只调整必要的触控目标/安全区、滚动和分析入口；**390×844** 视口手动验证录牌→修正→分析完整流程。
 
-**本轮未覆盖**：U/E/R/D 各条（UI、移动端、构建、文档）留在 P1/P4；P0 明确不改 UI 与两套计分体系。Android 真机、离线启动、390×844 视口本轮均未实测。
+### 4. 测试与结果
 
-### 2.2 施工注意（P2/P3 修复时）
+- 新增解析正反例及原子替换、一步撤销、恢复、第五张/吃牌边界的回归。可能优先提取小纯函数供 `npm test` 检验；无需引入 Vitest/Playwright 或浏览器自动化框架。
+- **守卫不能固定错误行为**。无效输入 `shanten=null`；死叫 `status=deadWait`、`isReady=false`，仍可查看“剩余0张”的待牌。18项 `defect` 是旧错误输出的观测快照；以后修算法，必须把相关条目转换为正确断言，而不是盲目刷新快照。
+- 仍有 MCR 不求人/平和/8番与地区倍率争议；不可让 P1 的 UI 显示“已可正式结算”。无来源的固定 90/95% 一律不得以“概率”展示。
 
-- 先跑 `npm test` 看对应 `DEFECT` 行，把「当前实际」当复现入口，修完把断言改成正确值。
-- 面子/番种判定统一经过**候选合法拆分 + 剩余牌张计数**，不要沿用「存在即算一组」。
-- 涉及番种表的改动同步 `constants.ts` 与识别器；新增负例与不计/套算例，不只加正例。
+**P1 验收**：用 `33344466699977条` 一次粘贴、改一张、撤销、重置后撤销、返回与刷新恢复；部分输入只提示牌数不够；非法副露/第五张不得污染状态；中英切换与键盘不阻碍分析；390×844 视口可操作。上述均需本地实测并记录。
 
-## 3. 录牌与结果状态（P1，优先实施的最小可用性改进）
+## GitHub Actions：验证与可下载打包
 
-文件：`components/InputScreen.tsx`、`TileSelector.tsx`、`AnalysisResultModal.tsx`、`types.ts`，需要时新增**一个**纯文本解析器。
+文件：[`.github/workflows/verify-and-package.yml`](../.github/workflows/verify-and-package.yml)。触发条件为推送 `main`/`plan/**`/`feat/**`、PR 或手动 `workflow_dispatch`。
 
-- 支持粘贴 `33344466699977s`、`33344466699977条`、`123m456p789s11z`，按当前 `types.ts` 字牌顺序。解析后整组校验并**原子替换暗手**；失败保留原局面且显示中文/英文原因。文本输入最先实现；桌面快捷键是后续可选。
-- 加**一步撤销**（至少增删牌、副露、粘贴、重置）；用模式独立的 localStorage 保存/恢复局面，有版本标记，坏数据忽略并提示；不建通用 undo/redo 框架或数据库。
-- 吃牌的3张逐张检查已知数，新增失败均要有反馈；牌键按剩余张数提示状态。副露切换可触达，分析按钮不随虚拟键盘完全消失，避免误删整个副露。
-- 正确区分 `invalid`（输入有误）、`incomplete`、`ready`、`deadWait`、`completeShapeScoreUnverified`；无效局面不展示“8向听”“已和/推荐丢牌”。潜在番型不能显示伪“成功率”，没有可信分母不展示概率条。
-- 不改当前视觉风格和牌面；只做局部排版、可点击控件语义、字号/可访问名称和本地化。
+- Web 任务：Node 22 → `npm ci` → `npm test` → `npm run typecheck` → `npm run build` → 上传 `web-dist`。
+- Android 任务：通过 Web 后，JDK 21 + Android SDK → `npm ci` → `npm run build` → `npx cap sync android` → `./gradlew assembleDebug` → 上传 `mahjong-copilot-debug-apk`。
+- **CI 未实际出现绿色结果之前不宣称通过**。如果失败，只针对具体构建错误最小修复（检查 SDK 36/Gradle 8.14.3/Capacitor 8 的兼容性），不引入打包框架。Debug APK 不需要发布签名，不配置密钥，不自动创建 GitHub Release；Android 真机/离线仍需人工验收。
+- 本工作分支上的工作流**不等于已经修改 main 的工作流**；只有工作分支触发后可以看到其结果，主分支需授权合并才会长期生效。
 
-**P1 验收**：390×844 手机视口完成输入、粘贴、修改、撤销、重置、刷新恢复及分析；第五张和非法副露不会污染状态；无效结果能明确看出错误；正常用户操作不依赖确认框造成无法退出。
+## P2–P4 以后再做：保留必要边界而不提前施工
 
-## 4. 四川计番（P2：有依据的最小规则预设）
+- **P2 四川**：先选有来源的**一套**参考规则再算指数番/根/封顶；检查 `33344466699977s` 清对无根、`11114444777799s` 三根七对、含两碰与暗手顺子的非对对胡、`12378911m123789p` 的带幺九。不能凭重庆地名假定16倍。
+- **P3 国标（分小批）**：P3a 补真实和牌上下文、全不靠/七星不靠/组合龙与合法拆分；P3b 修明暗刻杠、四张七对、不重复计番与已知错计；P3c 按价值补81番缺口。对照 [PyMahjongGB](https://github.com/ailab-pku/PyMahjongGB) 和 [GB-Mahjong](https://github.com/zheng-fan/GB-Mahjong)，但要核对争议规则。
+- **P4 收尾**：本地替换 Tailwind CDN、Android 真机/离线测试、README/版本号清理及必要性能验证。**CI 验证与 Debug 打包已应用户要求提前开展**，无需到 P4 再重复建 CI。
 
-文件：`utils/sichuanAnalyzer.ts`、`constants.ts`、`types.ts`、`utils/mahjongLogic.ts`，必要时一个小型计番纯函数；不得先引入独立规则引擎框架。
+参考来源边界：[MahjongRepository/mahjong](https://github.com/MahjongRepository/mahjong) 为日麻，仅参考向听；[sichuan-mahjong-analyzer](https://github.com/luxinghong/sichuan-mahjong-analyzer) 的许可文件与 README 表述不一致，未厘清不复制；[PaiForge UI](https://github.com/PaiForge/mahjong-react-ui) 可参考可访问性，但牌图权利另核；[majiang_calculator](https://github.com/alanfeiyuchang/majiang_calculator) 仅供个人使用，不复制代码、测试或模型。
 
-- 先落地**一套可注明来源的参考血战规则**，以规则名称/版本标识且说明非全国或川渝统一标准。仅提供所需的少量选项：自摸如何加、根如何算、封顶番/倍；重庆单独预设必须有清晰出处，否则放“自定义示例，未核实”而非正式重庆规则。
-- 数据结果统一为 `patternNames`、`baseFanExponent`（明确指数口径）、`roots`、`extraFan`、`uncappedMultiplier`、`cappedMultiplier` 与 `source/ruleId`。不再出现常量8番却当8倍用，或自相矛盾的清对6番/64倍。
-- `33344466699977s`：清对，四刻一对，无根、含9；必须先选非条的定缺，按明确规则返回对应倍率。例如仅在“清一色2指数番＋大对子1指数番”参考规则下是3指数番、8倍；不能默认承诺16倍或满牌。
-- 修复刻子重复（暗手＋副露重复计），带幺九应认可合法123/789顺子，七对四张按双对处理且覆盖三根情况；所有番型以**合法完整拆分**判断，不是“存在3张就算一个刻子”。
-- 暂不计算血战多玩家流水账、查花猪/查大叫赔付和完整杠收支（如仍展示则标为规则介绍，非已实现结算）。
+## DeepSeek 本次操作与精简验收
 
-**P2 验收**：上述清对；`12378911m123789p` 的带幺九；`11114444777799s` 的七对＋根；含明碰及暗手顺子的非对对胡反例；定缺条的全条结构不能和。每个断言注明生效的规则配置。
-
-## 5. 国标计番（P3：分3个可验证小批，不许“一次实现全部81番”）
-
-参考 PyMahjongGB/GB-Mahjong 只作本地对照；采用保留现有 TypeScript 模块的增量修复。
-
-**P3a 输入上下文与合法分解**
-- 补最小 `winningTile`、`isSelfDrawn`、`seatWind`、`prevalentWind`、`isWallLast`、`isAboutKong`、`is4thTile`，及明/暗/补杠必要属性；未知一律不自动推断。
-- 和牌结构支持基本、七对、十三幺、全不靠/七星不靠、组合龙；枚举所有合法拆解，副露预先锁定，刻杠明暗独立；不可用一批牌多次凑顺子。
-- 改善 `calculateMCRTotalFan.isValid` 的表达：完整上下文+结构有效+计番满足时才明确合法；识别尚未覆盖时标记“待核”，不能假定可比赛起和。
-
-**P3b 已知错误的计番**
-- 先修明碰被认暗刻、重复碰碰和；暗/明杠双计、四归一含杠错误；全带幺/平和遗漏分解、四张七对、三风刻/箭刻；`calculateMCRExtras` 将 allTiles 再拼 melds 的重复与 slice 截断。
-- 番种结果保留引用的面子/牌实例（内部逻辑即可，不需要可视化大框架），遵守不计/套算一次、就高不就低。每项先正反例再改代码。
-
-**P3c 缺失番种按价值逐组补齐**
-- 比对 `constants.ts` 全81清单与识别器实际分支，按88/64/48等高番、特殊形、和牌场景、低番组合逐类验收。已覆盖的无须重复。
-- 在完全覆盖、交叉对照、测试足够之前，界面保持“参考计番/未完成”说明，不能用建议列表等同于结算。
-
-**P3 验收**：大三元 `555666777z12355m`、清龙 `123456789m12355p`、四张七对 `1111223344m5566p`、七星不靠 `147m258p3s1234567z`，以及同一牌形不同自摸/点和及明暗杠条件；与 oracle 不同的输出要记录具体规则差异。每小批独立交付，不等全部81番完成再看测试。
-
-## 6. 结果、性能、构建与 Android（P4：仅必要收尾）
-
-- 结果页分离“结构可和”“规则可结算”“参考番型”“进张”“未见张数”，按出牌建议先比较向听、有效张数，再参考番型潜力；消除经验概率95%、90%等。
-- 避免对每种弃牌候选反复无缓存地重新枚举所有向听/番型。先测真实手机典型14张耗时，**只有观察到明显卡顿才加局部记忆化**，不引入 Worker/服务端预计算。
-- 将远程 Tailwind Play CDN 转为构建时本地 CSS，采用系统字体回退，避免首次离线界面损坏；不把外部牌图变成本项目依赖。
-- 修复输入页安全区和 `100dvh`/键盘遮挡、Esc/返回键/无障碍标签、中英混用；修正文档和版本号、PWA/实时分析的过度声明。Android 真机和离线启动需实测，未实测要标记。
-- GitHub Actions 只添加最简 `npm ci && npm test && npm run typecheck && npm run build`，避免同时引入庞大 CI 矩阵或新框架。
-
-## 7. 每批必执行的删除过度设计检查
-
-在该批测试通过后对新增内容做一次“简化审查”，删除不必要的抽象，并将计划中已被证伪或未授权的需求删减：
-
-- 删除没有使用方的新增配置/规则开关、只为未来玩法而做的接口、重复工具函数、未使用依赖和新引入的层级包装。
-- 不因“完整架构”引入跨语言服务、状态机、全局 Store、复杂统计引擎、截图识牌或规则 DSL。只保留实现当前验收所必需的代码与测试。
-- 同样删减**计划文本**：完成的任务移到简短 Changelog，删除过时的步骤、重复要求和不必要的未来功能；保留核心验收牌例与已知限制。
-- 删除只限本次自己新增且确认无用的内容，不清理用户旧资源、不自动移除 Android 项目、不重写整个 README。
-- 简化之后重新跑对应回归、`npm run typecheck`、`npm run build`，用 `git diff --check` 查差异；需修改本计划时直接更新本文档，不创建层层递归的新计划文档。
-
-**P0 实际执行结果**：本轮**未新增任何生产代码、模块、依赖、配置或规则开关**，改动只有 `tests/regression.ts` 与本文档。唯一的临时产物是诊断探针目录 `.p0probe/`，已删除。因此没有可精简的新增抽象。
-
-**已记录、留给 P4 判断的既有冗余**（本轮不动，属用户既有代码）：
-
-- `utils/tileHelpers.ts` 的 `isHonors/isTerminal/isTerminalOrHonor/isSimple/isDragon/isWind/isGreen/isReversible` 与 `utils/mcrPatterns.ts:36–56` 重复；若 P3 改动触及，再合并为一个来源。
-- `scripts/generate-android-icons.js` 与 `.cjs` 重复（E04），须先核对用户改动再合并。
-- `utils/shantenCalculator.ts` 的 `standardShanten` 已含记忆化；参考仓库的位掩码剪枝在 14 张规模下未必需要，**不因参考仓库而引入**。
-
-## 8. 执行与交接
-
-**阶段状态**：P0 已完成并交付报告，等待用户确认后再启动 P1–P4，不要自行展开。每批最小报告格式：本批目标；参考资料与许可证检查；已确认错误与修复文件；新增正反例与运行命令及输出摘要；未完成/冲突规则；精简清单（保留/删减）；当前 Git 状态。本地提交需用户明确授权；**不推送、不合并 `main`、不发布**。
-
-Windows PowerShell 在项目根目录执行：
-
+1. 先核对已有基础修复，**不得重写状态模型或撤回死叫修正**；只做 P1 剩余三项。
+2. 每次改动前看 `git status --short`，保护工作区；禁止未经用户授权推送或合并 `main`、发布 APK。
+3. 实施后运行：
 ```powershell
-git status --short
-git branch --show-current
 npm ci
 npm test
 npm run typecheck
@@ -158,13 +77,11 @@ npm run build
 git diff --check
 git diff --stat
 ```
+4. 回报手机视口、键盘、局面存储与回退验证；查看 GitHub Actions 实际结果并如实标注失败/未运行。
+5. **删减过度设计**：只保留一个解析器、一个撤销快照、一个局面存储格式、现有组件；移除未使用的新增文件/配置/依赖和重复的计划说明。完成 P1 后在本文简短标记完成即可，不再复制成第3份计划。**不自动进入 P2/P3。**
 
-**环境注意（2026-10-10 实测）**：`web_fetch` 访问 `github.com` / `raw.githubusercontent.com` / `api.github.com` 全部失败（DNS 解析到非公网地址）；改用 `pwsh` 的 `Invoke-WebRequest` 公网 GET 全部成功（`https://api.github.com/repos/<owner>/<repo>/git/trees/HEAD?recursive=1` 与 `https://raw.githubusercontent.com/<owner>/<repo>/HEAD/<path>`）。读取外部参考仓库时用后者。
+## 交接记录
 
-**操作注意**：主线已有 Codex 修复；不要从历史审计旧行号直接判定今天仍坏。只有打开现有源码并复现后才改。任何新增代码尽量限制于 `utils/`、`components/`、`types.ts`、`constants.ts`、`tests/`。
-
-## 9. Changelog
-
-- **2026-10-10 · P0（本轮）**：在 `plan/reference-guided-restructure-20261010` 上完成验证基线。`npm ci/test/typecheck/build` 全绿；`tests/regression.ts` 原始交付由10项扩到**17项守卫 + 19项缺陷快照**（复核后移除1项伪类型快照，现为18项）；旧审计逐条对照并写入 §2.1；六个参考仓库逐个核验许可证与文件路径（§1）；计划文本按 §7 精简——原「P0 待办」改为完成记录，删去已完成的执行步骤。未改 UI、未改两套计分体系、未提交上游。
-
-- **2026-10-10 · P0 复核修正**：仅修本轮测试/归档错误。不足8番守卫改为三副明吃的成牌例，避免漏算全暗手自摸的平和；三门定缺与三风刻反例先确认结构成牌。移除只检查测试辅助对象的杠类型快照与未用函数；纠正清龙反例的幺九说明、未录和牌来源时的不求人预期、川麻带幺九未经核实的4番断言。最终为17项守卫＋18项缺陷快照，生产代码未改。
+- P0：17项已修行为守卫、18项问题快照；文档核对已完成。P0 修复后复核提交 `1e0fa357`。
+- P1 基础：修复无效输入的数值占位、死叫听牌标记、误导性百分比展示；本分支增加状态测试。**尚未独立跑本地 npm 或获得 Actions 绿色验证，不宣称功能已验证**。
+- 用户新授权：在 README 署名 [@L04-ZJ](https://github.com/L04-ZJ)，启用 GitHub Actions Web + Android Debug 打包；仅在该工作分支提交，不触及 `main`。
