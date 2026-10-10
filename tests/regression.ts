@@ -548,6 +548,29 @@ test('Sichuan seven pairs counts four of a kind as two pairs and roots separatel
   assert.equal(mixedScore.multiplier, 2);
 });
 
+test('Sichuan scoring never combines seven pairs with a different chow decomposition', () => {
+  // Hi8 每组/每对带幺九；七对拆分里的22/33/77/88不是幺九对子。
+  // 11112233778899s 也可拆成123/123/789/789/11，两种拆分只能择一。
+  const hand = tiles('11112233778899', Suit.Sou);
+  assert.equal(checkWinning(countsToArray(countTiles(hand)), 0, GameMode.Sichuan), true);
+  const score = recognizeSichuanPatterns(hand, [], 'zh');
+  assert.deepEqual(score.patterns, [{ id: 'qingYiSe', exponent: 2 }, { id: 'qiDui', exponent: 2 }]);
+  assert.equal(score.baseExponent, 4);
+  assert.equal(score.roots, 1);
+  assert.equal(score.uncappedExponent, 5);
+});
+
+test('Sichuan terminal seven pairs checks the pairs in its own decomposition', () => {
+  // Hi8「每对都带一或九」：七对的七个对子均为幺九，根与七对分开计算。
+  const hand = [...tiles('11119999', Suit.Man), ...tiles('111199', Suit.Pin)];
+  assert.equal(checkWinning(countsToArray(countTiles(hand)), 0, GameMode.Sichuan), true);
+  const score = recognizeSichuanPatterns(hand, [], 'zh');
+  assert.deepEqual(score.patterns, [{ id: 'qiDui', exponent: 2 }, { id: 'daiYaoJiu', exponent: 2 }]);
+  assert.equal(score.baseExponent, 4);
+  assert.equal(score.roots, 3);
+  assert.equal(score.uncappedExponent, 7);
+});
+
 test('Sichuan exponents are capped at 4 and unknown events are never scored', () => {
   // 11112377889999s：清一色 2 + 带幺九 2 + 根 ×2 = 6 指数番 → 封顶 4 = 16 倍（不是 2^6 = 64）。
   const hand = tiles('11112377889999', Suit.Sou);

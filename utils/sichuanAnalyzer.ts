@@ -6,9 +6,8 @@
  * 金钩钓 2（包含对对胡）、每根 +1，封顶 4 指数番 = 16 倍。
  *
  * 边界：
- * - 这是该页面标注的**示例口径**，不是四川/重庆统一规范；本环境无法重新抓取该页面，
- *   数值取自 docs/RESTRUCTURE_PLAN_2026-10-10.md 记录的同源摘要，其余未说明的复合关系
- *   一律按叠加处理并在输出中保留来源说明。
+ * - 这是该页面标注的**示例口径**，不是四川/重庆统一规范；2026-10-10复核了原页面。
+ *   允许叠加的番型仍须在同一合法拆分中成立，七对和标准面子拆分分别评分后择高。
  * - 倍率 = 2^min(指数番, 封顶)，不再使用旧表「清对 6 番 = 64 倍」这类写法。
  * - 未记录自摸/点炮、杠类型、海底/抢杠等事件，因此不加这些番，只在结果里标注待补。
  * - 番型按**合法面子拆分**判断（对对胡、带幺九），不按「存在几张刻子」推断。
@@ -164,12 +163,21 @@ export const recognizeSichuanPatterns = (hand: Tile[], melds: Meld[], lang: Lang
   const isQiDui = melds.length === 0 && allTiles.length === 14 && countPairs(allCounts) === 7 &&
     [...allCounts.values()].every(count => count % 2 === 0);
 
-  const hits: SichuanPatternHit[] = [];
-  if (isFullFlush) hits.push({ id: 'qingYiSe', exponent: SICHUAN_PATTERN_EXPONENTS.qingYiSe });
-  if (isQiDui) hits.push({ id: 'qiDui', exponent: SICHUAN_PATTERN_EXPONENTS.qiDui });
-  if (isJinGouDiao) hits.push({ id: 'jinGouDiao', exponent: SICHUAN_PATTERN_EXPONENTS.jinGouDiao });
-  else if (isDuiDui) hits.push({ id: 'duiDuiHu', exponent: SICHUAN_PATTERN_EXPONENTS.duiDuiHu });
-  if (isDaiYaoJiu) hits.push({ id: 'daiYaoJiu', exponent: SICHUAN_PATTERN_EXPONENTS.daiYaoJiu });
+  const standardHits: SichuanPatternHit[] = [];
+  if (isJinGouDiao) standardHits.push({ id: 'jinGouDiao', exponent: SICHUAN_PATTERN_EXPONENTS.jinGouDiao });
+  else if (isDuiDui) standardHits.push({ id: 'duiDuiHu', exponent: SICHUAN_PATTERN_EXPONENTS.duiDuiHu });
+  if (isDaiYaoJiu) standardHits.push({ id: 'daiYaoJiu', exponent: SICHUAN_PATTERN_EXPONENTS.daiYaoJiu });
+  const pairHits: SichuanPatternHit[] = [];
+  if (isQiDui) {
+    pairHits.push({ id: 'qiDui', exponent: SICHUAN_PATTERN_EXPONENTS.qiDui });
+    // 七对里的每对必须自身是幺九，不能借用另一种顺子拆分的带幺九。
+    if (allTiles.every(tile => isTerminalValue(tile.value))) {
+      pairHits.push({ id: 'daiYaoJiu', exponent: SICHUAN_PATTERN_EXPONENTS.daiYaoJiu });
+    }
+  }
+  const sum = (patterns: SichuanPatternHit[]) => patterns.reduce((total, hit) => total + hit.exponent, 0);
+  const hits = [...(isQiDui && sum(pairHits) >= sum(standardHits) ? pairHits : standardHits)];
+  if (isFullFlush) hits.unshift({ id: 'qingYiSe', exponent: SICHUAN_PATTERN_EXPONENTS.qingYiSe });
   if (hits.length === 0) hits.push({ id: 'pingHu', exponent: SICHUAN_PATTERN_EXPONENTS.pingHu });
 
   const names: Record<SichuanPatternId, string> = {
