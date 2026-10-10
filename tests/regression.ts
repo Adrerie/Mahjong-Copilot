@@ -247,6 +247,19 @@ test('an invalid or incomplete position returns warnings instead of a verdict', 
 /** 牌串 → 便于断言的 `值+花色` 列表。 */
 const keys = (list: Tile[]): string[] => list.map(t => `${t.value}${t.suit}`);
 
+test('restored meld IDs cannot be reused after a page reload', () => {
+  const saved = state([], [{ ...pong(1), id: 'meld-1' }]);
+  const restored = decodeEntryState(encodeEntryState(saved), GameMode.MCR);
+  assert.ok(restored);
+  const result = planTileAdd(restored, { zone: 'melds', meldType: 'pong', tile: createTile(Suit.Pin, 2) });
+  assert.equal(result.outcome, 'applied');
+  if (result.outcome !== 'applied') return;
+  assert.equal(new Set(result.state.melds.map(m => m.id)).size, 2);
+  const remaining = result.state.melds.filter(m => m.id !== result.state.melds[1].id);
+  assert.equal(remaining.length, 1, '删除新增副露时必须保留恢复的副露');
+  assert.equal(remaining[0].id, 'meld-1');
+});
+
 test('text entry reads the same hand from both notations', () => {
   const expected = [...'33344466699977'].map(d => `${d}s`);
   const letter = parseTileText('33344466699977s', GameMode.Sichuan);
@@ -282,9 +295,9 @@ test('text entry rejects bad strings with a reason', () => {
     assert.equal(parsed.outcome, 'rejected', `“${text}” 应被拒绝`);
     assert.ok(parsed.outcome === 'rejected' && parsed.message.zh.length > 0 && parsed.message.en.length > 0);
   }
-  // 川麻：无字牌、最多两门
+  // 川麻不能录字牌；三门仍可录入，留给分析判断定缺未清。
   assert.equal(parseTileText('11z', GameMode.Sichuan).outcome, 'rejected');
-  assert.equal(parseTileText('123m456p789s', GameMode.Sichuan).outcome, 'rejected');
+  assert.equal(parseTileText('123m456p789s', GameMode.Sichuan).outcome, 'parsed');
   assert.equal(parseTileText('123m456p789s', GameMode.MCR).outcome, 'parsed');
 });
 
@@ -312,6 +325,10 @@ test('text replacement counts copies in melds and river', () => {
 });
 
 test('adding tiles checks every copy of the whole position before committing', () => {
+  const twoCopies = state(tiles('11', Suit.Pin));
+  const extraPong = planTileAdd(twoCopies, { zone: 'melds', meldType: 'pong', tile: createTile(Suit.Pin, 1) });
+  assert.equal(extraPong.outcome, 'rejected');
+  assert.ok(extraPong.outcome === 'rejected' && extraPong.message.zh.includes('已见 2 张') && extraPong.message.zh.includes('添加 3 张'));
   const fourEights = state([...tiles('8888', Suit.Man), ...tiles('123', Suit.Pin)]);
   assert.equal(planTileAdd(fourEights, { zone: 'hand', meldType: 'pong', tile: createTile(Suit.Man, 8) }).outcome, 'rejected');
   // 吃 7m 需要 7m/8m/9m：8m 已满 → 拒绝；吃 6m 的第二张 8m 同样超四 → 拒绝
@@ -353,6 +370,18 @@ test('Sichuan entry refuses honors and chows before committing', () => {
   assert.equal(planTileAdd(hand, { zone: 'hand', meldType: 'pong', tile: createTile(Suit.Zihai, 1) }).outcome, 'rejected');
   assert.equal(planTileAdd(hand, { zone: 'melds', meldType: 'chi', tile: createTile(Suit.Man, 1) }).outcome, 'rejected');
   assert.equal(planTileAdd(hand, { zone: 'hand', meldType: 'pong', tile: createTile(Suit.Man, 4) }).outcome, 'applied');
+});
+
+test('Sichuan text entry preserves a three-suit shape and analysis rejects winning', () => {
+  const position = sichuan([], Suit.Sou);
+  const result = planTextHand(position, '123789m12355p123s');
+  assert.equal(result.outcome, 'applied');
+  if (result.outcome !== 'applied') return;
+  assert.deepEqual(validateGameState(result.state, 'zh'), []);
+  assert.equal(checkWinning(countsToArray(countTiles(result.state.hand)), 0, GameMode.Sichuan), true);
+  const analysis = analyzeGame(result.state, 'zh');
+  assert.equal(analysis.isWinning, false);
+  assert.ok(analysis.warnings.some(w => w.includes('定缺')));
 });
 
 test('saved positions round-trip per mode and corrupt data is ignored', () => {

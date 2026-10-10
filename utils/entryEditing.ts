@@ -45,7 +45,8 @@ const SUIT_CHARS: Record<string, Suit> = {
 const SEPARATORS = new Set([' ', '\t', '\n', '\r', ',', '，', '、', '+', '/', '|']);
 
 let sequence = 0;
-const nextId = (prefix: string): string => `${prefix}-${++sequence}`;
+// IDs must stay unique across reloads: saved melds outlive this module's counter.
+const nextId = (prefix: string): string => `${prefix}-${globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${++sequence}`}`;
 
 const suitOf = (char: string): Suit | undefined => SUIT_CHARS[char] ?? SUIT_CHARS[char.toLowerCase()];
 
@@ -133,12 +134,6 @@ export const parseTileText = (text: string, mode: GameMode | null): ParseTileTex
     if (tiles.some(t => t.suit === Suit.Zihai)) {
       return reject({ zh: '川麻没有字牌', en: 'Sichuan mahjong uses no honor tiles' });
     }
-    if (new Set(tiles.map(t => t.suit)).size > 2) {
-      return reject({
-        zh: '川麻暗手最多两门花色（定缺后只打两门）',
-        en: 'A Sichuan hand holds at most two suits',
-      });
-    }
   }
   return { outcome: 'parsed', tiles };
 };
@@ -195,11 +190,13 @@ export const planTileAdd = (state: GameState, request: TileAddRequest): EntryPla
   const needed = countTiles(tilesToAdd);
   for (const candidate of tilesToAdd) {
     const key = getTileKey(candidate.suit, candidate.value);
-    if ((used.get(key) ?? 0) + (needed.get(key) ?? 0) > 4) {
+    const held = used.get(key) ?? 0;
+    const adding = needed.get(key) ?? 0;
+    if (held + adding > 4) {
       const name = tileName(candidate);
       return refuse({
-        zh: `${name.zh} 已经有 4 张，牌河或副露中不能再出现`,
-        en: `All four copies of ${name.en} are already in play`,
+        zh: `${name.zh} 已见 ${held} 张，本次添加 ${adding} 张会超过 4 张上限`,
+        en: `${held} copies of ${name.en} are known; adding ${adding} exceeds the four-copy limit`,
       });
     }
   }
