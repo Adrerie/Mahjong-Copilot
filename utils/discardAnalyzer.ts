@@ -4,7 +4,7 @@
  * - 进张计算
  */
 
-import { Tile, Meld, Language } from '../types';
+import { Tile, Meld, Language, GameMode, Suit } from '../types';
 import { TEXT } from '../constants';
 import { getUniqueTiles, tileToIndex, indexToTile } from './tileHelpers';
 import { calculateShanten, calculateWaitingTiles } from './shantenCalculator';
@@ -23,14 +23,16 @@ export const calculateBestDiscard = (
   hand: Tile[], 
   melds: Meld[], 
   discards: Tile[], 
-  lang: Language
+  lang: Language,
+  mode: GameMode = GameMode.MCR,
+  voidSuit: Suit | null = null
 ): { tile: Tile, reason: string, ukeire: number, ukeireTiles: number, waitingTiles: Tile[] } | undefined => {
   if (hand.length === 0) return undefined;
   
   const t = TEXT[lang];
   
   // 只有14张牌时才需要计算弃牌
-  if (hand.length !== 14) return undefined;
+  if (hand.length + melds.length * 3 !== 14) return undefined;
   
   const uniqueTiles = getUniqueTiles(hand);
   
@@ -55,6 +57,7 @@ export const calculateBestDiscard = (
   const options: DiscardOption[] = [];
   
   for (const tile of uniqueTiles) {
+    if (mode === GameMode.Sichuan && hand.some(t => t.suit === voidSuit) && tile.suit !== voidSuit) continue;
     // 构建打出这张牌后的手牌
     const newHand: Tile[] = [];
     let removed = false;
@@ -67,7 +70,7 @@ export const calculateBestDiscard = (
     }
     
     // 计算打出后的向听数
-    const newShanten = calculateShanten(newHand, melds);
+    const newShanten = calculateShanten(newHand, melds, mode);
     
     // 计算进张 (有效牌)
     // 进张是指摸到后能减少向听数的牌
@@ -75,16 +78,18 @@ export const calculateBestDiscard = (
     let ukeireTiles = 0;
     
     // 遍历所有34种牌，看哪些能让向听数减少
-    for (let i = 0; i < 34; i++) {
-      // 这张牌已经被使用的数量（扣除即将打出的那张）
-      const used = usedCounts[i] - (tileToIndex(tile) === i ? 1 : 0);
+    for (let i = 0; i < (mode === GameMode.Sichuan ? 27 : 34); i++) {
+      // 这张牌已被使用的数量（弃牌仍是已知牌）
+      const used = usedCounts[i]; // A discarded tile remains known in the river.
       // 剩余数量 (每种牌最多4张)
       const remaining = 4 - used;
       if (remaining <= 0) continue;
       
       // 模拟摸到这张牌
-      const testHand = [...newHand, indexToTile(i)];
-      const shantenAfter = calculateShanten(testHand, melds);
+      const incoming = indexToTile(i);
+      if (mode === GameMode.Sichuan && incoming.suit === voidSuit) continue;
+      const testHand = [...newHand, incoming];
+      const shantenAfter = calculateShanten(testHand, melds, mode);
       
       // 如果向听数减少了，这是有效牌
       if (shantenAfter < newShanten) {
@@ -97,7 +102,7 @@ export const calculateBestDiscard = (
     let waitCount = 0;
     let waitingTiles: Tile[] = [];
     if (newShanten === 0) {
-      waitingTiles = calculateWaitingTiles(newHand, melds);
+      waitingTiles = calculateWaitingTiles(newHand, melds, mode, voidSuit).filter(t => usedCounts[tileToIndex(t)] < 4);
       waitCount = waitingTiles.length;
     }
     

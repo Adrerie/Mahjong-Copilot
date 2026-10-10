@@ -36,6 +36,9 @@ export interface FanSuggestion {
 }
 
 export interface AnalysisResult {
+  isWinning?: boolean;
+  mode?: GameMode;
+  scoreNote?: string;
   isReady: boolean; // Ting/Tenpai
   shanten: number; // 0 = ready, 1 = 1-away, etc.
   waitingTiles: {

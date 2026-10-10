@@ -26,7 +26,7 @@ const AnalysisResultModal: React.FC<Props> = ({ result, lang, onClose }) => {
                  <span className={`px-2 py-0.5 rounded text-xs font-black border border-black shadow-[1px_1px_0_0_#000]
                     ${result.isReady ? 'bg-[#CCFF00] text-black' : 'bg-gray-100 text-gray-500'}
                 `}>
-                  {result.isReady ? t.ready : `${result.shanten} ${t.shanten}`}
+                  {result.isWinning ? (lang === 'zh' ? '成牌（计番待核）' : 'Complete shape (score unverified)') : result.isReady ? t.ready : `${result.shanten} ${t.shanten}`}
                 </span>
                 {result.warnings.map((w, idx) => (
                    <span key={idx} className="bg-[#FF006E] text-white text-xs font-bold px-2 py-0.5 rounded transform -rotate-1">
@@ -39,6 +39,7 @@ const AnalysisResultModal: React.FC<Props> = ({ result, lang, onClose }) => {
         </div>
 
         <div className="p-4 sm:p-6 overflow-y-auto space-y-6 no-scrollbar bg-gray-50/50">
+          {result.scoreNote && <p className="text-sm text-amber-800 bg-amber-50 p-3 rounded-xl">{result.scoreNote}</p>}
           
           {/* 1. Best Discard Section */}
           {result.bestDiscard && (

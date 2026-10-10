@@ -1,20 +1,38 @@
 {
   "name": "mahjong-copilot",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.1.0-Aipha",
+  "capacitor": {
+    "appId": "com.karislin.mahjong",
+    "appName": "Mahjong Copilot",
+    "webDir": "dist"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "capacitor:sync": "npx cap sync",
+    "capacitor:add-android": "npx cap add android",
+    "capacitor:open-android": "npx cap open android",
+    "android:assembleDebug": "cd android && gradlew assembleDebug",
+    "android:assembleRelease": "cd android && gradlew assembleRelease",
+    "icons:generate": "node ./scripts/generate-android-icons.cjs",
+    "typecheck": "tsc --noEmit",
+    "test": "node scripts/test.mjs"
   },
   "dependencies": {
-    "react-dom": "^19.2.3",
-    "react": "^19.2.3"
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/cli": "^8.0.0",
+    "@capacitor/core": "^8.0.0",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
+    "esbuild": "^0.28.2",
+    "sharp": "^0.34.5",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
   }

@@ -1,3 +1,4 @@
+import { validateGameState } from './inputValidation';
 /**
  * 麻将逻辑主入口模块
  * 
@@ -57,190 +58,44 @@ import { analyzeMCR } from './mcrAnalyzer';
 
 export const analyzeGame = (state: GameState, lang: Language = 'en'): AnalysisResult => {
   const { hand, melds, discards, wallCount, mode, voidSuit } = state;
+  const errors = validateGameState(state, lang);
+  if (errors.length || !mode) return { isReady: false, isWinning: false, shanten: 8, waitingTiles: [], suggestions: [], warnings: errors };
+  const zh = lang === 'zh';
   const warnings: string[] = [];
-  const t = TEXT[lang];
-  
-  // 1. 计算真正的向听数
-  const shanten = calculateShanten(hand, melds);
-  
-  // 2. 判断状态
-  const isWinning = shanten === -1; // 已和牌
-  const isReady = shanten === 0;    // 听牌
-  
-  // 统计所有已知牌用于计算剩余数量
-  const allUsedTiles = [...hand, ...melds.flatMap(m => m.tiles), ...discards];
-  const usedCounts = countTiles(allUsedTiles);
-  
-  // 3. 计算听牌时可和的牌
-  let waitingTiles: { tile: Tile; remaining: number; probability: string }[] = [];
-  if (isReady && hand.length === 13) {
-    const waits = calculateWaitingTiles(hand, melds);
-    waitingTiles = waits.map(tile => {
-      const remaining = 4 - (usedCounts.get(getTileKey(tile.suit, tile.value)) || 0);
-      const prob = wallCount > 0 ? (remaining / wallCount * 100).toFixed(1) : '0';
-      return {
-        tile,
-        remaining,
-        probability: `${prob}%`
-      };
-    });
-  }
-  
-  // 4. 计算最优弃牌 (只有14张牌时需要)
-  let bestDiscard: { tile: Tile, reason: string, ukeire: number, ukeireTiles: number } | undefined;
-  
-  if (hand.length === 14) {
-    if (isWinning) {
-      // 已和牌，不需要弃牌
-      bestDiscard = undefined;
-    } else {
-      // 需要打一张牌
-      // 四川麻将特殊处理: 优先打定缺花色
-      if (mode === GameMode.Sichuan && voidSuit) {
-        const voidTile = hand.find(tile => tile.suit === voidSuit);
-        if (voidTile) {
-          // 计算打出这张牌后的进张
-          const newHand = hand.filter((h, idx) => {
-            if (h.suit === voidTile.suit && h.value === voidTile.value) {
-              const firstIdx = hand.findIndex(hh => hh.suit === voidTile.suit && hh.value === voidTile.value);
-              return idx !== firstIdx;
-            }
-            return true;
-          });
-          const newShanten = calculateShanten(newHand, melds);
-          
-          // 统计所有已知牌
-          const usedArr: number[] = new Array(34).fill(0);
-          for (const tile of allUsedTiles) {
-            const idx = tileToIndex(tile);
-            if (idx >= 0 && idx < 34) usedArr[idx]++;
-          }
-          
-          let ukeire = 0;
-          let ukeireTiles = 0;
-          for (let i = 0; i < 34; i++) {
-            const used = usedArr[i] - (tileToIndex(voidTile) === i ? 1 : 0);
-            const remaining = 4 - used;
-            if (remaining <= 0) continue;
-            
-            const testHand = [...newHand, indexToTile(i)];
-            const shantenAfter = calculateShanten(testHand, melds);
-            if (shantenAfter < newShanten) {
-              ukeireTiles++;
-              ukeire += remaining;
-            }
-          }
-          
-          // 如果打出后是听牌，计算待牌列表
-          let voidWaitingTiles: Tile[] = [];
-          if (newShanten === 0) {
-            voidWaitingTiles = calculateWaitingTiles(newHand, melds);
-            // 更新 waitingTiles 显示打出后的听牌
-            waitingTiles = voidWaitingTiles.map(tile => {
-              const remaining = 4 - (usedCounts.get(getTileKey(tile.suit, tile.value)) || 0) + (tile.suit === voidTile.suit && tile.value === voidTile.value ? 1 : 0);
-              const prob = wallCount > 0 ? (remaining / wallCount * 100).toFixed(1) : '0';
-              return {
-                tile,
-                remaining,
-                probability: `${prob}%`
-              };
-            });
-          }
-          
-          bestDiscard = { tile: voidTile, reason: t.huaZhu, ukeire, ukeireTiles };
-        }
-      }
-      
-      if (!bestDiscard) {
-        const result = calculateBestDiscard(hand, melds, discards, lang);
-        if (result) {
-          bestDiscard = {
-            tile: result.tile,
-            reason: result.reason,
-            ukeire: result.ukeire,
-            ukeireTiles: result.ukeireTiles
-          };
-          
-          // 如果打出推荐牌后是听牌，显示待牌列表
-          if (result.waitingTiles.length > 0) {
-            waitingTiles = result.waitingTiles.map(tile => {
-              const remaining = 4 - (usedCounts.get(getTileKey(tile.suit, tile.value)) || 0) + (tile.suit === result.tile.suit && tile.value === result.tile.value ? 1 : 0);
-              const prob = wallCount > 0 ? (remaining / wallCount * 100).toFixed(1) : '0';
-              return {
-                tile,
-                remaining,
-                probability: `${prob}%`
-              };
-            });
-          }
-        }
-      }
-    }
-  } else if (hand.length === 13 && !isReady) {
-    // 13张牌但不是听牌状态 - 这是正常摸牌前的状态，不需要弃牌建议
-    bestDiscard = undefined;
-  }
-
-  // 5. 番种分析
+  const all = [...hand, ...melds.flatMap(m => m.tiles)];
+  const used = countTiles([...all, ...discards]);
+  const hasVoid = mode === GameMode.Sichuan && (all.some(t => t.suit === voidSuit) || new Set(all.map(t => t.suit)).size > 2);
+  const structuralWin = checkWinning(countsToArray(countTiles(hand)), melds.length, mode);
+  const isWinning = structuralWin && !hasVoid;
+  const shanten = isWinning ? -1 : Math.max(0, calculateShanten(hand, melds, mode));
+  const describeWaits = (tiles: Tile[]) => tiles.map(tile => ({
+    tile, remaining: Math.max(0, 4 - (used.get(getTileKey(tile.suit, tile.value)) ?? 0)),
+    probability: zh ? '未见张数，非摸牌概率' : 'Unseen copies, not draw probability',
+  }));
+  let waitingTiles = !hasVoid && hand.length + melds.length * 3 === 13
+    ? describeWaits(calculateWaitingTiles(hand, melds, mode, voidSuit)) : [];
+  const isReady = !isWinning && waitingTiles.length > 0;
+  const discard = !isWinning ? calculateBestDiscard(hand, melds, discards, lang, mode, voidSuit) : undefined;
+  if (discard) waitingTiles = describeWaits(discard.waitingTiles);
   let suggestions: FanSuggestion[] = [];
-  if (mode === GameMode.Sichuan) {
-    suggestions = analyzeSichuan(hand, melds, voidSuit, lang);
-  } else {
-    suggestions = analyzeMCR(hand, melds, lang, wallCount);
-  }
-  
-  // 6. 如果已和牌，显示实际番种而非建议
+  const scoreNote = mode === GameMode.Sichuan
+    ? (zh ? '川麻番数与倍率口径尚未修正，不能将下列数值作为实际结算依据。重庆是否16倍需先确定当地规则。' : 'Sichuan fan and multiplier conventions are not yet corrected; do not use these values for settlement.')
+    : (zh ? '国标计番尚未覆盖全部81番与拆分规则，以下是部分识别结果，不能据此确认8番起和。' : 'MCR scoring is incomplete; these partial results cannot confirm the 8-fan minimum.');
   if (isWinning) {
-    if (mode === GameMode.Sichuan) {
-      // 四川麻将：使用四川麻将的番型识别
-      const scResult = recognizeSichuanPatterns(hand, melds, voidSuit, lang);
-      suggestions = [{
-        name: lang === 'zh' ? '已和牌' : 'Winning Hand',
-        baseFan: scResult.totalFan,
-        fan: scResult.totalFan,
-        probability: 100,
-        missingTiles: [],
-        patternDetails: scResult.details
-      }];
-    } else {
-      // 国标麻将：使用MCR番型识别
-      const recognized = recognizeMCRPatterns(hand, melds);
-      const { totalFan, details } = calculateTotalFan(recognized);
-      
-      if (recognized.length > 0) {
-        suggestions = [{
-          name: lang === 'zh' ? '已和牌' : 'Winning Hand',
-          baseFan: totalFan,
-          fan: totalFan,
-          probability: 100,
-          missingTiles: [],
-          patternDetails: details
-        }];
-      }
-    }
+    const result = mode === GameMode.Sichuan ? recognizeSichuanPatterns(hand, melds, voidSuit, lang)
+      : calculateTotalFan(recognizeMCRPatterns(hand, melds));
+    suggestions = [{ name: zh ? '成牌（参考计番）' : 'Complete shape (reference score)', baseFan: result.totalFan,
+      fan: result.totalFan, probability: 100, missingTiles: [], patternDetails: result.details }];
+  } else {
+    suggestions = mode === GameMode.Sichuan ? analyzeSichuan(hand, melds, voidSuit, lang) : analyzeMCR(hand, melds, lang, wallCount);
   }
-  
-  // 7. 修正缺少牌的显示 - 听牌时显示待牌而非缺牌
-  if (isReady && waitingTiles.length > 0 && suggestions.length > 0) {
-    suggestions[0].missingTiles = waitingTiles.map(w => w.tile);
-  }
-
-  // 8. 牌墙警告
-  if (wallCount <= 10 && wallCount > 0) {
-    warnings.push(lang === 'zh' ? `牌墙仅剩${wallCount}张，注意流局风险` : `Only ${wallCount} tiles left in wall, beware of draw`);
-  } else if (wallCount === 0) {
-    warnings.push(lang === 'zh' ? '牌墙已空' : 'Wall is empty');
-  }
-
-  return {
-    isReady: isReady || isWinning,
-    shanten: Math.max(-1, shanten),
-    waitingTiles,
-    bestDiscard,
-    suggestions,
-    scoreEstimate: suggestions.length > 0 ? suggestions[0].fan : 0,
-    warnings: isWinning ? [lang === 'zh' ? '已和牌！' : 'Winning hand!'] : warnings,
-  };
+  if (hasVoid) warnings.push(zh ? '尚有定缺牌或三门花色，不能和牌' : 'Void suit remains or all three suits are present; cannot win');
+  if (waitingTiles.length && waitingTiles.every(w => w.remaining === 0)) warnings.push(zh ? '待牌均已见完（死叫）' : 'All waiting tiles are exhausted');
+  if (wallCount <= 10) warnings.push(zh ? (wallCount ? '牌墙将尽' : '牌墙已空') : (wallCount ? 'Wall nearly empty' : 'Wall is empty'));
+  return { mode, isReady, isWinning, shanten, waitingTiles, suggestions, scoreNote,
+    bestDiscard: discard && { tile: discard.tile, reason: hasVoid ? (zh ? '优先打定缺花色' : 'Discard void suit first') : discard.reason,
+      ukeire: discard.ukeire, ukeireTiles: discard.ukeireTiles },
+    scoreEstimate: isWinning ? suggestions[0]?.fan : undefined, warnings };
 };
 
 // ============================================================
@@ -257,6 +112,10 @@ export const calculateMCRTotalFan = (hand: Tile[], melds: Meld[]): {
   isValid: boolean; // 是否满足8番起和
   patterns: { id: string; name: string; fan: number; count: number }[];
 } => {
+  const state: GameState = { mode: GameMode.MCR, hand, melds, discards: [], wallCount: 0, voidSuit: null };
+  if (validateGameState(state, 'en').length || !checkWinning(countsToArray(countTiles(hand)), melds.length)) {
+    return { totalFan: 0, details: [], isValid: false, patterns: [] };
+  }
   const recognized = recognizeMCRPatterns(hand, melds);
   const { totalFan, validPatterns, details } = calculateTotalFan(recognized);
   

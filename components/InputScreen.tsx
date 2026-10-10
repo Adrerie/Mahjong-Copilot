@@ -59,6 +59,7 @@ const InputScreen: React.FC<Props> = ({ mode, lang, setLang, onBack }) => {
       setDiscards(prev => [...prev, tile]);
     } else {
          // Adding to Melds
+         if (melds.length >= 4 || totalTiles + 3 > 14) return;
          let tilesToAdd: Tile[] = [];
          
          if (meldType === 'pong') {

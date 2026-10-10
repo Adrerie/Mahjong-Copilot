@@ -1,0 +1,6 @@
+{
+  "appId": "com.karislin.mahjong",
+  "appName": "Mahjong Copilot",
+  "webDir": "dist",
+  "bundledWebRuntime": false
+}

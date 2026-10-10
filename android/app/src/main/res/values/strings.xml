@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Mahjong Copilot</string>
+    <string name="title_activity_main">Mahjong Copilot</string>
+    <string name="package_name">com.karislin.mahjong</string>
+    <string name="custom_url_scheme">com.karislin.mahjong</string>
+</resources>

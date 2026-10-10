@@ -7,7 +7,7 @@
 [![React](https://img.shields.io/badge/React-19.2-61DAFB?logo=react)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?logo=typescript)](https://www.typescriptlang.org/)
 [![Vite](https://img.shields.io/badge/Vite-6.2-646CFF?logo=vite)](https://vitejs.dev/)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
 [English](README.md) | [中文](README.md)
 
@@ -158,7 +158,7 @@ app.on('window-all-closed', () => {
     "dist": "electron-builder"
   },
   "build": {
-    "appId": "com.mahjong.copilot",
+    "appId": "com.karislin.mahjong",
     "productName": "Mahjong Copilot",
     "directories": { "output": "release" },
     "win": { "target": "nsis" },
@@ -206,7 +206,7 @@ npx tauri build
 ```bash
 # 1. 安装 Capacitor
 npm install @capacitor/core @capacitor/cli
-npx cap init "Mahjong Copilot" "com.mahjong.copilot"
+npx cap init "Mahjong Copilot" "com.karislin.mahjong"
 
 # 2. 添加平台
 npm install @capacitor/android @capacitor/ios

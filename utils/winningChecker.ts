@@ -6,7 +6,12 @@
  */
 
 // 检查是否和牌 (标准型: 4面子+1雀头, 或 七对, 或 国士)
-export const checkWinning = (inputTiles: number[], existingMelds: number): boolean => {
+import { GameMode } from '../types';
+
+export const checkWinning = (inputTiles: number[], existingMelds: number, mode: GameMode = GameMode.MCR): boolean => {
+  if (inputTiles.length !== 34 || inputTiles.some(c => !Number.isInteger(c) || c < 0 || c > 4) ||
+    !Number.isInteger(existingMelds) || existingMelds < 0 || existingMelds > 4) return false;
+  if (mode === GameMode.Sichuan && inputTiles.slice(27).some(c => c > 0)) return false;
   // 复制数组，避免修改原数组
   const tiles = [...inputTiles];
   const totalTiles = tiles.reduce((a, b) => a + b, 0);
@@ -53,6 +58,7 @@ export const checkWinning = (inputTiles: number[], existingMelds: number): boole
   
   // 3. 国士无双检查 (只有无副露时)
   if (existingMelds === 0 && totalTiles === 14) {
+    if (mode !== GameMode.MCR) return false;
     const kokushiIndices = [0, 8, 9, 17, 18, 26, 27, 28, 29, 30, 31, 32, 33];
     let hasPair = false;
     let valid = true;
