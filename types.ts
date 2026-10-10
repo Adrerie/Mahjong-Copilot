@@ -35,12 +35,15 @@ export interface FanSuggestion {
   description?: string;
 }
 
+export type AnalysisStatus = 'invalid' | 'incomplete' | 'notReady' | 'ready' | 'deadWait' | 'completeShapeScoreUnverified';
+
 export interface AnalysisResult {
+  status: AnalysisStatus;
   isWinning?: boolean;
   mode?: GameMode;
   scoreNote?: string;
   isReady: boolean; // Ting/Tenpai
-  shanten: number; // 0 = ready, 1 = 1-away, etc.
+  shanten: number | null; // null = invalid/incomplete input; 0 = structurally ready
   waitingTiles: {
     tile: Tile;
     remaining: number;
