@@ -26,7 +26,11 @@ const AnalysisResultModal: React.FC<Props> = ({ result, lang, onClose }) => {
                  <span className={`px-2 py-0.5 rounded text-xs font-black border border-black shadow-[1px_1px_0_0_#000]
                     ${result.isReady ? 'bg-[#CCFF00] text-black' : 'bg-gray-100 text-gray-500'}
                 `}>
-                  {result.isWinning ? (lang === 'zh' ? '成牌（计番待核）' : 'Complete shape (score unverified)') : result.isReady ? t.ready : `${result.shanten} ${t.shanten}`}
+                  {result.status === 'invalid' ? (lang === 'zh' ? '输入无效' : 'Invalid input') :
+                   result.status === 'incomplete' ? (lang === 'zh' ? '牌数未齐' : 'Incomplete hand') :
+                   result.status === 'deadWait' ? (lang === 'zh' ? '死叫（无剩余待牌）' : 'Dead wait (no copies left)') :
+                   result.isWinning ? (lang === 'zh' ? '成牌（计番待核）' : 'Complete shape (score unverified)') :
+                   result.isReady ? t.ready : result.shanten !== null ? `${result.shanten} ${t.shanten}` : '—'}
                 </span>
                 {result.warnings.map((w, idx) => (
                    <span key={idx} className="bg-[#FF006E] text-white text-xs font-bold px-2 py-0.5 rounded transform -rotate-1">
@@ -73,7 +77,7 @@ const AnalysisResultModal: React.FC<Props> = ({ result, lang, onClose }) => {
              
              {result.suggestions.length === 0 && (
                 <div className="text-center py-8 text-gray-400 text-sm italic bg-white rounded-xl border border-dashed border-gray-200">
-                    No clear patterns detected yet.
+                    {lang === 'zh' ? '当前没有可展示的参考番型。' : 'No reference patterns available.'}
                 </div>
              )}
 
@@ -104,7 +108,7 @@ const AnalysisResultModal: React.FC<Props> = ({ result, lang, onClose }) => {
                          </div>
                      </div>
 
-                     {/* Bottom Row: Missing Tiles + Probability */}
+                     {/* Missing tiles: heuristic success percentages are deliberately hidden */}
                      <div className="flex items-center justify-between gap-4">
                          
                          {/* Missing Tiles */}
@@ -127,24 +131,13 @@ const AnalysisResultModal: React.FC<Props> = ({ result, lang, onClose }) => {
                              </div>
                          </div>
 
-                         {/* Probability Bar */}
-                         <div className="w-16 sm:w-24 text-right shrink-0">
-                             <div className="text-[10px] text-gray-400 font-bold uppercase mb-1">{t.prob}</div>
-                             <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
-                                 <div 
-                                    className={`h-full rounded-full ${sug.probability > 60 ? 'bg-[#CCFF00]' : sug.probability > 30 ? 'bg-yellow-400' : 'bg-gray-300'}`} 
-                                    style={{ width: `${Math.min(100, sug.probability)}%` }}
-                                 ></div>
-                             </div>
-                             <span className="text-xs font-mono font-bold text-gray-600 mt-1 block">{sug.probability}%</span>
-                         </div>
                      </div>
                  </div>
              ))}
           </div>
 
           {/* 3. Waiting Tiles (Only if Ready) */}
-          {result.isReady && (
+          {(result.isReady || result.status === 'deadWait') && (
             <div>
               <h3 className="text-gray-400 text-xs font-black uppercase tracking-wider mb-3 ml-1">{t.waits}</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
