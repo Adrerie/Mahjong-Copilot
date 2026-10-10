@@ -183,6 +183,8 @@ test('discards stay known: a wait whose last copies are all visible is a dead wa
   assert.equal(result.isWinning, false);
   assert.deepEqual(result.waitingTiles.map(w => `${w.tile.value}${w.tile.suit}:${w.remaining}`), ['1p:0']);
   assert.ok(result.warnings.some(w => w.includes('死叫')));
+  assert.equal(result.isReady, false);
+  assert.equal(result.status, 'deadWait');
 });
 
 test('Sichuan cannot win while the void suit or a third suit remains', () => {
@@ -220,10 +222,13 @@ test('an invalid or incomplete position returns warnings instead of a verdict', 
   const empty = analyzeGame(state([]), 'zh');
   assert.equal(empty.isWinning, false);
   assert.equal(empty.isReady, false);
-  assert.equal(empty.shanten, 8);
+  assert.equal(empty.status, 'incomplete');
+  assert.equal(empty.shanten, null);
   assert.equal(empty.suggestions.length, 0);
   assert.ok(empty.warnings.length > 0);
   const fifteen = analyzeGame(state([...tiles('123456789', Suit.Man), ...tiles('123456', Suit.Sou)]), 'zh');
+  assert.equal(fifteen.status, 'invalid');
+  assert.equal(fifteen.shanten, null);
   assert.equal(fifteen.isWinning, false);
   assert.equal(fifteen.waitingTiles.length, 0);
 });
