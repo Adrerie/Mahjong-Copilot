@@ -103,8 +103,14 @@ const AnalysisResultModal: React.FC<Props> = ({ result, lang, onClose }) => {
                             </div>
                          </div>
                          <div className="text-right shrink-0 ml-2">
-                             <span className="text-xl font-black text-[#FF006E]">{sug.fan}</span>
-                             <span className="text-[10px] text-gray-400 font-bold uppercase ml-1">{t.fan}</span>
+                             {sug.scoreText ? (
+                               <span className="text-sm font-black text-[#FF006E]">{sug.scoreText}</span>
+                             ) : (
+                               <>
+                                 <span className="text-xl font-black text-[#FF006E]">{sug.fan}</span>
+                                 <span className="text-[10px] text-gray-400 font-bold uppercase ml-1">{t.fan}</span>
+                               </>
+                             )}
                          </div>
                      </div>
 

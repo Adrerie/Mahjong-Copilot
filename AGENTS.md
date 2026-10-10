@@ -2,9 +2,10 @@
 
 ## 当前阶段
 
-- **P0/P1 已完成；现在只执行 P2 四川血战计番修复**。先读 [精简计划](docs/RESTRUCTURE_PLAN_2026-10-10.md)、[现有测试](tests/regression.ts) 和涉及的源文件。历史审计仅作参考，不重做已修内容。
-- 本分支：`feat/p2-sichuan-rules-20261010`，从 P1 已验证分支衍生。用户授权在开发分支修改和提交；**不擅自合并/修改 main，不发布正式签名 APK，不启动 P3**。保护本地未提交改动，禁止强制清理或覆盖。
-- P1 收尾已在本分支提交：读取 localStorage 拒绝重复/空牌 ID 和副露 ID；可操作的牌改成原生按钮，支持 Tab、Enter、Space 和牌名朗读。**不得还原为 div 点击或改掉牌面风格**。
+- **P0/P1/P2 已完成；不要自行开始 P3**。先读 [精简计划](docs/RESTRUCTURE_PLAN_2026-10-10.md)、[现有测试](tests/regression.ts) 和涉及的源文件。历史审计仅作参考，不重做已修内容。
+- 分支状态：P2 修改提交在 `feat/p1-foundation-ci-20261010`（已 ff 合并 `origin/feat/p2-sichuan-rules-20261010` 与本文件的 P2 计划）；两条分支的合并点相同。用户授权在开发分支提交；**不擅自推送、不合并/修改 main，不发布正式签名 APK，不启动 P3**。保护本地未提交改动，禁止强制清理或覆盖。
+- P2 收尾已提交：四川计番改为「番型 + 指数番 + 根 + 封顶倍率」（`SICHUAN_RULE`，来源 https://hi8.com/g/sichuanmajiang），S01/S03/S04/S05 已修并转为守卫，旧番表与伪概率已删。若改四川口径，只改 `utils/sichuanAnalyzer.ts` 的规则表并同步测试；国标 MCR 维持原状。
+- P1 收尾保留项：读取 localStorage 拒绝重复/空牌 ID 和副露 ID；可操作的牌是原生按钮，支持 Tab、Enter、Space 和牌名朗读。**不得还原为 div 点击或改掉牌面风格**。
 
 ## 算法边界与 P2 目标
 

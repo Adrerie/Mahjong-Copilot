@@ -33,6 +33,8 @@ export interface FanSuggestion {
   missingTiles: Tile[]; // Tiles needed to complete this pattern
   patternDetails: string[]; // e.g. ["Mixed Triple Chow (8)", "All Simples (2)"]
   description?: string;
+  /** 四川模式用「3 指数番 · 8 倍」这类文本替代「N 番」显示；国标不设置该字段。 */
+  scoreText?: string;
 }
 
 export type AnalysisStatus = 'invalid' | 'incomplete' | 'notReady' | 'ready' | 'deadWait' | 'completeShapeScoreUnverified';

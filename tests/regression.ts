@@ -12,12 +12,15 @@
  * - 国标 8 番起和：结构成牌与合法起和必须分开表达。
  * - 国标平和/不求人定义参考 https://www.mindmahjong.com/adobe/20141120CEJ.pdf；
  *   规则预期中的自摸/点和条件须明确，现有 API 未提供这些字段，不能从快照推断实际合法起和。
- * - 川麻口径见 docs/RESTRUCTURE_PLAN_2026-10-10.md 第 4 节；项目尚未确定统一川渝规则，
- *   因此川麻相关条目只记录当前实现的输出，不作为结算依据。
+ * - 川麻口径：采用 Hi8 血战到底示例牌桌记录的口径
+ *   （https://hi8.com/g/sichuanmajiang，见 utils/sichuanAnalyzer.ts 的 SICHUAN_RULE）：
+ *   平胡 0、对对胡 1、清一色 2、七对 2、带幺九 2、金钩钓 2（含对对胡），每根 +1，
+ *   封顶 4 指数番 = 16 倍。该口径只是该牌桌的示例，不是四川/重庆统一规范；
+ *   自摸/点炮、杠类型、海底等事件未建模，一律不加番。
  */
 import assert from 'node:assert/strict';
 import { GameMode, GameState, Meld, Suit, Tile } from '../types';
-import { createTile } from '../constants';
+import { createTile, TEXT } from '../constants';
 import {
   analyzeGame,
   analyzeMCR,
@@ -32,6 +35,7 @@ import {
   recognizeMCRPatterns,
 } from '../utils/mahjongLogic';
 import { validateGameState } from '../utils/inputValidation';
+import { recognizeSichuanPatterns } from '../utils/sichuanAnalyzer';
 import {
   decodeEntryState,
   encodeEntryState,
@@ -429,7 +433,165 @@ test('saved positions round-trip per mode and corrupt data is ignored', () => {
 });
 
 // ============================================================
-// 四、已确认缺陷（行为快照）
+// 四、四川血战计番（P2）：口径来源 Hi8 血战到底示例牌桌
+// 平胡 0、对对胡 1、清一色 2、七对 2、带幺九 2、金钩钓 2（含对对胡），每根 +1，封顶 4 指数番 = 16 倍。
+// ============================================================
+
+test('Sichuan flush pungs = 3 exponents (8x), and a kong root is added before the cap', () => {
+  // 33344466699977s：清一色 + 对对胡、无根；定缺万，只有一门。
+  const flushPungs = sichuan(tiles('33344466699977', Suit.Sou), Suit.Man);
+  assert.deepEqual(validateGameState(flushPungs, 'zh'), []);
+  const score = recognizeSichuanPatterns(flushPungs.hand, flushPungs.melds, 'zh');
+  assert.deepEqual(score.patterns, [{ id: 'qingYiSe', exponent: 2 }, { id: 'duiDuiHu', exponent: 1 }]);
+  assert.equal(score.label, '清对');
+  assert.equal(score.roots, 0);
+  assert.equal(score.uncappedExponent, 3);
+  assert.equal(score.cappedExponent, 3);
+  assert.equal(score.multiplier, 8);
+  const result = analyzeGame(flushPungs, 'zh');
+  assert.equal(result.isWinning, true);
+  assert.equal(result.suggestions[0]?.scoreText, '3 指数番 · 8 倍');
+  assert.ok(!result.suggestions[0]?.patternDetails.some(d => d.includes('6番') || d.includes('64')), '清对不得再报 6 番/64 倍');
+
+  // 对照：杠 9m 本身算一根，指数番 3+1=4 仍到封顶；倍率随根增大（8 → 16）。
+  const withRoot = sichuan([...tiles('111222333', Suit.Man), ...tiles('55', Suit.Man)], Suit.Sou, [gang(9, Suit.Man)]);
+  assert.deepEqual(validateGameState(withRoot, 'zh'), []);
+  const rooted = recognizeSichuanPatterns(withRoot.hand, withRoot.melds, 'zh');
+  assert.deepEqual(rooted.patterns, [{ id: 'qingYiSe', exponent: 2 }, { id: 'duiDuiHu', exponent: 1 }]);
+  assert.equal(rooted.roots, 1);
+  assert.equal(rooted.uncappedExponent, 4);
+  assert.equal(rooted.multiplier, 16);
+});
+
+test('Sichuan exposed pongs are never counted again as concealed triplets', () => {
+  // 碰 111p、碰 999p + 暗手 123456m + 77p：两顺两刻，只有基本和。
+  const hand = [...tiles('123456', Suit.Man), ...tiles('77', Suit.Pin)];
+  const melds = [pong(1), pong(9)];
+  const exposed = sichuan(hand, Suit.Sou, melds);
+  assert.deepEqual(validateGameState(exposed, 'zh'), []);
+  const score = recognizeSichuanPatterns(hand, melds, 'zh');
+  assert.deepEqual(score.patterns, [{ id: 'pingHu', exponent: 0 }]);
+  assert.equal(score.uncappedExponent, 0);
+  assert.equal(score.multiplier, 1);
+  const result = analyzeGame(exposed, 'zh');
+  assert.equal(result.isWinning, true);
+  assert.equal(result.suggestions[0]?.name, '成牌（基本和，参考计番）');
+
+  // 对照：同样两副明碰，暗手换成两刻 + 将时确实是对对胡（1 指数番 = 2 倍）。
+  const tripletHand = [...tiles('555', Suit.Man), ...tiles('777', Suit.Man), ...tiles('33', Suit.Man)];
+  const duiDui = sichuan(tripletHand, Suit.Sou, [pong(1), pong(9)]);
+  assert.deepEqual(validateGameState(duiDui, 'zh'), []);
+  const duiDuiScore = recognizeSichuanPatterns(tripletHand, [pong(1), pong(9)], 'zh');
+  assert.deepEqual(duiDuiScore.patterns, [{ id: 'duiDuiHu', exponent: 1 }]);
+  assert.equal(duiDuiScore.multiplier, 2);
+
+  // 对照：副露已占的牌不得在暗手重复出现（同一种牌最多四张）。
+  const duplicate = sichuan([...tiles('111', Suit.Pin), ...tiles('123456', Suit.Man)], Suit.Sou, [pong(1)]);
+  assert.ok(validateGameState(duplicate, 'zh').length > 0);
+});
+
+test('Sichuan terminals pattern needs 123/789 chows and a terminal pair', () => {
+  // 12378911m + 123789p：四副顺子都含幺九、将 11m 也含幺九 → 带幺九 2 指数番 = 4 倍。
+  const hand = [...tiles('12378911', Suit.Man), ...tiles('123789', Suit.Pin)];
+  const terminals = sichuan(hand, Suit.Sou);
+  assert.deepEqual(validateGameState(terminals, 'zh'), []);
+  const score = recognizeSichuanPatterns(hand, [], 'zh');
+  assert.deepEqual(score.patterns, [{ id: 'daiYaoJiu', exponent: 2 }]);
+  assert.equal(score.label, '带幺九');
+  assert.equal(score.multiplier, 4);
+  assert.equal(analyzeGame(terminals, 'zh').suggestions[0]?.scoreText, '2 指数番 · 4 倍');
+
+  // 对照：同样的顺子结构，将牌 55m 不含幺九 → 只有基本和（0 指数番 = 1 倍）。
+  const middlePair = [...tiles('12378955', Suit.Man), ...tiles('123789', Suit.Pin)];
+  const plain = sichuan(middlePair, Suit.Sou);
+  assert.deepEqual(validateGameState(plain, 'zh'), []);
+  const plainScore = recognizeSichuanPatterns(middlePair, [], 'zh');
+  assert.deepEqual(plainScore.patterns, [{ id: 'pingHu', exponent: 0 }]);
+  assert.equal(plainScore.multiplier, 1);
+
+  // 对照：牌面存在 9 不代表能拆出带幺九（234/567 顺子不含幺九）。
+  const middleChows = [...tiles('23456799', Suit.Man), ...tiles('234567', Suit.Pin)];
+  const chows = sichuan(middleChows, Suit.Sou);
+  assert.deepEqual(validateGameState(chows, 'zh'), []);
+  assert.equal(checkWinning(countsToArray(countTiles(middleChows)), 0, GameMode.Sichuan), true);
+  assert.deepEqual(recognizeSichuanPatterns(middleChows, [], 'zh').patterns, [{ id: 'pingHu', exponent: 0 }]);
+});
+
+test('Sichuan seven pairs counts four of a kind as two pairs and roots separately', () => {
+  // 11114444777799s：1/4/7 各四张拆成两对 + 99s 共七对；清一色 2 + 七对 2 + 根 ×3 = 7 → 封顶 4 = 16 倍。
+  const hand = tiles('11114444777799', Suit.Sou);
+  const position = sichuan(hand, Suit.Man);
+  assert.deepEqual(validateGameState(position, 'zh'), []);
+  const score = recognizeSichuanPatterns(hand, [], 'zh');
+  assert.deepEqual(score.patterns, [{ id: 'qingYiSe', exponent: 2 }, { id: 'qiDui', exponent: 2 }]);
+  assert.equal(score.label, '清龙七对');
+  assert.equal(score.roots, 3);
+  assert.equal(score.uncappedExponent, 7);
+  assert.equal(score.cappedExponent, 4);
+  assert.equal(score.multiplier, 16);
+  assert.equal(analyzeGame(position, 'zh').suggestions[0]?.scoreText, '4 指数番 · 16 倍');
+
+  // 对照：无根的清七对 11223344556677s 正好 4 指数番 = 16 倍。
+  const plainScore = recognizeSichuanPatterns(tiles('11223344556677', Suit.Sou), [], 'zh');
+  assert.equal(plainScore.label, '清七对');
+  assert.equal(plainScore.roots, 0);
+  assert.equal(plainScore.uncappedExponent, 4);
+  assert.equal(plainScore.multiplier, 16);
+
+  // 对照：同样是四张同牌，整体不是七对（顺子刻子混合）时不按七对计，根仍单算。
+  const mixed = [...tiles('111123', Suit.Sou), ...tiles('45678999', Suit.Man)];
+  assert.equal(checkWinning(countsToArray(countTiles(mixed)), 0, GameMode.Sichuan), true);
+  const mixedScore = recognizeSichuanPatterns(mixed, [], 'zh');
+  assert.deepEqual(mixedScore.patterns, [{ id: 'pingHu', exponent: 0 }]);
+  assert.equal(mixedScore.roots, 1);
+  assert.equal(mixedScore.uncappedExponent, 1);
+  assert.equal(mixedScore.multiplier, 2);
+});
+
+test('Sichuan exponents are capped at 4 and unknown events are never scored', () => {
+  // 11112377889999s：清一色 2 + 带幺九 2 + 根 ×2 = 6 指数番 → 封顶 4 = 16 倍（不是 2^6 = 64）。
+  const hand = tiles('11112377889999', Suit.Sou);
+  assert.deepEqual(validateGameState(sichuan(hand, Suit.Man), 'zh'), []);
+  const score = recognizeSichuanPatterns(hand, [], 'zh');
+  assert.deepEqual(score.patterns, [{ id: 'qingYiSe', exponent: 2 }, { id: 'daiYaoJiu', exponent: 2 }]);
+  assert.equal(score.roots, 2);
+  assert.equal(score.uncappedExponent, 6);
+  assert.equal(score.cappedExponent, 4);
+  assert.equal(score.multiplier, 16);
+  assert.equal(score.capExponent, 4);
+  assert.equal(score.ruleId, 'hi8-blood-battle');
+  assert.equal(score.ruleSource, 'https://hi8.com/g/sichuanmajiang');
+  // 指数番只由番型与根构成：自摸/杠类型/海底等未建模事件不得自动加番。
+  assert.equal(score.uncappedExponent, score.patterns.reduce((sum, p) => sum + p.exponent, 0) + score.roots);
+  assert.deepEqual(score.pendingContext, TEXT.zh.pendingEvents);
+  // 国标路径不受影响：仍按番数显示，不出现指数番文本。
+  const mcr = analyzeGame(state([...tiles('111123', Suit.Sou), ...tiles('45678999', Suit.Man)]), 'zh');
+  assert.equal(mcr.isWinning, true);
+  assert.equal(mcr.suggestions[0]?.scoreText, undefined);
+});
+
+test('Sichuan advice on an unfinished hand lists potentials without invented probabilities', () => {
+  const unfinished = sichuan([...tiles('11223344', Suit.Man), ...tiles('12345', Suit.Pin)], Suit.Sou);
+  assert.deepEqual(validateGameState(unfinished, 'zh'), []);
+  const result = analyzeGame(unfinished, 'zh');
+  assert.equal(result.isWinning, false);
+  assert.ok(result.suggestions.length > 0);
+  for (const suggestion of result.suggestions) {
+    assert.equal(suggestion.probability, 0);
+    assert.ok(suggestion.scoreText?.includes('指数番'), suggestion.name);
+    assert.ok(!suggestion.patternDetails.some(d => d.includes('%') || d.includes('64')));
+  }
+
+  // 定缺花色还没打完：只报花猪，不给番型期望，也不给概率或倍率。
+  const flowerPig = analyzeGame(sichuan(tiles('33344466699977', Suit.Sou), Suit.Sou), 'zh');
+  assert.equal(flowerPig.isWinning, false);
+  assert.equal(flowerPig.suggestions[0]?.name, '花猪');
+  assert.equal(flowerPig.suggestions[0]?.probability, 0);
+  assert.equal(flowerPig.suggestions[0]?.scoreText, '无法和牌');
+});
+
+// ============================================================
+// 五、已确认缺陷（行为快照）
 // ============================================================
 
 defect('A04', 'P3a', '全不靠 / 七星不靠 / 组合龙 不是 checkWinning 认可的和牌结构',
@@ -571,38 +733,5 @@ defect('M07', 'P3b', '三风刻错误认可第三种风的将牌；明碰又被�
     return { sanFengKe: counts.sanFengKe ?? 0, shuangAnKe: counts.shuangAnKe ?? 0 };
   });
 
-defect('S01', 'P2', '川麻把清对记为 6 番 / 64 倍，与「清一色 2 指数番 + 大对子 1 指数番 = 8 倍」的参考口径不一致',
-  '33344466699977s 是清对，无根、含 9；倍率须在选定规则来源后才能定',
-  { isWinning: true, fan: 6, details: ['清对 (6番)'] },
-  () => {
-    const result = analyzeGame(sichuan(tiles('33344466699977', Suit.Sou), Suit.Man), 'zh');
-    return { isWinning: result.isWinning, fan: result.suggestions[0]?.fan, details: result.suggestions[0]?.patternDetails };
-  });
-
-defect('S05', 'P2', '三根七对 11114444777799s 漏识别七对，只报清一色 + 3 根',
-  '11114444777799s 是三组四张 + 一对，应按七对（含三根）判断',
-  { fan: 7, details: ['清一色 (4番)', '根 x3 (+3番)'] },
-  () => {
-    const result = analyzeGame(sichuan(tiles('11114444777799', Suit.Sou), Suit.Man), 'zh');
-    return { fan: result.suggestions[0]?.fan, details: result.suggestions[0]?.patternDetails };
-  });
-
-defect('S04', 'P2', '带幺九只看牌值是否为 1/9，漏掉 123/789 顺子',
-  '12378911m + 123789p 存在每副面子与将均带幺九的拆分；是否计带幺九及其指数番/倍率须由选定川麻规则确定，不能先认定4番',
-  { isWinning: true, fan: 1, details: ['基本和 (1番)'] },
-  () => {
-    const result = analyzeGame(sichuan([...tiles('12378911', Suit.Man), ...tiles('123789', Suit.Pin)], Suit.Sou), 'zh');
-    return { isWinning: result.isWinning, fan: result.suggestions[0]?.fan, details: result.suggestions[0]?.patternDetails };
-  });
-
-defect('S03', 'P2', '刻子先按全部牌统计再叠加副露数量，明碰被计两次，误判对对胡',
-  '碰 111p、999p 加暗手 123456m + 77p 是两顺两刻，应判基本和而非对对胡',
-  { isWinning: true, fan: 2, details: ['对对胡 (2番)'] },
-  () => {
-    const hand = [...tiles('123456', Suit.Man), ...tiles('77', Suit.Pin)];
-    const result = analyzeGame(sichuan(hand, Suit.Sou, [pong(1), pong(9)]), 'zh');
-    return { isWinning: result.isWinning, fan: result.suggestions[0]?.fan, details: result.suggestions[0]?.patternDetails };
-  });
-
 console.log(`\n${passed} 项守卫通过；${defects} 项已确认缺陷（快照断言，非通过项）。`);
-console.log('缺陷归属见上述 DEFECT 行：P2 = 川麻计番，P3a/P3b/P3c = 国标上下文/已知错误/缺失番种。');
+console.log('缺陷归属见上述 DEFECT 行：P3a/P3b/P3c = 国标上下文/已知错误/缺失番种；P2 川麻计番四项已修为守卫。');

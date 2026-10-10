@@ -146,7 +146,12 @@ export const TEXT = {
     haiDi: 'Last Tile', // 海底捞月 (+1根)
     heJueZhang: 'Win on Last Tile', // 和绝张 (+1根)
     huaZhu: 'Flower Pig', // 花猪 (有缺未打)
-    illegal: 'Illegal'
+    illegal: 'Illegal',
+    exponentUnit: 'exp', // 四川指数番
+    timesUnit: 'x', // 四川倍数
+    potential: 'potential', // 未成牌时的潜力标记
+    potentialOnly: 'Not a complete hand: these are patterns that could still be built, not a settlement.',
+    pendingEvents: 'Draw/claim source, kong type and last-tile events are not recorded, so they add nothing here.'
   },
   zh: {
     mcr: '国标麻将',
@@ -276,6 +281,11 @@ export const TEXT = {
     heJueZhang: '和绝张', // +1根
     huaZhu: '花猪', // 有缺未打
     illegal: '无法和牌',
+    exponentUnit: '指数番', // 四川指数番
+    timesUnit: '倍', // 四川倍数
+    potential: '潜力', // 未成牌时的潜力标记
+    potentialOnly: '尚未成牌：这里只列还能做的番型，不构成结算依据。',
+    pendingEvents: '自摸/点炮、杠类型、海底等事件未记录，未计相关加番。',
   }
 };
 
@@ -461,107 +471,11 @@ export const MCR_RULES = {
 };
 
 // ============================================================
-// 四川麻将 Sichuan (Blood Battle) 番种定义
-// 参考: https://zh.wikipedia.org/wiki/四川麻将
+// 四川麻将计番
+// 旧的番型/倍数表（清对 6 番 = 64 倍等）、未使用的杠收益与赔付常量已删除：
+// 唯一来源是 utils/sichuanAnalyzer.ts 的 SICHUAN_RULE 与 SICHUAN_PATTERN_EXPONENTS
+// （来源 https://hi8.com/g/sichuanmajiang，封顶 4 指数番 = 16 倍）。
 // ============================================================
-
-export interface SichuanPattern {
-  id: string;
-  nameZh: string;
-  nameEn: string;
-  fan: number; // 番数
-  multiplier: number; // 倍数 = 2^fan
-  description: string;
-  excludes: string[]; // 互斥牌型
-}
-
-// 基本牌型 (Base Types)
-export const SICHUAN_BASE_PATTERNS: SichuanPattern[] = [
-  { id: 'pingHu', nameZh: '平胡', nameEn: 'Ping Hu', fan: 0, multiplier: 1, description: '基本胡牌型，由顺子和将组成', excludes: [] },
-  { id: 'duiDuiHu', nameZh: '对对胡', nameEn: 'All Pungs', fan: 2, multiplier: 4, description: '由4个刻子和1对将组成', excludes: ['pingHu'] },
-  { id: 'qingYiSe', nameZh: '清一色', nameEn: 'Full Flush', fan: 4, multiplier: 16, description: '整手牌由同一花色组成（部分规则为2-3番）', excludes: [] },
-  { id: 'qingDui', nameZh: '清对', nameEn: 'Flush Pungs', fan: 6, multiplier: 64, description: '清一色+对对胡', excludes: ['qingYiSe', 'duiDuiHu'] },
-  { id: 'qiDui', nameZh: '七对', nameEn: 'Seven Pairs', fan: 4, multiplier: 16, description: '由7个对子组成', excludes: ['pingHu', 'duiDuiHu'] },
-  { id: 'longQiDui', nameZh: '龙七对', nameEn: 'Dragon Seven Pairs', fan: 6, multiplier: 64, description: '七对中含有四张相同的牌（含一根）', excludes: ['qiDui'] },
-  { id: 'jinGouDiao', nameZh: '金钩钓', nameEn: 'Golden Hook', fan: 4, multiplier: 16, description: '4个刻子/杠，单钓将', excludes: ['duiDuiHu'] },
-  { id: 'daiYaoJiu', nameZh: '带幺九', nameEn: 'With Terminals', fan: 4, multiplier: 16, description: '每副牌都带有1或9（可选规则）', excludes: [] },
-  { id: 'jiangDui', nameZh: '将对', nameEn: 'Honor Pungs', fan: 4, multiplier: 16, description: '全部由2、5、8组成的对对胡', excludes: ['duiDuiHu'] },
-  { id: 'qingQiDui', nameZh: '清七对', nameEn: 'Pure Seven Pairs', fan: 8, multiplier: 256, description: '清一色+七对', excludes: ['qingYiSe', 'qiDui'] },
-  { id: 'qingLongQiDui', nameZh: '清龙七对', nameEn: 'Pure Dragon Seven', fan: 10, multiplier: 1024, description: '清一色+龙七对', excludes: ['qingYiSe', 'longQiDui'] },
-  { id: 'qingJinGou', nameZh: '清金钩', nameEn: 'Pure Golden Hook', fan: 8, multiplier: 256, description: '清一色+金钩钓', excludes: ['qingYiSe', 'jinGouDiao'] },
-  { id: 'shiSanYao', nameZh: '十三幺', nameEn: 'Thirteen Orphans', fan: 8, multiplier: 256, description: '特殊牌型（部分地区规则）', excludes: [] },
-  { id: 'tianHu', nameZh: '天胡', nameEn: 'Heavenly Hand', fan: 8, multiplier: 256, description: '庄家起手和牌', excludes: [] },
-  { id: 'diHu', nameZh: '地胡', nameEn: 'Earthly Hand', fan: 8, multiplier: 256, description: '闲家第一张牌自摸和牌', excludes: [] },
-];
-
-// 加番要素 (Multipliers)
-export interface SichuanMultiplier {
-  id: string;
-  nameZh: string;
-  nameEn: string;
-  fanAdd: number; // 每个增加的番数
-  description: string;
-}
-
-export const SICHUAN_MULTIPLIERS: SichuanMultiplier[] = [
-  { id: 'gen', nameZh: '根', nameEn: 'Root', fanAdd: 1, description: '四张相同的牌（无论是否开杠），每根+1番' },
-  { id: 'gangShangKaiHua', nameZh: '杠上开花', nameEn: 'Kong Bloom', fanAdd: 1, description: '杠后补牌和牌+1番' },
-  { id: 'gangShangPao', nameZh: '杠上炮', nameEn: 'Kong Shot', fanAdd: 1, description: '杠后打牌点炮+1番' },
-  { id: 'qiangGang', nameZh: '抢杠', nameEn: 'Rob Kong', fanAdd: 1, description: '抢杠和牌+1番' },
-  { id: 'haiDiLao', nameZh: '海底捞', nameEn: 'Sea Bottom', fanAdd: 1, description: '最后一张牌和牌+1番' },
-  { id: 'menQing', nameZh: '门清', nameEn: 'Concealed', fanAdd: 1, description: '门前清（无副露）+1番（部分规则）' },
-  { id: 'zhongZhang', nameZh: '中张', nameEn: 'Middle Tiles', fanAdd: 1, description: '全部由2-8组成（断幺九）+1番（部分规则）' },
-];
-
-// 杠牌即时收益
-export interface SichuanKongPayment {
-  type: string;
-  nameZh: string;
-  nameEn: string;
-  payment: string;
-  description: string;
-}
-
-export const SICHUAN_KONG_PAYMENTS: SichuanKongPayment[] = [
-  { type: 'anGang', nameZh: '暗杠', nameEn: 'Concealed Kong', payment: '每家付2倍底分', description: '4张全为自己摸到，下雨（收益更高）' },
-  { type: 'mingGang', nameZh: '明杠(点杠)', nameEn: 'Direct Kong', payment: '点杠者付2倍底分', description: '3张手牌+别人打出的牌' },
-  { type: 'jiaGang', nameZh: '加杠(补杠)', nameEn: 'Added Kong', payment: '每家付1倍底分', description: '碰后自摸第4张，刮风' },
-];
-
-// 特殊规则
-export const SICHUAN_RULES = {
-  VOID_SUIT_REQUIRED: true, // 必须定缺
-  BLOOD_BATTLE: true, // 血战到底（一家胡牌后继续）
-  HUA_ZHU_PENALTY: true, // 花猪赔付
-  CHA_DA_JIAO_PENALTY: true, // 查大叫赔付
-  BASE_MULTIPLIER: 1, // 底分倍数
-  MAX_FAN_LIMIT: 10, // 封顶番数（部分规则）
-};
-
-// 四川麻将花色（无字牌）
-export const SICHUAN_SUITS = [Suit.Man, Suit.Pin, Suit.Sou];
-
-// 定缺花色选择
-export const VOID_SUIT_OPTIONS = {
-  [Suit.Man]: { zh: '缺万', en: 'Void Wan' },
-  [Suit.Pin]: { zh: '缺筒', en: 'Void Pin' },
-  [Suit.Sou]: { zh: '缺条', en: 'Void Sou' },
-};
-
-// 惩罚类型
-export interface SichuanPenalty {
-  id: string;
-  nameZh: string;
-  nameEn: string;
-  condition: string;
-  penalty: string;
-}
-
-export const SICHUAN_PENALTIES: SichuanPenalty[] = [
-  { id: 'huaZhu', nameZh: '花猪', nameEn: 'Flower Pig', condition: '未打完定缺花色却已无牌可和', penalty: '赔付所有玩家（按最大番计算）' },
-  { id: 'chaDaJiao', nameZh: '查大叫', nameEn: 'Big Call Check', condition: '游戏结束时未听牌', penalty: '赔付所有已听牌玩家（按其可能最大番计算）' },
-  { id: 'chaDaJiaoHuaZhu', nameZh: '查花猪', nameEn: 'Check Flower Pig', condition: '游戏结束时仍有定缺花色', penalty: '赔付所有玩家（按最大番计算）' },
-];
 
 // ============================================================
 // 通用工具函数
@@ -574,22 +488,3 @@ export const createTile = (suit: Suit, value: number): Tile => ({
 });
 
 export const getTileKey = (suit: Suit, value: number) => `${value}${suit}`;
-
-// 获取番种信息（支持多语言）
-export const getPatternName = (patternId: string, lang: Language): string => {
-  const allPatterns = [
-    ...MCR_88_FAN, ...MCR_64_FAN, ...MCR_48_FAN, ...MCR_32_FAN,
-    ...MCR_24_FAN, ...MCR_16_FAN, ...MCR_12_FAN, ...MCR_8_FAN,
-    ...MCR_6_FAN, ...MCR_4_FAN, ...MCR_2_FAN, ...MCR_1_FAN,
-    ...SICHUAN_BASE_PATTERNS,
-  ];
-  const pattern = allPatterns.find(p => p.id === patternId);
-  if (!pattern) return patternId;
-  return lang === 'zh' ? pattern.nameZh : pattern.nameEn;
-};
-
-// 计算四川麻将倍数
-export const calculateSichuanMultiplier = (baseFan: number, roots: number = 0, extraFan: number = 0): number => {
-  const totalFan = baseFan + roots + extraFan;
-  return Math.pow(2, totalFan);
-};
