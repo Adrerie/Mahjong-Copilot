@@ -416,6 +416,16 @@ test('saved positions round-trip per mode and corrupt data is ignored', () => {
   assert.equal(decodeEntryState(wrap({ ...saved, hand: 'nope' }), GameMode.MCR), null);
   assert.equal(decodeEntryState(wrap({ ...saved, wallCount: 999 }), GameMode.MCR), null);
   assert.equal(decodeEntryState(wrap({ ...saved, voidSuit: 'x' }), GameMode.MCR), null);
+  // A malformed cache cannot share deletion IDs across distinct tiles or melds.
+  assert.equal(decodeEntryState(wrap({ ...saved, hand: [
+    { ...createTile(Suit.Man, 1), id: 'same' }, { ...createTile(Suit.Man, 2), id: 'same' },
+  ] }), GameMode.MCR), null);
+  assert.equal(decodeEntryState(wrap({ ...saved, melds: [
+    { ...pong(1), id: 'meld-same' }, { ...pong(2), id: 'meld-same' },
+  ] }), GameMode.MCR), null);
+  assert.equal(decodeEntryState(wrap({ ...saved, hand: [
+    { ...createTile(Suit.Man, 1), id: 'empty-id' }, { ...createTile(Suit.Man, 2), id: '' },
+  ] }), GameMode.MCR), null);
 });
 
 // ============================================================
