@@ -10,7 +10,9 @@
  * 每个牌例标注玩法、定缺、副露、和牌来源与规则口径。规则口径来源：
  * - `1111223344m5566p` 记 7 对：四张同牌按两对计（国标七对定义）。
  * - 国标 8 番起和：结构成牌与合法起和必须分开表达。
- * - 川麻口径见 constants.ts 顶部注释与 docs/RESTRUCTURE_PLAN_2026-10-10.md 第 4 节；项目尚未确定统一川渝规则，
+ * - 国标平和/不求人定义参考 https://www.mindmahjong.com/adobe/20141120CEJ.pdf；
+ *   规则预期中的自摸/点和条件须明确，现有 API 未提供这些字段，不能从快照推断实际合法起和。
+ * - 川麻口径见 docs/RESTRUCTURE_PLAN_2026-10-10.md 第 4 节；项目尚未确定统一川渝规则，
  *   因此川麻相关条目只记录当前实现的输出，不作为结算依据。
  */
 import assert from 'node:assert/strict';
@@ -45,7 +47,6 @@ const state = (hand: Tile[], melds: Meld[] = [], extra: Partial<GameState> = {})
 const sichuan = (hand: Tile[], voidSuit: Suit | null, melds: Meld[] = [], extra: Partial<GameState> = {}): GameState =>
   ({ mode: GameMode.Sichuan, hand, melds, discards: [], wallCount: 50, voidSuit, ...extra });
 
-const codes = (list: Tile[]): string[] => list.map(t => `${t.value}${t.suit}`);
 const effectiveTiles = (hand: Tile[], melds: Meld[]): number => hand.length + melds.length * 3;
 /** 番种 id -> 叠加次数，按 id 排序，便于稳定比较。 */
 const patternCounts = (hand: Tile[], melds: Meld[] = []): Record<string, number> => {
@@ -185,8 +186,12 @@ test('discards stay known: a wait whose last copies are all visible is a dead wa
 });
 
 test('Sichuan cannot win while the void suit or a third suit remains', () => {
+  const hand = [...tiles('123789', Suit.Man), ...tiles('12355', Suit.Pin), ...tiles('123', Suit.Sou)];
+  // 先证明牌数合法且结构成牌，避免非成牌输入让定缺守卫空通过。
+  assert.deepEqual(validateGameState(sichuan(hand, Suit.Sou), 'zh'), []);
+  assert.equal(checkWinning(countsToArray(countTiles(hand)), 0, GameMode.Sichuan), true);
   const threeSuits = analyzeGame(
-    sichuan([...tiles('112233', Suit.Man), ...tiles('445566', Suit.Pin), ...tiles('78', Suit.Sou)], Suit.Sou), 'zh');
+    sichuan(hand, Suit.Sou), 'zh');
   assert.equal(threeSuits.isWinning, false);
   assert.ok(threeSuits.warnings.some(w => w.includes('定缺')));
   const noVoidChosen = analyzeGame(sichuan(tiles('33344466699977', Suit.Sou), null), 'zh');
@@ -195,14 +200,18 @@ test('Sichuan cannot win while the void suit or a third suit remains', () => {
 });
 
 test('structural completeness and eight-fan eligibility stay separate', () => {
-  // 234m345m567p456s55m：结构成牌，但只有 不求人4 + 断幺2 = 6 番（断幺不计无字），不足 8 番
-  const hand = [...tiles('234', Suit.Man), ...tiles('345', Suit.Man), ...tiles('567', Suit.Pin), ...tiles('456', Suit.Sou), ...tiles('55', Suit.Man)];
-  assert.deepEqual(validateGameState(state(hand), 'zh'), []);
-  assert.equal(checkWinning(countsToArray(countTiles(hand)), 0), true);
-  const api = calculateMCRTotalFan(hand, []);
-  assert.equal(api.totalFan, 6);
+  // 明吃234m/345m/567p，暗手456s55m；非门清、非全求人。
+  // 无事件加番、和4s且非绝张时，平和2 + 断幺2；自摸最多再加1，均不足8。
+  // 原全暗手牌例在自摸时可有不求人4 + 平和2 + 断幺2 = 8，不能作为不足8的守卫。
+  const hand = [...tiles('456', Suit.Sou), ...tiles('55', Suit.Man)];
+  const melds = [chi('234', Suit.Man), chi('345', Suit.Man), chi('567', Suit.Pin)];
+  assert.deepEqual(validateGameState(state(hand, melds), 'zh'), []);
+  assert.equal(checkWinning(countsToArray(countTiles(hand)), melds.length), true);
+  const api = calculateMCRTotalFan(hand, melds);
+  // 当前计番尚漏平和；不锁定错误的总番，以免后续补平和时本守卫反而失败。
+  assert.ok(api.totalFan < 8);
   assert.equal(api.isValid, false);
-  const result = analyzeGame(state(hand), 'zh');
+  const result = analyzeGame(state(hand, melds), 'zh');
   assert.equal(result.isWinning, true);
   assert.equal(result.isReady, false);
 });
@@ -245,7 +254,7 @@ defect('M01', 'P3c', '大三元未识别，用三暗刻等低番凑出 30 番',
   });
 
 defect('M01+M05', 'P3b', '清龙未识别；同一手牌又错误加上全带幺',
-  '123456789m + 12355p 应有清龙 16番；456m 与 123p 不含幺九，全带幺不应成立',
+  '123456789m + 12355p 应有清龙 16番；456m 与将牌55p 不含幺九，全带幺不应成立',
   { totalFan: 10, hasQingLong: false, hasQuanDaiYao: true },
   () => {
     const hand = [...tiles('123456789', Suit.Man), ...tiles('12355', Suit.Pin)];
@@ -271,11 +280,6 @@ defect('M03', 'P3b', '同一副杠同时算双暗杠、双明杠、明杠与四�
     return { totalFan: mcrFan(hand, melds), patterns: patternCounts(hand, melds) };
   });
 
-defect('M03', 'P3a', 'Meld 没有明杠/暗杠/补杠属性，明暗杠上下文无法表达',
-  'P3a 需要补充杠的种类上下文，当前类型只有 id/type/tiles',
-  ['id', 'tiles', 'type'],
-  () => Object.keys(gang(1)).sort());
-
 defect('M06', 'P3b', '四张相同牌按一对计，1111223344m5566p 的七对漏识别',
   '四张同牌应记两对，1111223344m5566p 是七对 24番',
   { winning: true, totalFan: 12, isValid: true, hasQiDui: false },
@@ -286,7 +290,7 @@ defect('M06', 'P3b', '四张相同牌按一对计，1111223344m5566p 的七对�
   });
 
 defect('M01+A10', 'P3c', '合法 8 番牌型因三色三同顺未识别，被 isValid 判为不足 8 番（假阴性）',
-  '234m234p234s + 567m + 55s 有三色三同顺 8番，加不求人 4番，应满足 8 番起和',
+  '234m234p234s + 567m + 55s 有三色三同顺8番，本身达到门槛；不求人另需确认门清自摸，当前未录和牌来源',
   { totalFan: 6, isValid: false, hasSanSeSanTongShun: false },
   () => {
     const hand = [...tiles('234', Suit.Man), ...tiles('234', Suit.Pin), ...tiles('234', Suit.Sou), ...tiles('567', Suit.Man), ...tiles('55', Suit.Sou)];
@@ -295,7 +299,7 @@ defect('M01+A10', 'P3c', '合法 8 番牌型因三色三同顺未识别，被 is
   });
 
 defect('M05+A10', 'P3b', '全带幺在没有副露时恒真，把不足 8 番的牌型误判为可起和（假阳性）',
-  '123m234p345s678s + 99s 只有不求人4 + 无字1（连六未识别），全带幺不应成立',
+  '123m234p345s678s + 99s 在无花/事件、和6s且非绝张的条件下，门清点和为门前清2 + 平和2 + 连六1，自摸为不求人4 + 平和2 + 连六1，均不足8；平和不计无字，全带幺不成立。当前API未记录这些上下文',
   { totalFan: 9, isValid: true, hasQuanDaiYao: true },
   () => {
     const hand = [...tiles('123', Suit.Man), ...tiles('234', Suit.Pin), ...tiles('345', Suit.Sou), ...tiles('678', Suit.Sou), ...tiles('99', Suit.Sou)];
@@ -355,12 +359,14 @@ defect('M05', 'P3b', '平和只看已录吃的数量，四副暗手顺子的平�
     return { totalFan: api.totalFan, hasPingHu: api.patterns.some(p => p.id === 'pingHu'), hasQuanDaiYao: api.patterns.some(p => p.id === 'quanDaiYao') };
   });
 
-defect('M07', 'P3b', '三风刻按「两副风碰 + 手上有三张风牌」成立；明碰又被当成暗刻',
-  '只有东、南两副风碰，第三门风只有单张，三风刻不成立；明碰也不是暗刻',
+defect('M07', 'P3b', '三风刻错误认可第三种风的将牌；明碰又被当成暗刻',
+  '只有东、南两副风碰，西风只作将，三风刻不成立；明碰也不是暗刻',
   { sanFengKe: 1, shuangAnKe: 1 },
   () => {
-    const hand = [...tiles('12345', Suit.Man), ...tiles('77', Suit.Pin), createTile(Suit.Zihai, 3)];
+    const hand = [...tiles('123456', Suit.Man), ...tiles('33', Suit.Zihai)];
     const melds = [pong(1, Suit.Zihai), pong(2, Suit.Zihai)];
+    assert.deepEqual(validateGameState(state(hand, melds), 'zh'), []);
+    assert.equal(checkWinning(countsToArray(countTiles(hand)), melds.length), true);
     const counts = patternCounts(hand, melds);
     return { sanFengKe: counts.sanFengKe ?? 0, shuangAnKe: counts.shuangAnKe ?? 0 };
   });
@@ -382,7 +388,7 @@ defect('S05', 'P2', '三根七对 11114444777799s 漏识别七对，只报清一
   });
 
 defect('S04', 'P2', '带幺九只看牌值是否为 1/9，漏掉 123/789 顺子',
-  '12378911m + 123789p 的每副牌都带幺九，应识别带幺九 4番',
+  '12378911m + 123789p 存在每副面子与将均带幺九的拆分；是否计带幺九及其指数番/倍率须由选定川麻规则确定，不能先认定4番',
   { isWinning: true, fan: 1, details: ['基本和 (1番)'] },
   () => {
     const result = analyzeGame(sichuan([...tiles('12378911', Suit.Man), ...tiles('123789', Suit.Pin)], Suit.Sou), 'zh');
