@@ -327,8 +327,10 @@ const InputScreen: React.FC<Props> = ({ mode, lang, setLang, onBack }) => {
                 >
                     <div className="flex flex-wrap gap-1 content-start">
                         {sortedHand.map((tile) => (
-                            <div key={tile.id} className="w-9 sm:w-11" onClick={(e) => { e.stopPropagation(); removeTile(tile.id, 'hand'); }}>
-                                <TileUI tile={tile} size="responsive" className="active:opacity-50" />
+                            <div key={tile.id} className="w-9 sm:w-11" onClick={(e) => e.stopPropagation()}>
+                                <TileUI tile={tile} size="responsive" className="active:opacity-50"
+                                    actionLabel={`${lang === 'zh' ? '删除手牌' : 'Remove from hand'} ${tile.value}${SUIT_LABELS[lang][tile.suit]}`}
+                                    onClick={() => removeTile(tile.id, 'hand')} />
                             </div>
                         ))}
                         {hand.length === 0 && (
@@ -353,8 +355,10 @@ const InputScreen: React.FC<Props> = ({ mode, lang, setLang, onBack }) => {
             <h2 className="text-[#1A237E] font-bold text-lg mb-3">{t.discards}</h2>
             <div className="flex flex-wrap gap-1">
                 {sortedDiscards.map((tile) => (
-                   <div key={tile.id} className="w-8 sm:w-9" onClick={(e) => { e.stopPropagation(); removeTile(tile.id, 'discards'); }}>
-                        <TileUI tile={tile} size="responsive" className="active:opacity-50" />
+                   <div key={tile.id} className="w-8 sm:w-9" onClick={(e) => e.stopPropagation()}>
+                        <TileUI tile={tile} size="responsive" className="active:opacity-50"
+                            actionLabel={`${lang === 'zh' ? '删除牌河' : 'Remove from river'} ${tile.value}${SUIT_LABELS[lang][tile.suit]}`}
+                            onClick={() => removeTile(tile.id, 'discards')} />
                    </div>
                 ))}
                 {discards.length === 0 && (!showKeyboard || activeZone !== 'discards') && <p className="text-gray-300 text-sm italic">{t.emptyRiver}</p>}
