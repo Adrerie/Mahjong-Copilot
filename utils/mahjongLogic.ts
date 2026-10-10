@@ -59,7 +59,12 @@ import { analyzeMCR } from './mcrAnalyzer';
 export const analyzeGame = (state: GameState, lang: Language = 'en'): AnalysisResult => {
   const { hand, melds, discards, wallCount, mode, voidSuit } = state;
   const errors = validateGameState(state, lang);
-  if (errors.length || !mode) return { isReady: false, isWinning: false, shanten: 8, waitingTiles: [], suggestions: [], warnings: errors };
+  if (errors.length || !mode) {
+    const effectiveCount = hand.length + melds.length * 3;
+    const countOnlyIncomplete = !!mode && effectiveCount < 13 && validateGameState(state, lang, false).length === 0;
+    return { status: countOnlyIncomplete ? 'incomplete' : 'invalid', isReady: false, isWinning: false,
+      shanten: null, waitingTiles: [], suggestions: [], warnings: errors };
+  }
   const zh = lang === 'zh';
   const warnings: string[] = [];
   const all = [...hand, ...melds.flatMap(m => m.tiles)];
@@ -74,7 +79,7 @@ export const analyzeGame = (state: GameState, lang: Language = 'en'): AnalysisRe
   }));
   let waitingTiles = !hasVoid && hand.length + melds.length * 3 === 13
     ? describeWaits(calculateWaitingTiles(hand, melds, mode, voidSuit)) : [];
-  const isReady = !isWinning && waitingTiles.length > 0;
+  const isReady = !isWinning && waitingTiles.some(w => w.remaining > 0);
   const discard = !isWinning ? calculateBestDiscard(hand, melds, discards, lang, mode, voidSuit) : undefined;
   if (discard) waitingTiles = describeWaits(discard.waitingTiles);
   let suggestions: FanSuggestion[] = [];
@@ -90,9 +95,12 @@ export const analyzeGame = (state: GameState, lang: Language = 'en'): AnalysisRe
     suggestions = mode === GameMode.Sichuan ? analyzeSichuan(hand, melds, voidSuit, lang) : analyzeMCR(hand, melds, lang, wallCount);
   }
   if (hasVoid) warnings.push(zh ? '尚有定缺牌或三门花色，不能和牌' : 'Void suit remains or all three suits are present; cannot win');
-  if (waitingTiles.length && waitingTiles.every(w => w.remaining === 0)) warnings.push(zh ? '待牌均已见完（死叫）' : 'All waiting tiles are exhausted');
+  const deadWait = !isWinning && hand.length + melds.length * 3 === 13 &&
+    waitingTiles.length > 0 && waitingTiles.every(w => w.remaining === 0);
+  if (deadWait) warnings.push(zh ? '待牌均已见完（死叫）' : 'All waiting tiles are exhausted');
   if (wallCount <= 10) warnings.push(zh ? (wallCount ? '牌墙将尽' : '牌墙已空') : (wallCount ? 'Wall nearly empty' : 'Wall is empty'));
-  return { mode, isReady, isWinning, shanten, waitingTiles, suggestions, scoreNote,
+  const status = isWinning ? 'completeShapeScoreUnverified' : deadWait ? 'deadWait' : isReady ? 'ready' : 'notReady';
+  return { mode, status, isReady, isWinning, shanten, waitingTiles, suggestions, scoreNote,
     bestDiscard: discard && { tile: discard.tile, reason: hasVoid ? (zh ? '优先打定缺花色' : 'Discard void suit first') : discard.reason,
       ukeire: discard.ukeire, ukeireTiles: discard.ukeireTiles },
     scoreEstimate: isWinning ? suggestions[0]?.fan : undefined, warnings };
