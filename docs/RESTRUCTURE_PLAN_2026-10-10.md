@@ -24,17 +24,54 @@
 
 **规则依据高于程序输出。** 国标优先核对[世界麻将组织规则](https://www.mindmahjong.com/adobe/ZC2021.pdf)及目标比赛细则；四川与重庆须写明具体平台/牌桌参考规则和版本，禁止从“重庆”地域名直接推出清对16倍。上述仓库只是实现和测试参考，不能当地方统一计番标准。
 
-## 2. 当前基线：先补证据，避免重修 Codex 的工作（P0）
+**文件级核验补充（2026-10-10，逐文件读取许可证原文）**：PyMahjongGB 为**两份独立 MIT**（根 `LICENSE` © Yunlong Lu，`mahjong-algorithm/LICENSE` © Jeff Wang），实际复用须同时保留两套声明；GB-Mahjong 为 MIT（© Zheng Fan，README 一致）；MahjongRepository/mahjong 为 MIT；sichuan-mahjong-analyzer 的 `LICENSE`（MIT © 陆星宏）与 README「仅供学习和个人使用」**直接矛盾**，澄清前只读思路。路径更正：GB-Mahjong 的单元测试在**仓库根** `unit_test.cpp`，不在 `mahjong/` 下。
 
-当前 `main` 审计基线提交：`99ef8af7f909584a505e20f8092eacaba357ac2f`（2026-10-10）。已存在 `utils/inputValidation.ts`、`tests/regression.ts`、`npm test`、`npm run typecheck`。历史盘点中“缺 LICENSE/无测试脚本”已过时。
+**测试组织可借鉴的三点（不复制内容）**：① GB-Mahjong 的「番 → 占用面子实例」双表与**集合式不计**（番相同且 pack 相同才剔除）是满足「同一实体面子不得重复占位 / 套算一次」的可参照设计；② MahjongRepository 的声明式数据表（`parametrize` + 具名 id）、完整向听梯度、成体系负例（副露时忽略国士、5/6 张同牌、3 的倍数张数、空手），可迁移为清对/七对/龙七对/金钩钓等特殊和型的梯度用例；③ GB-Mahjong 在期望值旁记录规则口径分歧、允许同一牌形两套合法期望。反面教材：PyMahjongGB 的「打印无断言」、GB-Mahjong 失败时 `exit(0)`、川麻仓库的打印即测试。
 
-1. 先运行 `git status --short`、`npm ci`、`npm test`、`npm run typecheck`、`npm run build`；记录失败和变更，不得先清除已有工作区。
-2. 先在现有 `tests/regression.ts` 加精确、可复核的边界牌例，或在测试确实膨胀时才拆小文件。每例记录玩法/定缺/副露/和牌来源/规则口径、预期和实际；外部对照测试须说明差异，不要无解释地硬编码 oracle 输出。
-3. 对照旧审计标记“已修、部分修、未修、待证实”，避免把已修的 A01–A08 和已有 LICENSE 重做；保留原问题 ID 供查找。
-4. 补高风险回归：第五张、非法碰/吃/杠、14张等效数、杠实牌数、国标8番与结构成牌分离、定缺或三门不得和、死叫、明暗杠、四张七对/多根七对、合法面子不得重复占用。
-5. 额外验证此前新发现：`mcrAnalyzer.costToMakeSeq` 仅看“存在”，可能让 `12345m` 被重复用于 `123/234/345`；五门齐独立估算重复计顺子；海底提示用13/14暗手而非真实听牌。修时统一经过候选合法拆分/剩余牌张计数。
+## 2. P0 已完成：验证基线 + 测试与问题归档（2026-10-10）
 
-**P0 验收**：至少新增上述风险的正反例，旧测试不回退；公开“哪些测试通过，哪些只是静态问题”表格；暂不动 UI 或两套计分体系。
+审计基线为 `main` 的 `99ef8af`（Codex 修复已在内），本轮证据补在分支 `plan/reference-guided-restructure-20261010`。`utils/inputValidation.ts`、`tests/regression.ts`、`npm test`、`npm run typecheck` 均已存在；历史盘点中「缺 LICENSE / 无测试脚本 / 开发端口 5173」已过时。
+
+**基线命令结果（本地实测）**：`npm ci` 成功（169 包）；`npm test` 17 项守卫通过 + 19 项缺陷快照；`npm run typecheck` 通过；`npm run build` 通过（45 模块，273.07 kB / gzip 84.45 kB）。
+
+**测试入口**：`npm test` → `scripts/test.mjs`（esbuild 打包 `tests/regression.ts` 后执行）。
+- `test(...)`：必须成立的守卫，回退即退出码非 0。
+- `defect(id, owner, ...)`：**已确认错误的行为快照**，打印规则预期与当前实际并断言当前值。修好某条后该断言会失败，这是预期现象：把断言改成正确值、删除对应说明即可。
+
+### 2.1 旧审计问题状态（保留原问题 ID）
+
+| 状态 | 问题 | 证据 |
+|---|---|---|
+| 已修 | A01 单钓听牌向听、A02 15 等效张误判和牌、A03 七对向听公式 | 守卫 `standard single wait…`、`extra concealed tile…`、`four pairs and five singles…` |
+| 已修 | A05 输入合法性：第五张、非法碰/吃/杠、无效牌值、超量副露与等效张数 | 守卫 `five copies and malformed melds…`、`melds are rejected tile by tile…`、`tile values outside the deck…`、`a kong counts as three effective tiles…` |
+| 已修 | A06 碰杠后暗手张数与弃牌入口 | 守卫 `seven concealed tiles with two melds…`、`eight concealed tiles…` |
+| 已修 | A07 待牌未计副露占用 | 守卫 `wait cannot require a fifth copy in melds` |
+| 已修 | A08 弃牌仍是已知牌 | 守卫 `discards stay known…`（死叫牌例） |
+| 已修 | A10（API 侧）空牌/单张不得报 `isValid` | 守卫 `empty and one-tile MCR API inputs…` |
+| 已修 | S02 定缺与三门花色不得和 | 守卫 `Sichuan void suit prevents winning…`、`Sichuan cannot win while…` |
+| 部分修 | A09 概率口径：API 已返回「未见张数，非摸牌概率」，建议层仍有固定 95%/90% | 归 P1/P4 |
+| 部分修 | A10（界面侧）结构成牌与 8 番起和仍共用 `isWinning` | 缺陷 `M01+A10`、`M05+A10`；守卫 `structural completeness and eight-fan eligibility…` 固定了当前分离方式 |
+| 未修 | A04 特殊和型结构（全不靠/七星不靠/组合龙） | 缺陷 `A04` |
+| 未修 | M01 番种覆盖（大三元、清龙、三色三同顺等） | 缺陷 `M01`、`M01+M05`、`M01+A10` |
+| 未修 | M02 明碰当暗刻、误判碰碰和 | 缺陷 `M02` |
+| 未修 | M03 明暗杠双计、四归一含杠、`Meld` 无杠种类 | 缺陷 `M03`×2 |
+| 未修 | M04 不求人无自摸条件 | 缺陷 `M04` |
+| 未修 | M05 全带幺/平和不看合法拆分 | 缺陷 `M05+A10`、`M05`、`M01+M05` |
+| 未修 | M06 四张同牌按一对计 | 缺陷 `M06` |
+| 未修 | M07 三风刻判据；明碰计暗刻 | 缺陷 `M07`（箭刻暗手部分仅静态确认） |
+| 待证实 | M08 不计/另计为全局 ID 过滤；M09 `calculateMCRExtras` 重复拼入副露并 `slice` 截断 | 静态确认（`utils/mcrPatterns.ts:61–121`、`:433–449`），本轮未构造牌例 |
+| 未修 | S01 清对 6 番/64 倍口径 | 缺陷 `S01` |
+| 未修 | S03 刻子重复计、S04 带幺九、S05 三根七对 | 缺陷 `S03`、`S04`、`S05` |
+| 未修 | S06 规则预设与配置（`SICHUAN_RULES` 未成为识别器统一来源） | 静态确认（`constants.ts:510`、`utils/sichuanAnalyzer.ts`），归 P2 |
+| 未修 | 建议层三项：`costToMakeSeq` 只判「存在」、五门齐重复计顺子、海底按 13/14 暗手 | 缺陷 `P3-建议`×3 |
+
+**本轮未覆盖**：U/E/R/D 各条（UI、移动端、构建、文档）留在 P1/P4；P0 明确不改 UI 与两套计分体系。Android 真机、离线启动、390×844 视口本轮均未实测。
+
+### 2.2 施工注意（P2/P3 修复时）
+
+- 先跑 `npm test` 看对应 `DEFECT` 行，把「当前实际」当复现入口，修完把断言改成正确值。
+- 面子/番种判定统一经过**候选合法拆分 + 剩余牌张计数**，不要沿用「存在即算一组」。
+- 涉及番种表的改动同步 `constants.ts` 与识别器；新增负例与不计/套算例，不只加正例。
 
 ## 3. 录牌与结果状态（P1，优先实施的最小可用性改进）
 
@@ -97,11 +134,17 @@
 - 删除只限本次自己新增且确认无用的内容，不清理用户旧资源、不自动移除 Android 项目、不重写整个 README。
 - 简化之后重新跑对应回归、`npm run typecheck`、`npm run build`，用 `git diff --check` 查差异；需修改本计划时直接更新本文档，不创建层层递归的新计划文档。
 
-## 8. DeepSeek 执行与交接
+**P0 实际执行结果**：本轮**未新增任何生产代码、模块、依赖、配置或规则开关**，改动只有 `tests/regression.ts` 与本文档。唯一的临时产物是诊断探针目录 `.p0probe/`，已删除。因此没有可精简的新增抽象。
 
-**首次执行仅请求 P0（验证基线＋测试与问题归档），不要同时启动 P1–P4。** 等用户审阅报告后决定下一批。
+**已记录、留给 P4 判断的既有冗余**（本轮不动，属用户既有代码）：
 
-每批最小报告格式：本批目标；参考资料与许可证检查；已确认错误与修复文件；新增正反例与运行命令及输出摘要；未完成/冲突规则；精简清单（保留/删减）；当前 Git 状态。不自行 commit/push/merge，除非用户另有明确授权。
+- `utils/tileHelpers.ts` 的 `isHonors/isTerminal/isTerminalOrHonor/isSimple/isDragon/isWind/isGreen/isReversible` 与 `utils/mcrPatterns.ts:36–56` 重复；若 P3 改动触及，再合并为一个来源。
+- `scripts/generate-android-icons.js` 与 `.cjs` 重复（E04），须先核对用户改动再合并。
+- `utils/shantenCalculator.ts` 的 `standardShanten` 已含记忆化；参考仓库的位掩码剪枝在 14 张规模下未必需要，**不因参考仓库而引入**。
+
+## 8. 执行与交接
+
+**阶段状态**：P0 已完成并交付报告，等待用户确认后再启动 P1–P4，不要自行展开。每批最小报告格式：本批目标；参考资料与许可证检查；已确认错误与修复文件；新增正反例与运行命令及输出摘要；未完成/冲突规则；精简清单（保留/删减）；当前 Git 状态。本地提交需用户明确授权；**不推送、不合并 `main`、不发布**。
 
 Windows PowerShell 在项目根目录执行：
 
@@ -116,4 +159,10 @@ git diff --check
 git diff --stat
 ```
 
+**环境注意（2026-10-10 实测）**：`web_fetch` 访问 `github.com` / `raw.githubusercontent.com` / `api.github.com` 全部失败（DNS 解析到非公网地址）；改用 `pwsh` 的 `Invoke-WebRequest` 公网 GET 全部成功（`https://api.github.com/repos/<owner>/<repo>/git/trees/HEAD?recursive=1` 与 `https://raw.githubusercontent.com/<owner>/<repo>/HEAD/<path>`）。读取外部参考仓库时用后者。
+
 **操作注意**：主线已有 Codex 修复；不要从历史审计旧行号直接判定今天仍坏。只有打开现有源码并复现后才改。任何新增代码尽量限制于 `utils/`、`components/`、`types.ts`、`constants.ts`、`tests/`。
+
+## 9. Changelog
+
+- **2026-10-10 · P0（本轮）**：在 `plan/reference-guided-restructure-20261010` 上完成验证基线。`npm ci/test/typecheck/build` 全绿；`tests/regression.ts` 由 10 项扩到 **17 项守卫 + 19 项缺陷快照**；旧审计逐条对照并写入 §2.1；六个参考仓库逐个核验许可证与文件路径（§1）；计划文本按 §7 精简——原「P0 待办」改为完成记录，删去已完成的执行步骤。未改 UI、未改两套计分体系、未提交上游。
