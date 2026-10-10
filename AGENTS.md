@@ -1,31 +1,29 @@
 # Mahjong Copilot · AGENTS.md
 
-## 当前阶段与交接
+## 当前阶段
 
-- 当前授权：**P1 基础修复 + P1 交互余项 + GitHub Actions 验证/Debug APK 打包**。先读 [精简施工计划](docs/RESTRUCTURE_PLAN_2026-10-10.md) 和 [P0 测试](tests/regression.ts)。历史问题仅参考 [ISSUE_AUDIT](docs/ISSUE_AUDIT_2026-10-10.md)、[旧修补计划](docs/REPAIR_PLAN.md)。
-- 用户已授权在工作分支提交；**禁止自行合并/直接修改 main、发布签名 APK 或自动进入 P2/P3**。任何本地操作先 `git status --short`，保留未提交改动，禁止 `reset --hard`、`git clean -fd`、强制覆盖。
-- 2026-10-10 P1 基础修复已在 `feat/p1-foundation-ci-20261010` 提交：`AnalysisResult.status` 显式区分无效、不完整、死叫与结构成牌待核；无效输入 `shanten=null`；死叫 `isReady=false`；UI 不显示经验成功率；已增加相应回归。**不要重复设计状态体系或反向恢复旧断言**。
-- P1 交互余项已在同一分支完成：文本牌串录入（唯一新增模块 `utils/entryEditing.ts`）、一步撤销、按玩法局面恢复、添加失败提示与吃牌数量校验、键盘内分析入口与遮挡滚动、副露显式 `×` 删除。390×844 已实测，记录见 [精简施工计划](docs/RESTRUCTURE_PLAN_2026-10-10.md)。
+- **P0/P1 已完成；现在只执行 P2 四川血战计番修复**。先读 [精简计划](docs/RESTRUCTURE_PLAN_2026-10-10.md)、[现有测试](tests/regression.ts) 和涉及的源文件。历史审计仅作参考，不重做已修内容。
+- 本分支：`feat/p2-sichuan-rules-20261010`，从 P1 已验证分支衍生。用户授权在开发分支修改和提交；**不擅自合并/修改 main，不发布正式签名 APK，不启动 P3**。保护本地未提交改动，禁止强制清理或覆盖。
+- P1 收尾已在本分支提交：读取 localStorage 拒绝重复/空牌 ID 和副露 ID；可操作的牌改成原生按钮，支持 Tab、Enter、Space 和牌名朗读。**不得还原为 div 点击或改掉牌面风格**。
 
-## 项目边界
+## 算法边界与 P2 目标
 
-- 保留 React 19 + TypeScript + Vite + Capacitor 结构与当前深蓝／霓虹配色、拟物麻将牌和圆角视觉。只优化录入、可用性、结果展示和移动端细节；不整体换肤。
-- 不引入 AI/OCR/YOLO、云端状态、数据库、服务器、Redux/全局状态机、麻将规则 DSL、插件体系、跨语言运行时或“一次补完 81 番”的大工程。
-- 已有 `utils/mahjongLogic.ts` 与现有组件即可；需要时新增**一个**纯牌串解析工具，不增加独立输入框架或复杂撤销记录。
-- 输入编辑可以容纳1–14张等效牌；**分析**只接受合法13/14等效张数，不应强迫用户必须一次录满。牌数=`hand.length+melds.length*3`；杠实体4张；手牌＋副露＋牌河同牌至多4张。失败操作不得部分污染状态。
-- 区分非法、不完整、成牌结构、可用听牌、死叫、规则计番与倍率/结算。死叫保留待牌明细但 `isReady=false`；无效与不完整不显示数字向听。没有证据不得显示“90%/95%成功率”。
-- 国标目前不覆盖81番及全部自摸/抢杠/门风上下文；四川/重庆规则未统一。不得把参考番数当正式结算，`33344466699977s` 的倍率须由有出处的规则定义，不默认16倍。
-- 禁止用 `any`、`as any`、`@ts-ignore` 掩盖新增类型问题。
+- 先采用一套**明确注明来源的平台示例规则**；不得把四川/重庆地理名称当统一计番标准。新规则只作用于四川模式，国标 MCR 维持原状。
+- 把 **合法结构、番型、指数番、根、自摸/点炮条件、封顶后的倍数** 分清。一个实体牌不能重复占用不同面子；已经暴露的碰/杠不得在暗手再使用或重复计刻。
+- 参考牌型：`33344466699977s` 是清对、无根；`11114444777799s` 是四张牌拆成两对的七对且有三根；`12378911m123789p` 可分为含幺九的顺子与将。所有倍率必须依据注明的规则。
+- 没有自摸、杠类型、胡牌来源、四家结算上下文，**不自动推断并计这些分**。不提供“精确胜率”或没有依据的 95% 推荐概率；未实现结算时界面只能称“参考计番”。
+- 优先修复现有 `utils/sichuanAnalyzer.ts`、`constants.ts`、`utils/mahjongLogic.ts` 中的重复计数/牌型错误。确实需要时只增加**一个小型计番纯函数**；不得引入规则 DSL、插件系统、通用麻将引擎、跨语言服务、Redux、云端同步或 OCR。不得为未来川渝变体做多层抽象。
+- **保留原 React/TypeScript/Vite/Capacitor 结构与现有麻将牌、深蓝/荧光绿/玫红卡片设计。** P2 非整体 UI 重设计阶段。不得使用 `any`、`as any`、`@ts-ignore` 跳过类型问题。
 
-## 测试与工作流
+## 测试、交付与清理
 
-- **27项P0/P1守卫**与**18项已知问题行为快照**用途不同：守卫表达应永远成立的正确行为；`defect(...)` 故意锁定旧输出，修某缺陷时必须把它改为正确断言，而不是仅更新旧快照值。尚未确定规则来源的番数只是观测行为，不得宣称“已证实规则错误”。
-- 运行 `npm ci`、`npm test`、`npm run typecheck`、`npm run build`；更新UI时测390×844、刷新、撤销、键盘打开时分析入口与无障碍。未经实际运行，不得声称通过。
-- [.github/workflows/verify-and-package.yml](.github/workflows/verify-and-package.yml) 在指定分支、PR、手动触发时验证 Web，并尝试构建 **Android Debug APK**；上传 `web-dist` 与 `mahjong-copilot-debug-apk`。Debug APK 不是发布签名包，CI 成功不能替代安卓真机/离线验证；工作流失败优先分析日志、最小修复。
-- 每批报告改动、测试证据、尚未完成及精简动作；禁止为了“架构完整”创造闲置代码、依赖、配置或新一轮重复计划。完成 P1 后删除已完成待办与多余设计，不影响 P2/P3 的核心牌例。
+- 现有 `test(...)` 为正确性守卫；`defect(...)` 为**旧错误输出快照，不是已修复测试**。修复某一条 P2 缺陷时，把它转为正确行为断言，并删除旧错误快照；不要只刷新错误期望。P3 的既有快照保持，不提前扩张。
+- 至少覆盖：清对无根、三根七对/清七对、已碰面子不可重复计对对胡、123/789带幺九、定缺与非法字牌、有效/无效张数、规则封顶与未授权的事件加番。每项测试都需注明规则来源与输入上下文。
+- 每批运行 `npm test`、`npm run typecheck`、`npm run build`；查看 [Actions](https://github.com/Adrerie/Mahjong-Copilot/actions) 的 Web/Android Debug APK 结果。工作流成功不代表已在真机或离线场景验证。
+- 一批完成即删减冗余：删除无用规则选项/包装层、重复配置、试验代码与过时计划文字；只保留能支撑验收的实现、牌例和结果。简短报告变更、测试、尚存限制、清理结果，**不自动进入 P3**。
 
-## 外部参考与许可
+## 外部参考与版权
 
-- 国标对照：`ailab-pku/PyMahjongGB`、`zheng-fan/GB-Mahjong`（MIT，需保留上游相应许可）。
-- 向听参考：`MahjongRepository/mahjong`（MIT，日麻规则不可直接套用）；川麻选叫参考：`luxinghong/sichuan-mahjong-analyzer`（LICENSE/README 权利表述矛盾，未澄清只研读）。
-- UI 参考：`PaiForge/mahjong-react-ui`（代码声明 MIT，牌图素材许可另审）；流程参考：`alanfeiyuchang/majiang_calculator`（仅个人使用，**禁止复制代码、测试、图片、模型**）。
+- 四川实例牌桌：[Hi8 血战到底规则](https://hi8.com/g/sichuanmajiang)：平胡0、清一色2、对对胡1、七对2、根每个+1、最高4指数番（16倍），只作为**该牌桌标注的参考口径**，并非四川通用规范。实施前核对来源是否仍一致。
+- 可交叉比对 [腾讯云社区转载的四川规则实例](https://cloud.tencent.cn/developer/article/1069132)，其规则与 Hi8 不完全相同，不能混合使用；`luxinghong/sichuan-mahjong-analyzer` 的 LICENSE 和 README 表述冲突，澄清前仅阅读其思路。
+- 国标参考 `ailab-pku/PyMahjongGB` 和 `zheng-fan/GB-Mahjong`，P2 不复制/移植；`alanfeiyuchang/majiang_calculator` 仅允许个人使用，不复用代码、图片、测试及模型。其他素材须另核许可证。
