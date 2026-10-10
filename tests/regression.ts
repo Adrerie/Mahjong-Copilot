@@ -32,6 +32,13 @@ import {
   recognizeMCRPatterns,
 } from '../utils/mahjongLogic';
 import { validateGameState } from '../utils/inputValidation';
+import {
+  decodeEntryState,
+  encodeEntryState,
+  parseTileText,
+  planTextHand,
+  planTileAdd,
+} from '../utils/entryEditing';
 
 // ---------- 构造辅助 ----------
 
@@ -234,7 +241,156 @@ test('an invalid or incomplete position returns warnings instead of a verdict', 
 });
 
 // ============================================================
-// 三、已确认缺陷（行为快照）
+// 三、P1 录入门槛：文本解析、原子替换、张数边界与局面恢复
+// ============================================================
+
+/** 牌串 → 便于断言的 `值+花色` 列表。 */
+const keys = (list: Tile[]): string[] => list.map(t => `${t.value}${t.suit}`);
+
+test('text entry reads the same hand from both notations', () => {
+  const expected = [...'33344466699977'].map(d => `${d}s`);
+  const letter = parseTileText('33344466699977s', GameMode.Sichuan);
+  const chinese = parseTileText('33344466699977条', GameMode.Sichuan);
+  assert.equal(letter.outcome, 'parsed');
+  assert.equal(chinese.outcome, 'parsed');
+  if (letter.outcome !== 'parsed' || chinese.outcome !== 'parsed') return;
+  assert.deepEqual(keys(letter.tiles), expected);
+  assert.deepEqual(keys(chinese.tiles), expected);
+  assert.equal(letter.tiles.length, 14);
+
+  // 混合花色 + 字牌，以及空格/斜杠分隔与繁体后缀
+  const mixed = parseTileText('123m456p789s11z', GameMode.MCR);
+  assert.equal(mixed.outcome, 'parsed');
+  if (mixed.outcome === 'parsed') {
+    assert.deepEqual(keys(mixed.tiles), ['1m', '2m', '3m', '4p', '5p', '6p', '7s', '8s', '9s', '1z', '1z']);
+  }
+  const separated = parseTileText('123m 456p / 789s', GameMode.MCR);
+  const traditional = parseTileText('123萬456條', GameMode.MCR);
+  assert.equal(separated.outcome === 'parsed' ? separated.tiles.length : 0, 9);
+  assert.deepEqual(
+    traditional.outcome === 'parsed' ? keys(traditional.tiles) : [],
+    ['1m', '2m', '3m', '4s', '5s', '6s'],
+  );
+  // 单张和一整串都是合法录入，1–14 张的中间态允许录入但不允许分析
+  assert.equal(parseTileText('1p', GameMode.MCR).outcome, 'parsed');
+});
+
+test('text entry rejects bad strings with a reason', () => {
+  const malformed = ['33344466699977x', '123', '0m', '10m', '8z', '11111m', '123456789123456m', '', 'm123'];
+  for (const text of malformed) {
+    const parsed = parseTileText(text, GameMode.MCR);
+    assert.equal(parsed.outcome, 'rejected', `“${text}” 应被拒绝`);
+    assert.ok(parsed.outcome === 'rejected' && parsed.message.zh.length > 0 && parsed.message.en.length > 0);
+  }
+  // 川麻：无字牌、最多两门
+  assert.equal(parseTileText('11z', GameMode.Sichuan).outcome, 'rejected');
+  assert.equal(parseTileText('123m456p789s', GameMode.Sichuan).outcome, 'rejected');
+  assert.equal(parseTileText('123m456p789s', GameMode.MCR).outcome, 'parsed');
+});
+
+test('text replacement is atomic and never mutates the previous position', () => {
+  const before = state([...tiles('123', Suit.Man)], [], { discards: tiles('9', Suit.Sou) });
+  const rejected = planTextHand(before, '99999p');
+  assert.equal(rejected.outcome, 'rejected');
+  assert.deepEqual(keys(before.hand), ['1m', '2m', '3m']);
+  assert.deepEqual(keys(before.discards), ['9s']);
+
+  const applied = planTextHand(before, '33344466699977s');
+  assert.equal(applied.outcome, 'applied');
+  if (applied.outcome !== 'applied') return;
+  assert.equal(applied.state.hand.length, 14);
+  assert.deepEqual(keys(before.hand), ['1m', '2m', '3m'], '替换成功也不得改写旧局面，否则一步撤销会失真');
+  assert.deepEqual(keys(applied.state.discards), ['9s'], '替换暗手不自动删除牌河');
+  assert.notStrictEqual(applied.state, before);
+});
+
+test('text replacement counts copies in melds and river', () => {
+  const withMeld = state(tiles('12', Suit.Man), [pong(1, Suit.Pin)], { discards: tiles('9', Suit.Sou) });
+  assert.equal(planTextHand(withMeld, '1111p').outcome, 'rejected');
+  assert.equal(planTextHand(withMeld, '11p').outcome, 'rejected');
+  assert.equal(planTextHand(withMeld, '99s').outcome, 'applied');
+});
+
+test('adding tiles checks every copy of the whole position before committing', () => {
+  const fourEights = state([...tiles('8888', Suit.Man), ...tiles('123', Suit.Pin)]);
+  assert.equal(planTileAdd(fourEights, { zone: 'hand', meldType: 'pong', tile: createTile(Suit.Man, 8) }).outcome, 'rejected');
+  // 吃 7m 需要 7m/8m/9m：8m 已满 → 拒绝；吃 6m 的第二张 8m 同样超四 → 拒绝
+  assert.equal(planTileAdd(fourEights, { zone: 'melds', meldType: 'chi', tile: createTile(Suit.Man, 7) }).outcome, 'rejected');
+  assert.equal(planTileAdd(fourEights, { zone: 'melds', meldType: 'chi', tile: createTile(Suit.Man, 6) }).outcome, 'rejected');
+
+  // 牌河里的已知牌同样计入四张上限
+  const riverHeld = state(tiles('11', Suit.Pin), [], { discards: tiles('11', Suit.Pin) });
+  assert.equal(planTileAdd(riverHeld, { zone: 'hand', meldType: 'pong', tile: createTile(Suit.Pin, 1) }).outcome, 'rejected');
+  assert.equal(planTileAdd(riverHeld, { zone: 'discards', meldType: 'pong', tile: createTile(Suit.Pin, 1) }).outcome, 'rejected');
+
+  // 合法添加仍应通过
+  const ok = planTileAdd(state(tiles('123', Suit.Man)), { zone: 'hand', meldType: 'pong', tile: createTile(Suit.Pin, 5) });
+  assert.equal(ok.outcome, 'applied');
+});
+
+test('entry bounds: 14 effective tiles, four melds and chow span', () => {
+  const full = state([...tiles('123456789', Suit.Man), ...tiles('12345', Suit.Pin)]);
+  const handFull = planTileAdd(full, { zone: 'hand', meldType: 'pong', tile: createTile(Suit.Sou, 5) });
+  assert.equal(handFull.outcome, 'rejected');
+  assert.ok(handFull.outcome === 'rejected' && handFull.message.zh.includes('手牌已满'));
+
+  const threeMelds = [chi('123', Suit.Man), chi('234', Suit.Pin), chi('345', Suit.Sou)];
+  const withMelds = state(tiles('12', Suit.Man), threeMelds);
+  assert.equal(effectiveTiles(withMelds.hand, withMelds.melds), 11);
+  const fourth = planTileAdd(withMelds, { zone: 'melds', meldType: 'pong', tile: createTile(Suit.Pin, 9) });
+  assert.equal(fourth.outcome, 'applied');
+  const fourMelds = fourth.outcome === 'applied' ? fourth.state : withMelds;
+  assert.equal(effectiveTiles(fourMelds.hand, fourMelds.melds), 14);
+  assert.equal(planTileAdd(fourMelds, { zone: 'melds', meldType: 'pong', tile: createTile(Suit.Sou, 9) }).outcome, 'rejected');
+
+  const short = state(tiles('12', Suit.Man));
+  assert.equal(planTileAdd(short, { zone: 'melds', meldType: 'chi', tile: createTile(Suit.Man, 8) }).outcome, 'rejected');
+  assert.equal(planTileAdd(short, { zone: 'melds', meldType: 'chi', tile: createTile(Suit.Man, 7) }).outcome, 'applied');
+});
+
+test('Sichuan entry refuses honors and chows before committing', () => {
+  const hand = sichuan(tiles('123', Suit.Man), Suit.Sou);
+  assert.equal(planTileAdd(hand, { zone: 'hand', meldType: 'pong', tile: createTile(Suit.Zihai, 1) }).outcome, 'rejected');
+  assert.equal(planTileAdd(hand, { zone: 'melds', meldType: 'chi', tile: createTile(Suit.Man, 1) }).outcome, 'rejected');
+  assert.equal(planTileAdd(hand, { zone: 'hand', meldType: 'pong', tile: createTile(Suit.Man, 4) }).outcome, 'applied');
+});
+
+test('saved positions round-trip per mode and corrupt data is ignored', () => {
+  const saved = state([...tiles('123', Suit.Man)], [pong(5, Suit.Pin)], {
+    discards: tiles('9', Suit.Sou), wallCount: 61,
+  });
+  const restored = decodeEntryState(encodeEntryState(saved), GameMode.MCR);
+  assert.ok(restored);
+  assert.deepEqual(keys(restored.hand), ['1m', '2m', '3m']);
+  assert.deepEqual(keys(restored.discards), ['9s']);
+  assert.equal(restored.wallCount, 61);
+  assert.equal(restored.melds.length, 1);
+
+  // 11 张的录入中间态也要能恢复，不能因为不足 13 张被当成损坏数据丢弃
+  const partial = state([...tiles('123', Suit.Man), ...tiles('456', Suit.Pin), ...tiles('789', Suit.Sou), ...tiles('11', Suit.Zihai)]);
+  assert.equal(decodeEntryState(encodeEntryState(partial), GameMode.MCR)?.hand.length, 11);
+  // 川麻定缺与墙数一并恢复
+  const sichuanSaved = sichuan(tiles('123456', Suit.Man), Suit.Pin, [], { wallCount: 40 });
+  const sichuanRestored = decodeEntryState(encodeEntryState(sichuanSaved), GameMode.Sichuan);
+  assert.equal(sichuanRestored?.voidSuit, Suit.Pin);
+  assert.equal(sichuanRestored?.wallCount, 40);
+
+  const wrap = (stateValue: unknown) => JSON.stringify({ version: 1, state: stateValue });
+  assert.equal(decodeEntryState(null, GameMode.MCR), null);
+  assert.equal(decodeEntryState('{oops', GameMode.MCR), null);
+  assert.equal(decodeEntryState('[]', GameMode.MCR), null);
+  assert.equal(decodeEntryState('{"version":1,"state":{}}', GameMode.MCR), null);
+  assert.equal(decodeEntryState(JSON.stringify({ version: 2, state: saved }), GameMode.MCR), null);
+  assert.equal(decodeEntryState(encodeEntryState(saved), GameMode.Sichuan), null, '玩法不符时不得串用另一套牌局');
+  assert.equal(decodeEntryState(wrap({ ...saved, hand: tiles('11111', Suit.Man) }), GameMode.MCR), null);
+  assert.equal(decodeEntryState(wrap({ ...saved, hand: [{ id: 'x', suit: Suit.Man, value: 10 }] }), GameMode.MCR), null);
+  assert.equal(decodeEntryState(wrap({ ...saved, hand: 'nope' }), GameMode.MCR), null);
+  assert.equal(decodeEntryState(wrap({ ...saved, wallCount: 999 }), GameMode.MCR), null);
+  assert.equal(decodeEntryState(wrap({ ...saved, voidSuit: 'x' }), GameMode.MCR), null);
+});
+
+// ============================================================
+// 四、已确认缺陷（行为快照）
 // ============================================================
 
 defect('A04', 'P3a', '全不靠 / 七星不靠 / 组合龙 不是 checkWinning 认可的和牌结构',

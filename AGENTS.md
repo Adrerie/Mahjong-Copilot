@@ -5,7 +5,7 @@
 - 当前授权：**P1 基础修复 + P1 交互余项 + GitHub Actions 验证/Debug APK 打包**。先读 [精简施工计划](docs/RESTRUCTURE_PLAN_2026-10-10.md) 和 [P0 测试](tests/regression.ts)。历史问题仅参考 [ISSUE_AUDIT](docs/ISSUE_AUDIT_2026-10-10.md)、[旧修补计划](docs/REPAIR_PLAN.md)。
 - 用户已授权在工作分支提交；**禁止自行合并/直接修改 main、发布签名 APK 或自动进入 P2/P3**。任何本地操作先 `git status --short`，保留未提交改动，禁止 `reset --hard`、`git clean -fd`、强制覆盖。
 - 2026-10-10 P1 基础修复已在 `feat/p1-foundation-ci-20261010` 提交：`AnalysisResult.status` 显式区分无效、不完整、死叫与结构成牌待核；无效输入 `shanten=null`；死叫 `isReady=false`；UI 不显示经验成功率；已增加相应回归。**不要重复设计状态体系或反向恢复旧断言**。
-- 尚未完成的 P1：文本牌串输入、一步撤销、局面恢复、添加失败提示及吃牌数量校验、键盘/触屏体验；按计划逐项最小修复。
+- P1 交互余项已在同一分支完成：文本牌串录入（唯一新增模块 `utils/entryEditing.ts`）、一步撤销、按玩法局面恢复、添加失败提示与吃牌数量校验、键盘内分析入口与遮挡滚动、副露显式 `×` 删除。390×844 已实测，记录见 [精简施工计划](docs/RESTRUCTURE_PLAN_2026-10-10.md)。
 
 ## 项目边界
 
@@ -19,7 +19,7 @@
 
 ## 测试与工作流
 
-- **17项P0/P1守卫**与**18项已知问题行为快照**用途不同：守卫表达应永远成立的正确行为；`defect(...)` 故意锁定旧输出，修某缺陷时必须把它改为正确断言，而不是仅更新旧快照值。尚未确定规则来源的番数只是观测行为，不得宣称“已证实规则错误”。
+- **25项P0/P1守卫**与**18项已知问题行为快照**用途不同：守卫表达应永远成立的正确行为；`defect(...)` 故意锁定旧输出，修某缺陷时必须把它改为正确断言，而不是仅更新旧快照值。尚未确定规则来源的番数只是观测行为，不得宣称“已证实规则错误”。
 - 运行 `npm ci`、`npm test`、`npm run typecheck`、`npm run build`；更新UI时测390×844、刷新、撤销、键盘打开时分析入口与无障碍。未经实际运行，不得声称通过。
 - [.github/workflows/verify-and-package.yml](.github/workflows/verify-and-package.yml) 在指定分支、PR、手动触发时验证 Web，并尝试构建 **Android Debug APK**；上传 `web-dist` 与 `mahjong-copilot-debug-apk`。Debug APK 不是发布签名包，CI 成功不能替代安卓真机/离线验证；工作流失败优先分析日志、最小修复。
 - 每批报告改动、测试证据、尚未完成及精简动作；禁止为了“架构完整”创造闲置代码、依赖、配置或新一轮重复计划。完成 P1 后删除已完成待办与多余设计，不影响 P2/P3 的核心牌例。

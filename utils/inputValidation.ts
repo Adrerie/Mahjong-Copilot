@@ -1,4 +1,5 @@
 import { GameMode, GameState, Language, Suit, Tile } from '../types';
+import { MAX_WALL_MCR, MAX_WALL_SICHUAN } from '../constants';
 import { countTiles } from './tileHelpers';
 
 export const isTile = (value: unknown): value is Tile => {
@@ -26,7 +27,7 @@ export const validateGameState = (state: GameState, lang: Language, requireCompl
   }
   const total = state.hand.length + state.melds.length * 3;
   if (requireComplete && total !== 13 && total !== 14) errors.push(error('请录入13或14张等效牌（杠按3张计算）', 'Enter 13 or 14 effective tiles (a kong counts as three)'));
-  if (!Number.isInteger(state.wallCount) || state.wallCount < 0 || state.wallCount > (state.mode === GameMode.Sichuan ? 108 : 144)) errors.push(error('牌墙数量超出范围', 'Wall count is out of range'));
+  if (!Number.isInteger(state.wallCount) || state.wallCount < 0 || state.wallCount > (state.mode === GameMode.Sichuan ? MAX_WALL_SICHUAN : MAX_WALL_MCR)) errors.push(error('牌墙数量超出范围', 'Wall count is out of range'));
   if (state.mode === GameMode.Sichuan) {
     if (all.some(t => t.suit === Suit.Zihai) || state.melds.some(m => m.type === 'chi')) errors.push(error('川麻无字牌且不能吃牌', 'Sichuan uses no honors or chows'));
     if (requireComplete && !state.voidSuit) errors.push(error('请选择定缺花色', 'Choose a void suit'));

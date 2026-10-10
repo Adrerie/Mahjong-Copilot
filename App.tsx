@@ -20,7 +20,7 @@ const App: React.FC = () => {
       {!currentMode ? (
         <ModeSelection onSelect={handleModeSelect} lang={lang} />
       ) : (
-        <InputScreen mode={currentMode} lang={lang} setLang={setLang} onBack={handleBack} />
+        <InputScreen key={currentMode} mode={currentMode} lang={lang} setLang={setLang} onBack={handleBack} />
       )}
     </div>
   );

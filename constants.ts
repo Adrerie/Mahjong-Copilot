@@ -4,6 +4,8 @@ import { Suit, Tile, Language } from './types';
 export const MAX_TILES_IN_HAND = 14; 
 export const INITIAL_WALL_MCR = 83;
 export const INITIAL_WALL_SICHUAN = 55;
+export const MAX_WALL_MCR = 144;
+export const MAX_WALL_SICHUAN = 108;
 
 export const THEME = {
   primary: '#CCFF00', // Acid Lime
@@ -53,6 +55,16 @@ export const TEXT = {
     emptyRiver: 'Add discards...',
     addingTo: 'Adding to',
     removeHint: 'Tap to remove',
+    textEntry: 'Text Entry',
+    textEntryHint: 'Number group + suit letter: s/m/p/z or 条/万/筒/字',
+    textEntryPlaceholder: 'e.g. 33344466699977s',
+    apply: 'Apply',
+    undo: 'Undo',
+    undoEmpty: 'Nothing to undo',
+    back: 'Back',
+    removeMeld: 'Delete this meld',
+    done: 'Done',
+    dismiss: 'Dismiss',
     analysisTitle: 'Analysis Report',
     handArea: 'My Tiles',
     targetPatterns: 'Target Patterns',
@@ -172,6 +184,16 @@ export const TEXT = {
     emptyRiver: '添加打出的牌...',
     addingTo: '当前输入',
     removeHint: '点击删除',
+    textEntry: '文本录牌',
+    textEntryHint: '一组数字紧跟花色：s/m/p/z 或 条/万/筒/字',
+    textEntryPlaceholder: '例：33344466699977s',
+    apply: '应用',
+    undo: '撤销',
+    undoEmpty: '没有可撤销的操作',
+    back: '返回',
+    removeMeld: '删除这副面子',
+    done: '收起',
+    dismiss: '关闭',
     analysisTitle: '分析报告',
     handArea: '我的牌',
     targetPatterns: '番种建议',
