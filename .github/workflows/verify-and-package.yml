@@ -12,6 +12,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   web:
     name: Test and build web
@@ -48,7 +52,10 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - uses: android-actions/setup-android@v3
+      # Ubuntu runners ship with Android SDK. Avoid setup-android@v3: it attempts
+      # to install the obsolete SDK package 'tools' and fails before Gradle runs.
+      - name: Check runner Android SDK
+        run: test -d "$ANDROID_HOME"
       - uses: gradle/actions/setup-gradle@v4
       - run: npm ci
       - run: npm run build
