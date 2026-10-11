@@ -588,11 +588,8 @@ test('Sichuan never adds 对对胡 and 带幺九 from two different decompositio
   assert.equal(score.cappedExponent, 2);
   assert.equal(score.multiplier, 4);
   assert.equal(analyzeGame(position, 'zh').suggestions[0]?.scoreText, '2 指数番 · 4 倍');
-  // 另一套拆分只在 details 里标注「不叠加」，不进入指数番。
-  assert.ok(
-    score.details.some(detail => detail.includes('对对胡') && detail.includes('不叠加') && detail.includes('待核')),
-    score.details.join(' | '),
-  );
+  // 替代拆分只用于内部择高，不在普通结果中显示，避免误导。
+  assert.ok(!score.details.some(detail => detail.includes('对对胡') || detail.includes('待核')));
   // 指数番仍等于选中拆分 + 根，未把两套拆分相加。
   assert.equal(score.uncappedExponent, score.patterns.reduce((total, hit) => total + hit.exponent, 0) + score.roots);
 });
