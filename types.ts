@@ -1,4 +1,4 @@
-
+﻿
 export enum Suit {
   Man = 'm', // Characters
   Pin = 'p', // Dots
@@ -12,6 +12,12 @@ export enum GameMode {
 }
 
 export type Language = 'en' | 'zh';
+
+/**
+ * 国标和牌来源：只有在已记录事实时才允许计「不求人 / 门前清 / 自摸」。
+ * 输入没有这个事实时必须保持 'unknown'，其结果只报「可确认番 + 待核」。
+ */
+export type WinSource = 'selfDraw' | 'claim' | 'unknown';
 
 export interface Tile {
   id: string; // Unique ID for React keys
@@ -69,4 +75,6 @@ export interface GameState {
   hand: Tile[];
   melds: Meld[];
   discards: Tile[];
+  /** 国标和牌来源；未记录时视为 'unknown'，不得据此计自摸/不求人/门前清。 */
+  winSource?: WinSource;
 }

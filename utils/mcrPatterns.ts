@@ -1,17 +1,18 @@
-/**
+﻿/**
  * 国标麻将番种识别模块
  * - 识别已成牌型中的番种
  * - 计算总番数和不计/另计规则
  */
 
-import { Tile, Meld, Suit } from '../types';
+import { Tile, Meld, Suit, WinSource, GameMode } from '../types';
 import { 
   createTile, getTileKey,
   MCR_88_FAN, MCR_64_FAN, MCR_48_FAN, MCR_32_FAN, MCR_24_FAN, MCR_16_FAN,
   MCR_12_FAN, MCR_8_FAN, MCR_6_FAN, MCR_4_FAN, MCR_2_FAN, MCR_1_FAN,
   MCRPattern
 } from '../constants';
-import { countTiles } from './tileHelpers';
+import { countTiles, countsToArray } from './tileHelpers';
+import { checkWinning, classifyKnittedHand, knittedRemainders } from './winningChecker';
 
 // 识别到的番种
 export interface RecognizedPattern {
@@ -122,11 +123,15 @@ export const calculateTotalFan = (patterns: RecognizedPattern[]): {
 
 /**
  * 识别手牌中的番种
+ * @param winSource 已记录的和牌来源；'unknown' 时不识别不求人、门前清、自摸。
  */
-export const recognizeMCRPatterns = (hand: Tile[], melds: Meld[]): RecognizedPattern[] => {
+export const recognizeMCRPatterns = (
+  hand: Tile[], melds: Meld[], winSource: WinSource = 'unknown',
+): RecognizedPattern[] => {
   const recognized: RecognizedPattern[] = [];
   const allTiles = [...hand, ...melds.flatMap(m => m.tiles)];
   const counts = countTiles(allTiles);
+  const countArray = countsToArray(counts);
   
   // 统计花色
   const suits = new Set(allTiles.filter(t => t.suit !== Suit.Zihai).map(t => t.suit));
@@ -228,6 +233,16 @@ export const recognizeMCRPatterns = (hand: Tile[], melds: Meld[]): RecognizedPat
     if (p) recognized.push({ pattern: p, count: 1 });
   }
   
+  // 七星不靠 (24) / 全不靠 (12)：无副露的 14 张孤张，147/258/369 分属三种花色
+  const knitted = melds.length === 0 ? classifyKnittedHand(countArray) : 'none';
+  if (knitted === 'sevenStars') {
+    const p = getPatternById('qiXingBuKao');
+    if (p) recognized.push({ pattern: p, count: 1 });
+  } else if (knitted === 'lesser') {
+    const p = getPatternById('quanBuKao');
+    if (p) recognized.push({ pattern: p, count: 1 });
+  }
+  
   // 全大 (789)
   if (allTiles.every(t => !isHonors(t) && t.value >= 7)) {
     const p = getPatternById('quanDa');
@@ -271,6 +286,12 @@ export const recognizeMCRPatterns = (hand: Tile[], melds: Meld[]): RecognizedPat
   // 小于五 (1234)
   if (allTiles.every(t => !isHonors(t) && t.value <= 4)) {
     const p = getPatternById('xiaoYuWu');
+    if (p) recognized.push({ pattern: p, count: 1 });
+  }
+  
+  // 组合龙 (12)：147/258/369 三组龙齐全，且整手牌是合法和牌结构
+  if (knittedRemainders(countArray).length > 0 && checkWinning(countArray, melds.length, GameMode.MCR)) {
+    const p = getPatternById('zuHeLong');
     if (p) recognized.push({ pattern: p, count: 1 });
   }
   
@@ -338,8 +359,8 @@ export const recognizeMCRPatterns = (hand: Tile[], melds: Meld[]): RecognizedPat
     if (p) recognized.push({ pattern: p, count: 1 });
   }
   
-  // 不求人（门前清自摸）
-  if (melds.length === 0) {
+  // 不求人（门前清自摸）：需要已记录的「自摸」事实，来源未知时不计
+  if (melds.length === 0 && winSource === 'selfDraw') {
     const p = getPatternById('buQiuRen');
     if (p) recognized.push({ pattern: p, count: 1 });
   }
@@ -360,8 +381,8 @@ export const recognizeMCRPatterns = (hand: Tile[], melds: Meld[]): RecognizedPat
     if (p) recognized.push({ pattern: p, count: dragonPongCount });
   }
   
-  // 门前清
-  if (melds.length === 0) {
+  // 门前清：需要已记录的「点和」事实（门清 + 别人打出的牌）
+  if (melds.length === 0 && winSource === 'claim') {
     const p = getPatternById('menQianQing');
     if (p) recognized.push({ pattern: p, count: 1 });
   }
@@ -417,7 +438,11 @@ export const recognizeMCRPatterns = (hand: Tile[], melds: Meld[]): RecognizedPat
     if (p) recognized.push({ pattern: p, count: 1 });
   }
   
-  // 自摸（需要额外参数判断，这里暂不加）
+  // 自摸（1番）：只在已记录自摸时计入；门清自摸时由不求人的 excludes 排除，不重复相加
+  if (winSource === 'selfDraw') {
+    const p = getPatternById('ziMo');
+    if (p) recognized.push({ pattern: p, count: 1 });
+  }
   
   return recognized;
 };

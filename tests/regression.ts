@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 算法回归基线（P0）
  *
  * 分两组：
@@ -11,7 +11,8 @@
  * - `1111223344m5566p` 记 7 对：四张同牌按两对计（国标七对定义）。
  * - 国标 8 番起和：结构成牌与合法起和必须分开表达。
  * - 国标平和/不求人定义参考 https://www.mindmahjong.com/adobe/20141120CEJ.pdf；
- *   规则预期中的自摸/点和条件须明确，现有 API 未提供这些字段，不能从快照推断实际合法起和。
+ *   P3a 起 API 用 `GameState.winSource` 记录自摸/点和，未记录即 'unknown'，此时不得计这三种番；
+ *   门风/圈风、和牌张/末张、明暗杠仍无字段，结果里只报「仍缺哪些上下文」。
  * - 川麻口径：采用 Hi8 血战到底示例牌桌记录的口径
  *   （https://hi8.com/g/sichuanmajiang，见 utils/sichuanAnalyzer.ts 的 SICHUAN_RULE）：
  *   平胡 0、对对胡 1、清一色 2、七对 2、带幺九 2、金钩钓 2（含对对胡），每根 +1，
@@ -19,7 +20,7 @@
  *   自摸/点炮、杠类型、海底等事件未建模，一律不加番。
  */
 import assert from 'node:assert/strict';
-import { GameMode, GameState, Meld, Suit, Tile } from '../types';
+import { GameMode, GameState, Meld, Suit, Tile, WinSource } from '../types';
 import { createTile, TEXT } from '../constants';
 import {
   analyzeGame,
@@ -59,16 +60,16 @@ const sichuan = (hand: Tile[], voidSuit: Suit | null, melds: Meld[] = [], extra:
   ({ mode: GameMode.Sichuan, hand, melds, discards: [], wallCount: 50, voidSuit, ...extra });
 
 const effectiveTiles = (hand: Tile[], melds: Meld[]): number => hand.length + melds.length * 3;
-/** 番种 id -> 叠加次数，按 id 排序，便于稳定比较。 */
-const patternCounts = (hand: Tile[], melds: Meld[] = []): Record<string, number> => {
+/** 番种 id -> 叠加次数，按 id 排序，便于稳定比较。winSource 未记录时用 'unknown'。 */
+const patternCounts = (hand: Tile[], melds: Meld[] = [], winSource: WinSource = 'unknown'): Record<string, number> => {
   const counts = new Map<string, number>();
-  for (const r of recognizeMCRPatterns(hand, melds)) {
+  for (const r of recognizeMCRPatterns(hand, melds, winSource)) {
     counts.set(r.pattern.id, (counts.get(r.pattern.id) ?? 0) + r.count);
   }
   return Object.fromEntries([...counts.entries()].sort((a, b) => a[0].localeCompare(b[0])));
 };
-const mcrFan = (hand: Tile[], melds: Meld[] = []): number =>
-  calculateTotalFan(recognizeMCRPatterns(hand, melds)).totalFan;
+const mcrFan = (hand: Tile[], melds: Meld[] = [], winSource: WinSource = 'unknown'): number =>
+  calculateTotalFan(recognizeMCRPatterns(hand, melds, winSource)).totalFan;
 
 // ---------- 运行器 ----------
 
@@ -669,24 +670,128 @@ test('Sichuan advice on an unfinished hand lists potentials without invented pro
 });
 
 // ============================================================
-// 五、已确认缺陷（行为快照）
+// 五、P3a 国标和牌上下文与特殊结构
 // ============================================================
 
-defect('A04', 'P3a', '全不靠 / 七星不靠 / 组合龙 不是 checkWinning 认可的和牌结构',
-  '147m258p3s1234567z 是七星不靠（24番），应被结构判定认作和牌',
-  { sevenHonorsKnitted: false, lesserKnitted: false, knittedStraight: false },
-  () => ({
-    sevenHonorsKnitted: checkWinning(countsToArray(countTiles([
-      ...tiles('147', Suit.Man), ...tiles('258', Suit.Pin), createTile(Suit.Sou, 3), ...tiles('1234567', Suit.Zihai)])), 0),
-    lesserKnitted: checkWinning(countsToArray(countTiles([
-      ...tiles('147', Suit.Man), ...tiles('258', Suit.Pin), ...tiles('369', Suit.Sou), ...tiles('12345', Suit.Zihai)])), 0),
-    knittedStraight: checkWinning(countsToArray(countTiles([
-      ...tiles('147', Suit.Man), ...tiles('258', Suit.Pin), ...tiles('369', Suit.Sou), ...tiles('111', Suit.Man), ...tiles('22', Suit.Pin)])), 0),
-  }));
+test('A04 MCR special structures are legal winning shapes (positive)', () => {
+  // 结构口径（国标特殊牌型）：147/258/369 不能错位地分属三种花色，孤张不得重复。
+  const sevenStars = [...tiles('147', Suit.Man), ...tiles('258', Suit.Pin), createTile(Suit.Sou, 3), ...tiles('1234567', Suit.Zihai)];
+  const lesserKnitted = [...tiles('147', Suit.Man), ...tiles('258', Suit.Pin), ...tiles('369', Suit.Sou), ...tiles('12345', Suit.Zihai)];
+  const knittedStraight = [...tiles('147', Suit.Man), ...tiles('258', Suit.Pin), ...tiles('369', Suit.Sou), ...tiles('111', Suit.Man), ...tiles('22', Suit.Pin)];
 
-defect('M01', 'P3c', '大三元未识别，用三暗刻等低番凑出 30 番',
+  assert.equal(checkWinning(countsToArray(countTiles(sevenStars)), 0), true);
+  assert.equal(checkWinning(countsToArray(countTiles(lesserKnitted)), 0), true);
+  assert.equal(checkWinning(countsToArray(countTiles(knittedStraight)), 0), true);
+  // 组合龙也可只有一副副露：9 张龙 + 将 收在暗手
+  assert.equal(checkWinning(countsToArray(countTiles([...tiles('147', Suit.Man), ...tiles('258', Suit.Pin), ...tiles('369', Suit.Sou), ...tiles('55', Suit.Man)])), 1), true);
+
+  // 番种：七星不靠 24（不叠全不靠）、全不靠 12、组合龙 12。
+  // 注：总番还受未修的 P3b 缺陷影响（全带幺在无副露时恒真，见下方 M05+A10 快照），
+  // 本批只断言特殊结构本身被正确识别与计番，不把该缺陷的总数写成期望值。
+  const sevenStarsFan = calculateMCRTotalFan(sevenStars, []);
+  assert.equal(sevenStarsFan.structuralWin, true);
+  assert.equal(sevenStarsFan.details.includes('七星不靠 (24番)'), true);
+  assert.equal(sevenStarsFan.patterns.some(p => p.id === 'quanBuKao'), false);
+  const lesserFan = calculateMCRTotalFan(lesserKnitted, []);
+  assert.equal(lesserFan.details.includes('全不靠 (12番)'), true);
+  assert.equal(lesserFan.patterns.some(p => p.id === 'qiXingBuKao'), false);
+  assert.equal(patternCounts(knittedStraight).zuHeLong, 1);
+  assert.equal(calculateMCRTotalFan(knittedStraight, []).patterns.find(p => p.id === 'zuHeLong')?.fan, 12);
+});
+
+test('A04 MCR special structures reject duplicates, short hands, shifted groups and melds (negative)', () => {
+  const duplicated = [...tiles('1477', Suit.Man), ...tiles('25', Suit.Pin), createTile(Suit.Sou, 3), ...tiles('1234567', Suit.Zihai)];
+  assert.equal(duplicated.length, 14);
+  assert.equal(checkWinning(countsToArray(countTiles(duplicated)), 0), false);
+  // 少一张 / 多一张
+  const short = [...tiles('147', Suit.Man), ...tiles('258', Suit.Pin), ...tiles('369', Suit.Sou), ...tiles('1234', Suit.Zihai)];
+  assert.equal(checkWinning(countsToArray(countTiles(short)), 0), false);
+  // 错位：两组龙落在同一花色（147m + 258m），也没有第三组
+  const shifted = [...tiles('147', Suit.Man), ...tiles('258', Suit.Man), ...tiles('369', Suit.Sou), ...tiles('111', Suit.Man), ...tiles('22', Suit.Pin)];
+  assert.equal(checkWinning(countsToArray(countTiles(shifted)), 0), false);
+  // 组合龙缺一张龙（36s 而不是 369s）
+  const brokenKnitted = [...tiles('147', Suit.Man), ...tiles('258', Suit.Pin), ...tiles('36', Suit.Sou), ...tiles('111', Suit.Man), ...tiles('22', Suit.Pin)];
+  assert.equal(brokenKnitted.length, 13);
+  assert.equal(checkWinning(countsToArray(countTiles(brokenKnitted)), 0), false);
+  // 带副露时七星不靠/全不靠不成立
+  const sevenStars = [...tiles('147', Suit.Man), ...tiles('258', Suit.Pin), createTile(Suit.Sou, 3), ...tiles('1234567', Suit.Zihai)];
+  assert.equal(checkWinning(countsToArray(countTiles(sevenStars)), 1), false);
+});
+
+test('M04 MCR 不求人 / 门前清 / 自摸 require a recorded win source', () => {
+  // 口径：不求人 = 门前清 + 自摸；门前清 = 门清 + 点和。没有来源事实时三者都不得自动成立。
+  const hand = [...tiles('234', Suit.Man), ...tiles('345', Suit.Man), ...tiles('567', Suit.Pin), ...tiles('456', Suit.Sou), ...tiles('55', Suit.Man)];
+  assert.equal(patternCounts(hand).buQiuRen ?? 0, 0);
+  assert.equal(patternCounts(hand).menQianQing ?? 0, 0);
+  assert.equal(patternCounts(hand).ziMo ?? 0, 0);
+
+  // 自摸：不求人成立，且用 excludes 去掉自摸/门前清，不重复相加
+  assert.equal(patternCounts(hand, [], 'selfDraw').buQiuRen, 1);
+  assert.equal(patternCounts(hand, [], 'selfDraw').menQianQing ?? 0, 0);
+  assert.deepEqual(calculateMCRTotalFan(hand, [], 'selfDraw').patterns.map(p => p.id).sort(), ['buQiuRen', 'duanYao']);
+
+  // 点和：门前清成立，不求人不成立
+  assert.equal(patternCounts(hand, [], 'claim').menQianQing, 1);
+  assert.equal(patternCounts(hand, [], 'claim').buQiuRen ?? 0, 0);
+
+  // 有副露：三种都不成立，但自摸（1番）仍与来源一致
+  const melds = [pong(1), pong(2), pong(3)];
+  const openHand = [...tiles('234', Suit.Man), ...tiles('55', Suit.Man)];
+  assert.equal(patternCounts(openHand, melds, 'selfDraw').ziMo, 1);
+  assert.equal(patternCounts(openHand, melds, 'selfDraw').buQiuRen ?? 0, 0);
+  assert.equal(patternCounts(openHand, melds).ziMo ?? 0, 0);
+
+  // 该牌例门清自摸也只有 4 + 2 = 6 番：来源未知时不认定起和
+  const unknown = calculateMCRTotalFan(hand, []);
+  assert.equal(unknown.structuralWin, true);
+  assert.equal(unknown.confirmedFan, 2);
+  assert.equal(unknown.maxPossibleFan, 6);
+  assert.equal(unknown.eligibility, 'unmet');
+  assert.equal(unknown.isValid, false);
+  assert.deepEqual(unknown.missingContext, ['winSource', 'winningTile', 'seatWind', 'kongType']);
+  assert.equal(calculateMCRTotalFan(hand, [], 'selfDraw').eligibility, 'unmet');
+  assert.equal(calculateMCRTotalFan(hand, [], 'claim').eligibility, 'unmet');
+});
+
+test('P3a unknown win source never claims the eight-fan minimum', () => {
+  // 123m234p345s678s99s：当前识别为全带幺4 + 无字1（平和/连六未识别）。
+  // 自摸可加不求人4 = 9 番，点和只加门前清2 = 7 番，因此来源未知时资格只能是「待核」。
+  const hand = [...tiles('123', Suit.Man), ...tiles('234', Suit.Pin), ...tiles('345', Suit.Sou), ...tiles('678', Suit.Sou), ...tiles('99', Suit.Sou)];
+  const unknown = calculateMCRTotalFan(hand, []);
+  assert.equal(unknown.confirmedFan, 5);
+  assert.equal(unknown.maxPossibleFan, 9);
+  assert.equal(unknown.eligibility, 'unverified');
+  assert.equal(unknown.isValid, false);
+  assert.equal(unknown.missingContext.includes('winSource'), true);
+
+  const selfDraw = calculateMCRTotalFan(hand, [], 'selfDraw');
+  assert.equal(selfDraw.confirmedFan, 9);
+  assert.equal(selfDraw.eligibility, 'met');
+  assert.equal(selfDraw.isValid, true);
+  assert.equal(selfDraw.missingContext.includes('winSource'), false);
+
+  const claim = calculateMCRTotalFan(hand, [], 'claim');
+  assert.equal(claim.confirmedFan, 7);
+  assert.equal(claim.eligibility, 'unmet');
+
+  // 未成牌结构不报可确认番，也不报上下文缺口
+  const notWinning = calculateMCRTotalFan([...tiles('123', Suit.Man), ...tiles('456', Suit.Man), ...tiles('789', Suit.Pin), ...tiles('55', Suit.Sou)], []);
+  assert.equal(notWinning.structuralWin, false);
+  assert.deepEqual(notWinning.missingContext, []);
+  assert.equal(notWinning.isValid, false);
+});
+
+// ============================================================
+// 六、已确认缺陷（行为快照）
+//
+// P3a 基线变化：以下涉及无副露手牌的快照，其 totalFan / isValid 已随 M04 修复下调
+// （不再自动计不求人 4 / 门前清 2）。缺陷本身（全带幺恒真、七对漏识别、明碰当暗刻、
+// 建议层缺牌与向听估算等）仍未修，故仍以快照保留而不是改成正确断言。
+// ============================================================
+
+defect('M01', 'P3c', '大三元未识别，用三暗刻等低番凑番（P3a 去掉自动不求人后为 26 番）',
   '555666777z + 12355m 应有大三元 88番',
-  { totalFan: 30, hasDaSanYuan: false, patterns: ['buQiuRen', 'hunYiSe', 'quanDaiYao', 'sanAnKe'] },
+  { totalFan: 26, hasDaSanYuan: false, patterns: ['hunYiSe', 'quanDaiYao', 'sanAnKe'] },
   () => {
     const hand = [...tiles('555666777', Suit.Zihai), ...tiles('12355', Suit.Man)];
     const api = calculateMCRTotalFan(hand, []);
@@ -695,7 +800,7 @@ defect('M01', 'P3c', '大三元未识别，用三暗刻等低番凑出 30 番',
 
 defect('M01+M05', 'P3b', '清龙未识别；同一手牌又错误加上全带幺',
   '123456789m + 12355p 应有清龙 16番；456m 与将牌55p 不含幺九，全带幺不应成立',
-  { totalFan: 10, hasQingLong: false, hasQuanDaiYao: true },
+  { totalFan: 6, hasQingLong: false, hasQuanDaiYao: true },
   () => {
     const hand = [...tiles('123456789', Suit.Man), ...tiles('12355', Suit.Pin)];
     const api = calculateMCRTotalFan(hand, []);
@@ -722,7 +827,7 @@ defect('M03', 'P3b', '同一副杠同时算双暗杠、双明杠、明杠与四�
 
 defect('M06', 'P3b', '四张相同牌按一对计，1111223344m5566p 的七对漏识别',
   '四张同牌应记两对，1111223344m5566p 是七对 24番',
-  { winning: true, totalFan: 12, isValid: true, hasQiDui: false },
+  { winning: true, totalFan: 8, isValid: true, hasQiDui: false },
   () => {
     const hand = [...tiles('1111223344', Suit.Man), ...tiles('5566', Suit.Pin)];
     const api = calculateMCRTotalFan(hand, []);
@@ -731,7 +836,7 @@ defect('M06', 'P3b', '四张相同牌按一对计，1111223344m5566p 的七对�
 
 defect('M01+A10', 'P3c', '合法 8 番牌型因三色三同顺未识别，被 isValid 判为不足 8 番（假阴性）',
   '234m234p234s + 567m + 55s 有三色三同顺8番，本身达到门槛；不求人另需确认门清自摸，当前未录和牌来源',
-  { totalFan: 6, isValid: false, hasSanSeSanTongShun: false },
+  { totalFan: 2, isValid: false, hasSanSeSanTongShun: false },
   () => {
     const hand = [...tiles('234', Suit.Man), ...tiles('234', Suit.Pin), ...tiles('234', Suit.Sou), ...tiles('567', Suit.Man), ...tiles('55', Suit.Sou)];
     const api = calculateMCRTotalFan(hand, []);
@@ -740,7 +845,7 @@ defect('M01+A10', 'P3c', '合法 8 番牌型因三色三同顺未识别，被 is
 
 defect('M05+A10', 'P3b', '全带幺在没有副露时恒真，把不足 8 番的牌型误判为可起和（假阳性）',
   '123m234p345s678s + 99s 在无花/事件、和6s且非绝张的条件下，门清点和为门前清2 + 平和2 + 连六1，自摸为不求人4 + 平和2 + 连六1，均不足8；平和不计无字，全带幺不成立。当前API未记录这些上下文',
-  { totalFan: 9, isValid: true, hasQuanDaiYao: true },
+  { totalFan: 5, isValid: false, hasQuanDaiYao: true },
   () => {
     const hand = [...tiles('123', Suit.Man), ...tiles('234', Suit.Pin), ...tiles('345', Suit.Sou), ...tiles('678', Suit.Sou), ...tiles('99', Suit.Sou)];
     const api = calculateMCRTotalFan(hand, []);
@@ -749,7 +854,7 @@ defect('M05+A10', 'P3b', '全带幺在没有副露时恒真，把不足 8 番的
 
 defect('P3-建议', 'P3b', 'costToMakeSeq 只看「存在」，123456789m 被重复用于 123/234/345，报出「一色三步高 缺 0 张」',
   '一色三步高需要同花色 123+234+345 共 9 张（1、5 各一张，2、4 各两张，3 三张）；仅 123456789m 时至少还缺 4 张',
-  { shanten: 2, missing: 0, probability: 80, fan: 25 },
+  { shanten: 2, missing: 0, probability: 80, fan: 21 },
   () => {
     const hand = [...tiles('123456789', Suit.Man), ...tiles('147', Suit.Pin), ...tiles('19', Suit.Sou)];
     const suggestion = analyzeMCR(hand, [], 'zh', 50).find(s => s.name.includes('一色三步高'));
@@ -758,7 +863,7 @@ defect('P3-建议', 'P3b', 'costToMakeSeq 只看「存在」，123456789m 被重
 
 defect('P3-建议', 'P3b', '五门齐用「存在即计一组」估算面子，向听被算成 0',
   '12345m + 123p + 456s + 1z + 5z 的 123/234/345 共用同一批万子，实际向听为 1，不是 0',
-  { realShanten: 1, claimedShanten: '向听0', fan: 14 },
+  { realShanten: 1, claimedShanten: '向听0', fan: 10 },
   () => {
     const hand = [...tiles('12345', Suit.Man), ...tiles('123', Suit.Pin), ...tiles('456', Suit.Sou), createTile(Suit.Zihai, 1), createTile(Suit.Zihai, 5)];
     const suggestion = analyzeMCR(hand, [], 'zh', 50).find(s => s.name.includes('五门齐'));
@@ -781,18 +886,9 @@ defect('P3-建议', 'P3b', '海底提示按暗手 13/14 张判断，开放听牌
     };
   });
 
-defect('M04', 'P3a', '无副露就自动计不求人，和牌来源未知（未判定自摸）',
-  '不求人需要门前清自摸；此处没有自摸/荣和上下文，不能自动成立',
-  { hasBuQiuRen: true, hasMenQianQing: true },
-  () => {
-    const hand = [...tiles('234', Suit.Man), ...tiles('345', Suit.Man), ...tiles('567', Suit.Pin), ...tiles('456', Suit.Sou), ...tiles('55', Suit.Man)];
-    const counts = patternCounts(hand);
-    return { hasBuQiuRen: (counts.buQiuRen ?? 0) > 0, hasMenQianQing: (counts.menQianQing ?? 0) > 0 };
-  });
-
 defect('M05', 'P3b', '平和只看已录吃的数量，四副暗手顺子的平和漏识别',
   '123m456m789p234s + 55s 是四顺子 + 序数将，应有平和 2番',
-  { totalFan: 9, hasPingHu: false, hasQuanDaiYao: true },
+  { totalFan: 5, hasPingHu: false, hasQuanDaiYao: true },
   () => {
     const hand = [...tiles('123', Suit.Man), ...tiles('456', Suit.Man), ...tiles('789', Suit.Pin), ...tiles('234', Suit.Sou), ...tiles('55', Suit.Sou)];
     const api = calculateMCRTotalFan(hand, []);

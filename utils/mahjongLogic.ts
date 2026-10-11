@@ -1,3 +1,4 @@
+﻿
 import { validateGameState } from './inputValidation';
 /**
  * 麻将逻辑主入口模块
@@ -15,7 +16,7 @@ import { validateGameState } from './inputValidation';
  * - mcrAnalyzer.ts: 国标麻将分析建议
  */
 
-import { GameMode, GameState, Suit, Tile, AnalysisResult, FanSuggestion, Language, Meld } from '../types';
+import { GameMode, GameState, Suit, Tile, AnalysisResult, FanSuggestion, Language, Meld, WinSource } from '../types';
 import { createTile, getTileKey, TEXT, MCR_RULES } from '../constants';
 
 // 导入子模块
@@ -96,9 +97,21 @@ export const analyzeGame = (state: GameState, lang: Language = 'en'): AnalysisRe
       patternDetails: score.details, scoreText: score.scoreText,
     }];
   } else if (isWinning) {
-    const result = calculateTotalFan(recognizeMCRPatterns(hand, melds));
-    suggestions = [{ name: zh ? '成牌（参考计番）' : 'Complete shape (reference score)', baseFan: result.totalFan,
-      fan: result.totalFan, probability: 100, missingTiles: [], patternDetails: result.details }];
+    const result = calculateMCRTotalFan(hand, melds, state.winSource);
+    const eligibilityText = result.eligibility === 'met'
+      ? (zh ? `已达 8 番起和线（可确认 ${result.confirmedFan} 番）` : `Meets the 8-fan minimum (${result.confirmedFan} confirmed)`)
+      : result.eligibility === 'unverified'
+        ? (zh ? `8 番起和待核（可确认 ${result.confirmedFan} 番，补齐事件后可能 ${result.maxPossibleFan} 番）`
+          : `8-fan minimum unverified (${result.confirmedFan} confirmed, up to ${result.maxPossibleFan} once events are recorded)`)
+        : (zh ? `不足 8 番起和（可确认 ${result.confirmedFan} 番，补齐事件后最多 ${result.maxPossibleFan} 番）`
+          : `Below the 8-fan minimum (${result.confirmedFan} confirmed, at most ${result.maxPossibleFan})`);
+    const unrecorded = result.missingContext.map(gap => MCR_CONTEXT_LABELS[gap][lang]);
+    suggestions = [{ name: zh ? '成牌（参考计番）' : 'Complete shape (reference score)', baseFan: result.confirmedFan,
+      fan: result.confirmedFan, probability: 0, missingTiles: [],
+      patternDetails: [...result.details, eligibilityText, `${zh ? '未记录' : 'Not recorded'}: ${unrecorded.join(zh ? '、' : ', ')}`] }];
+    if (result.missingContext.includes('winSource')) {
+      warnings.push(zh ? '和牌来源未知，不求人/门前清未计' : 'Win source unknown; fully-concealed hand fan not counted');
+    }
   } else {
     suggestions = mode === GameMode.Sichuan ? analyzeSichuan(hand, melds, voidSuit, lang) : analyzeMCR(hand, melds, lang, wallCount);
   }
@@ -117,34 +130,70 @@ export const analyzeGame = (state: GameState, lang: Language = 'en'): AnalysisRe
 // ============================================================
 // 公开API：计算国标麻将总番
 // 用法示例：
-//   const result = calculateMCRTotalFan(hand, melds);
-//   console.log(`总番: ${result.totalFan}`);
-//   console.log(`番种明细: ${result.details.join(', ')}`);
-//   console.log(`是否满足8番起和: ${result.isValid}`);
+//   const result = calculateMCRTotalFan(hand, melds, state.winSource);
+//   console.log(`可确认番: ${result.confirmedFan}`);
+//   console.log(`起和: ${result.eligibility}`);   // met | unmet | unverified
+//   console.log(`仍缺上下文: ${result.missingContext.join(', ')}`);
 // ============================================================
-export const calculateMCRTotalFan = (hand: Tile[], melds: Meld[]): {
-  totalFan: number;
+
+/** 计番所需、但当前数据流未记录的事件事实；缺失时不得自动计对应番种。 */
+export type MCRContextGap = 'winSource' | 'winningTile' | 'seatWind' | 'kongType';
+
+const MCR_CONTEXT_LABELS: Record<MCRContextGap, { zh: string; en: string }> = {
+  winSource: { zh: '和牌来源（自摸/点和）', en: 'win source (self-draw or claim)' },
+  winningTile: { zh: '和牌张与末张/绝张', en: 'winning tile and last-tile facts' },
+  seatWind: { zh: '门风/圈风', en: 'seat and round wind' },
+  kongType: { zh: '明杠/暗杠/补杠', en: 'kong types' },
+};
+
+/**
+ * 国标总番：只报「当前可确认的番」，并区分三件事——
+ * 结构可和（structuralWin）、8 番起和资格（eligibility）、仍缺哪些事件上下文（missingContext）。
+ * 来源未知时，不求人/门前清/自摸不计；资格只在「补齐未记录事件后仍不足 8 番」时才敢判 unmet。
+ */
+export const calculateMCRTotalFan = (hand: Tile[], melds: Meld[], winSource: WinSource = 'unknown'): {
+  structuralWin: boolean;   // 结构上是否成牌
+  confirmedFan: number;     // 当前可确认的番（不含依赖未记录事件的番）
+  maxPossibleFan: number;   // 补齐未记录事件后可能达到的番（仅自摸/点和两种来源取高）
+  eligibility: 'met' | 'unmet' | 'unverified'; // 8 番起和资格
+  totalFan: number;         // = confirmedFan（旧字段名，语义改为「可确认番」）
   details: string[];
-  isValid: boolean; // 是否满足8番起和
+  isValid: boolean;         // 保守：仅在可确认番已达 8 番时为 true
   patterns: { id: string; name: string; fan: number; count: number }[];
+  missingContext: MCRContextGap[];
 } => {
   const state: GameState = { mode: GameMode.MCR, hand, melds, discards: [], wallCount: 0, voidSuit: null };
-  if (validateGameState(state, 'en').length || !checkWinning(countsToArray(countTiles(hand)), melds.length)) {
-    return { totalFan: 0, details: [], isValid: false, patterns: [] };
+  const gapped: MCRContextGap[] = ['winningTile', 'seatWind', 'kongType'];
+  if (winSource === 'unknown') gapped.unshift('winSource');
+  const structuralWin = validateGameState(state, 'en').length === 0 &&
+    checkWinning(countsToArray(countTiles(hand)), melds.length, GameMode.MCR);
+  if (!structuralWin) {
+    return { structuralWin: false, confirmedFan: 0, maxPossibleFan: 0, eligibility: 'unmet',
+      totalFan: 0, details: [], isValid: false, patterns: [], missingContext: [] };
   }
-  const recognized = recognizeMCRPatterns(hand, melds);
-  const { totalFan, validPatterns, details } = calculateTotalFan(recognized);
-  
+
+  const score = (source: WinSource) => calculateTotalFan(recognizeMCRPatterns(hand, melds, source));
+  const confirmed = score(winSource);
+  const possible = winSource === 'unknown' ? [score('selfDraw'), score('claim')] : [];
+  const maxPossibleFan = possible.reduce((best, alt) => Math.max(best, alt.totalFan), confirmed.totalFan);
+  const eligibility = confirmed.totalFan >= MCR_RULES.MIN_FAN_TO_WIN ? 'met' as const
+    : maxPossibleFan >= MCR_RULES.MIN_FAN_TO_WIN ? 'unverified' as const : 'unmet' as const;
+
   return {
-    totalFan,
-    details,
-    isValid: totalFan >= MCR_RULES.MIN_FAN_TO_WIN,
-    patterns: validPatterns.map(p => ({
+    structuralWin: true,
+    confirmedFan: confirmed.totalFan,
+    maxPossibleFan,
+    eligibility,
+    totalFan: confirmed.totalFan,
+    details: confirmed.details,
+    isValid: eligibility === 'met',
+    patterns: confirmed.validPatterns.map(p => ({
       id: p.pattern.id,
       name: p.pattern.nameZh,
       fan: p.pattern.fan,
       count: p.count,
     })),
+    missingContext: gapped,
   };
 };
 
