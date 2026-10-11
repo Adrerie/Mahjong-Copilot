@@ -101,10 +101,10 @@ export const analyzeGame = (state: GameState, lang: Language = 'en'): AnalysisRe
     const eligibilityText = result.eligibility === 'met'
       ? (zh ? `已达 8 番起和线（可确认 ${result.confirmedFan} 番）` : `Meets the 8-fan minimum (${result.confirmedFan} confirmed)`)
       : result.eligibility === 'unverified'
-        ? (zh ? `8 番起和待核（可确认 ${result.confirmedFan} 番，补齐事件后可能 ${result.maxPossibleFan} 番）`
-          : `8-fan minimum unverified (${result.confirmedFan} confirmed, up to ${result.maxPossibleFan} once events are recorded)`)
-        : (zh ? `不足 8 番起和（可确认 ${result.confirmedFan} 番，补齐事件后最多 ${result.maxPossibleFan} 番）`
-          : `Below the 8-fan minimum (${result.confirmedFan} confirmed, at most ${result.maxPossibleFan})`);
+        ? (zh ? `8 番起和待核（当前可确认 ${result.confirmedFan} 番，仍缺事件上下文）`
+          : `8-fan minimum unverified (${result.confirmedFan} currently confirmed; event context is missing)`)
+        : (zh ? `不足 8 番起和（可确认 ${result.confirmedFan} 番）`
+          : `Below the 8-fan minimum (${result.confirmedFan} confirmed)`);
     const unrecorded = result.missingContext.map(gap => MCR_CONTEXT_LABELS[gap][lang]);
     suggestions = [{ name: zh ? '成牌（参考计番）' : 'Complete shape (reference score)', baseFan: result.confirmedFan,
       fan: result.confirmedFan, probability: 0, missingTiles: [],
@@ -154,7 +154,7 @@ const MCR_CONTEXT_LABELS: Record<MCRContextGap, { zh: string; en: string }> = {
 export const calculateMCRTotalFan = (hand: Tile[], melds: Meld[], winSource: WinSource = 'unknown'): {
   structuralWin: boolean;   // 结构上是否成牌
   confirmedFan: number;     // 当前可确认的番（不含依赖未记录事件的番）
-  maxPossibleFan: number;   // 补齐未记录事件后可能达到的番（仅自摸/点和两种来源取高）
+  maxPossibleFan: number;   // 仅比较自摸/点和的参考番，不是补齐全部事件后的番数上限
   eligibility: 'met' | 'unmet' | 'unverified'; // 8 番起和资格
   totalFan: number;         // = confirmedFan（旧字段名，语义改为「可确认番」）
   details: string[];
@@ -177,7 +177,7 @@ export const calculateMCRTotalFan = (hand: Tile[], melds: Meld[], winSource: Win
   const possible = winSource === 'unknown' ? [score('selfDraw'), score('claim')] : [];
   const maxPossibleFan = possible.reduce((best, alt) => Math.max(best, alt.totalFan), confirmed.totalFan);
   const eligibility = confirmed.totalFan >= MCR_RULES.MIN_FAN_TO_WIN ? 'met' as const
-    : maxPossibleFan >= MCR_RULES.MIN_FAN_TO_WIN ? 'unverified' as const : 'unmet' as const;
+    : gapped.length > 0 ? 'unverified' as const : 'unmet' as const;
 
   return {
     structuralWin: true,

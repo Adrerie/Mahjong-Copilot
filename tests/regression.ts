@@ -673,6 +673,46 @@ test('Sichuan advice on an unfinished hand lists potentials without invented pro
 // 五、P3a 国标和牌上下文与特殊结构
 // ============================================================
 
+test('P3a open knitted straight scores its concealed nine tiles with a locked meld', () => {
+  const hand = [...tiles('147', Suit.Man), ...tiles('258', Suit.Pin), ...tiles('369', Suit.Sou), ...tiles('55', Suit.Man)];
+  for (const meld of [pong(6, Suit.Zihai), gang(6, Suit.Zihai), chi('456', Suit.Man)]) {
+    const score = calculateMCRTotalFan(hand, [meld]);
+    assert.equal(score.structuralWin, true);
+    assert.equal(score.patterns.find(p => p.id === 'zuHeLong')?.fan, 12);
+  }
+  const noPair = [...hand.slice(0, -1), createTile(Suit.Man, 6)];
+  assert.equal(calculateMCRTotalFan(noPair, [pong(6, Suit.Zihai)]).structuralWin, false);
+});
+
+test('P3a missing last-tile facts cannot establish a maximum or rule out eight fan', () => {
+  // 可确认断幺2番；和牌来源再加至多4番，不代表事件总上限。
+  // 妙手回春/海底捞月本身8番，尚未记录，不能据此宣称不足8番。
+  const hand = [...tiles('23434555', Suit.Man), ...tiles('567', Suit.Pin), ...tiles('456', Suit.Sou)];
+  for (const source of ['unknown', 'selfDraw', 'claim'] as const) {
+    const score = calculateMCRTotalFan(hand, [], source);
+    assert.equal(score.eligibility, 'unverified');
+    assert.equal(score.isValid, false);
+    assert.ok(score.missingContext.includes('winningTile'));
+    const details = analyzeGame(state(hand, [], { winSource: source }), 'zh').suggestions[0]?.patternDetails ?? [];
+    assert.ok(details.some(detail => detail.includes('8 番起和待核')));
+    assert.ok(!details.some(detail => /补齐事件后|最多|不足 8 番/.test(detail)));
+  }
+});
+
+test('P3a knitted hands retain self-draw fan when fully concealed hand is excluded', () => {
+  for (const hand of [
+    [...tiles('147', Suit.Man), ...tiles('258', Suit.Pin), createTile(Suit.Sou, 3), ...tiles('1234567', Suit.Zihai)],
+    [...tiles('147', Suit.Man), ...tiles('258', Suit.Pin), ...tiles('369', Suit.Sou), ...tiles('12345', Suit.Zihai)],
+  ]) {
+    const draw = calculateMCRTotalFan(hand, [], 'selfDraw');
+    const claim = calculateMCRTotalFan(hand, [], 'claim');
+    assert.equal(draw.patterns.find(p => p.id === 'ziMo')?.fan, 1);
+    assert.equal(draw.patterns.some(p => p.id === 'buQiuRen'), false);
+    assert.equal(draw.totalFan, claim.totalFan + 1);
+    assert.equal(claim.patterns.some(p => p.id === 'ziMo'), false);
+  }
+});
+
 test('A04 MCR special structures are legal winning shapes (positive)', () => {
   // 结构口径（国标特殊牌型）：147/258/369 不能错位地分属三种花色，孤张不得重复。
   const sevenStars = [...tiles('147', Suit.Man), ...tiles('258', Suit.Pin), createTile(Suit.Sou, 3), ...tiles('1234567', Suit.Zihai)];
@@ -741,16 +781,16 @@ test('M04 MCR 不求人 / 门前清 / 自摸 require a recorded win source', () 
   assert.equal(patternCounts(openHand, melds, 'selfDraw').buQiuRen ?? 0, 0);
   assert.equal(patternCounts(openHand, melds).ziMo ?? 0, 0);
 
-  // 该牌例门清自摸也只有 4 + 2 = 6 番：来源未知时不认定起和
+  // 仅和牌来源能加至 4 + 2 = 6 番；末张等事件未知，不能断言不足8番
   const unknown = calculateMCRTotalFan(hand, []);
   assert.equal(unknown.structuralWin, true);
   assert.equal(unknown.confirmedFan, 2);
   assert.equal(unknown.maxPossibleFan, 6);
-  assert.equal(unknown.eligibility, 'unmet');
+  assert.equal(unknown.eligibility, 'unverified');
   assert.equal(unknown.isValid, false);
   assert.deepEqual(unknown.missingContext, ['winSource', 'winningTile', 'seatWind', 'kongType']);
-  assert.equal(calculateMCRTotalFan(hand, [], 'selfDraw').eligibility, 'unmet');
-  assert.equal(calculateMCRTotalFan(hand, [], 'claim').eligibility, 'unmet');
+  assert.equal(calculateMCRTotalFan(hand, [], 'selfDraw').eligibility, 'unverified');
+  assert.equal(calculateMCRTotalFan(hand, [], 'claim').eligibility, 'unverified');
 });
 
 test('P3a unknown win source never claims the eight-fan minimum', () => {
@@ -772,7 +812,7 @@ test('P3a unknown win source never claims the eight-fan minimum', () => {
 
   const claim = calculateMCRTotalFan(hand, [], 'claim');
   assert.equal(claim.confirmedFan, 7);
-  assert.equal(claim.eligibility, 'unmet');
+  assert.equal(claim.eligibility, 'unverified');
 
   // 未成牌结构不报可确认番，也不报上下文缺口
   const notWinning = calculateMCRTotalFan([...tiles('123', Suit.Man), ...tiles('456', Suit.Man), ...tiles('789', Suit.Pin), ...tiles('55', Suit.Sou)], []);

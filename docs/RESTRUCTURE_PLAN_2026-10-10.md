@@ -7,7 +7,7 @@
 
 - P0/P1：输入校验、文本录牌、一步撤销、局面存储、无效/死叫状态、基本无障碍。
 - P2：Hi8 *示例牌桌* 参考口径：清对 `33344466699977s` 8倍、三根七对封顶16倍；`111222333m99911p` **只按一个合法拆分计番**，带幺九2指数番=4倍。已验证的 P2 提交 `e1304ea`：[Actions Web+Debug APK 成功](https://github.com/Adrerie/Mahjong-Copilot/actions/runs/38140633649)。主分支尚未合并。
-- 基线：**41 项正确性守卫 + 12 项国标错误行为快照**（A04、M04 已于 P3a 转为守卫）。
+- 基线：**44 项正确性守卫 + 12 项国标错误行为快照**（A04、M04 已于 P3a 转为守卫，审阅新增3项守卫）。
 
 ## P3a｜已实施：上下文与合法和牌结构（待审）
 
@@ -15,7 +15,7 @@
 `types.ts` 新增 `WinSource = 'selfDraw' | 'claim' | 'unknown'` 与 `GameState.winSource?`；未记录即 'unknown'。`recognizeMCRPatterns(hand, melds, winSource)` 只在 `selfDraw` 时计不求人/自摸、只在 `claim` 时计门前清；不求人的 `excludes` 仍去掉自摸与门前清，不重复相加。门风/圈风、和牌张/末张、明暗杠/补杠**不建模**，改为在结果中报告缺口（见下），避免用猜测填分。
 
 **2. 保守结果语义**
-`calculateMCRTotalFan(hand, melds, winSource)` 分开报：`structuralWin`、`confirmedFan`（当前可确认番）、`maxPossibleFan`（补齐未记录事件后的上限，仅按自摸/点和两种来源取高）、`eligibility: 'met' | 'unmet' | 'unverified'`、`missingContext: MCRContextGap[]`；`isValid` 只在 `eligibility === 'met'` 时为 true，`totalFan` 保留旧名但语义改为可确认番。UI 未改版：仍是「成牌（计番待核）」徽标、粉色警告条与番型芯片，新增「已达/待核/不足 8 番起和」与「未记录：…」两行说明，无虚假确认，也没有 100% 之类的假概率。
+`calculateMCRTotalFan(hand, melds, winSource)` 分开报：`structuralWin`、`confirmedFan`（当前可确认番）、`maxPossibleFan`（仅按自摸/点和两种来源比较的参考值，**不是全部事件的番数上限**）、`eligibility: 'met' | 'unmet' | 'unverified'`、`missingContext: MCRContextGap[]`；`isValid` 只在 `eligibility === 'met'` 时为 true，`totalFan` 保留旧名但语义改为可确认番。可确认不足8番且事件缺失时保持「待核」，不能断言「补齐事件仍不足8番」。UI 保留「成牌（计番待核）」徽标、粉色警告条与番型芯片，无虚假确认，也没有 100% 之类的假概率。
 
 **3. 特殊结构判和与番种**
 `utils/winningChecker.ts` 新增 `classifyKnittedHand`（七星不靠/全不靠：14 张孤张、147/258/369 不能错位地分属三种花色，字牌 7 张为七星不靠）与 `knittedRemainders`（组合龙：9 张龙齐全），`checkWinning` 据此新增两条分支（组合龙允许 1 副副露）。`mcrPatterns.ts` 对应识别七星不靠 24 / 全不靠 12 / 组合龙 12；组合龙只在整手牌结构合法时计。
@@ -25,11 +25,11 @@
 | `147m258p3s1234567z` | 七星不靠 | 判和 ✓、七星不靠 24 番（不叠全不靠） |
 | `147m258p369s12345z` | 全不靠 | 判和 ✓、全不靠 12 番 |
 | `147m258p369s111m22p` | 组合龙 | 判和 ✓、组合龙 12 番 |
-| `147m258p369s55m` + 1 副露 | 组合龙（1 副露） | 判和 ✓ |
+| `147m258p369s55m` + 1 副露 | 组合龙（1 副露） | 判和 ✓、组合龙 12 番（碰/杠/吃均验证） |
 | `1477m25p3s1234567z`（重复） | 非法 | 拒绝 ✓ |
 | 13 张、`147m258m369s…`（错位）、缺龙的组合龙、七星不靠带副露 | 非法 | 拒绝 ✓ |
 
-**4. 测试与验证**
+**4. 原始实施测试记录（审阅前）**
 A04、M04 快照已删除并改为 4 项正确性守卫（特殊结构正例、非法反例、来源门控、未知来源不认定 8 番）；其余 12 项快照保留。7 项快照的 `totalFan`/`isValid`/建议层 `fan` 因「不再自动计不求人/门前清」而下调（如 M01 30→26、M05 9→5、建议层 25→21），已在快照区统一注明，缺陷本身未修。红绿验证：把四个源文件回退到本批前版本后 `npm test` 退出码 1（A04 首条守卫 `false !== true`），恢复后 41 项守卫通过。
 
 - `npm test` 41 守卫通过 / 12 快照；`npm run typecheck`、`npm run build` 通过（286.72 kB，gzip 90.00 kB）。
@@ -37,6 +37,8 @@ A04、M04 快照已删除并改为 4 项正确性守卫（特殊结构正例、�
 - 起点 `f444089` 的 [Actions 运行 38144196033](https://github.com/Adrerie/Mahjong-Copilot/actions/runs/38144196033) 成功（Web 11/11、Android Debug APK 16/16）。**本批提交未推送，因此没有对应 CI 结果。**
 
 **P3a 未完成/登记项**：门风/圈风、和牌张/末张、明暗杠/补杠仍无字段（P3b/P3c）；无副露时全带幺恒真（M05+A10）会让特殊结构的可见番多出 4 番，P3a 只用「七星不靠 (24番)」这类单项断言，不写死受该缺陷影响的总数；组合龙牌例里的暗刻/四归一统计仍按「张数≥3」估算（与 M02/M05 同族，P3b 处理）。
+
+**审阅修正（2026-10-11）**：仅修复本轮引入的三处错误：组合龙计番使用暗手及已锁定副露数量，避免重复合并副露后漏识别；缺失末张等事件时不将来源比较值冒充总番上限，低番保持待核；已被特殊型排除的不求人不再进一步误排自摸。新增3项守卫，44项通过，12项旧快照不变。事件依据：[世界麻将组织《麻将竞赛规则》](https://mahjongclublausanne.ch/wp-content/uploads/2024/03/Greenbook2021_Chinese-EN.pdf) 的自摸与末张番种；未增加事件录入或扩展P3b/P3c。原始手机实测属于修正前记录，本次未重做真机/离线验证。
 
 ## P3b｜后续：已知错误与同一拆分计番（暂不实施）
 
@@ -55,7 +57,7 @@ A04、M04 快照已删除并改为 4 项正确性守卫（特殊结构正例、�
 ## 实施要求与精简验收
 
 - 算法对照：[PyMahjongGB](https://github.com/ailab-pku/PyMahjongGB)（有 `winTile`、自摸/杠/末张/门圈风上下文）、[GB-Mahjong](https://github.com/zheng-fan/GB-Mahjong)（MCR合法面子与番种验证）；仅借鉴接口及测试思想，核对许可和争议规则，不移植其 C++/Python 生产运行时。
-- 现有测试 41 项守卫 + 12 项国标缺陷快照；修复一项就替换该旧快照成正确正反例，禁止机械改快照期望。P2 测试不得回退；P3a 已改为守卫的 A04/M04 不得退回快照。
+- 现有测试 44 项守卫 + 12 项国标缺陷快照；修复一项就替换该旧快照成正确正反例，禁止机械改快照期望。P2 测试不得回退；P3a 已改为守卫的 A04/M04 不得退回快照。
 - 执行 `npm test`、`npm run typecheck`、`npm run build`，核对 GitHub Actions Web 与 Android Debug APK。打包成功不能替代 Android 真机和离线验证。
 - 每批提交简短“文件、正确牌例、测试结果、待核事项、删减项”，删掉未被使用的新增抽象、重复函数、过时计划文本。**不得擅自推进 P3b/P3c、合并 main 或发布正式 APK。**
 

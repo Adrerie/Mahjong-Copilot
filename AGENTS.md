@@ -4,7 +4,7 @@
 
 - **P0/P1/P2 已验收。P3a 已实施并留下证据，等待审阅；未获授权不得开始 P3b/P3c。** 实施前读 [P3 精简计划](docs/RESTRUCTURE_PLAN_2026-10-10.md)、[回归测试](tests/regression.ts) 和现有国标源文件；旧审计只作为历史证据。
 - 当前工作分支 `feat/p3-mcr-restructure-20261011`，P3a 基于已通过 CI 的 `f444089`。可以在开发分支小步提交；未经用户授权，**不合并/修改 main、不强推、不发行签名包**。先检查本地修改，严禁 `reset --hard`、`clean -fd`、强制覆盖。
-- P3a 已落地的口径：`GameState.winSource`（未记录 = 'unknown'）决定不求人/门前清/自摸；`calculateMCRTotalFan` 返回 `structuralWin / confirmedFan / maxPossibleFan / eligibility / missingContext`，`isValid` 仅在可确认番已达 8 番时为 true。**不得改回「无副露即计不求人」，也不得用旧 `isValid` 宣称可起和**；七星不靠/全不靠/组合龙由 `utils/winningChecker.ts` 的结构判定承认。测试基线：41 项守卫 + 12 项国标快照（A04、M04 已转守卫）。
+- P3a 已落地的口径：`GameState.winSource`（未记录 = 'unknown'）决定不求人/门前清/自摸；`calculateMCRTotalFan` 返回 `structuralWin / confirmedFan / maxPossibleFan / eligibility / missingContext`，`isValid` 仅在可确认番已达 8 番时为 true。`maxPossibleFan` 仅比较和牌来源，不代表全部事件上限；可确认不足8番且缺事件时保持 `unverified`。**不得改回「无副露即计不求人」，也不得用旧 `isValid` 宣称可起和**；七星不靠/全不靠/组合龙由 `utils/winningChecker.ts` 的结构判定承认。测试基线：44 项守卫 + 12 项国标快照（A04、M04 已转守卫）。
 - P2 收尾已移除非选中合法拆分的冗余显示文案，保留“每套合法拆分单独算番、择优”的规则及测试。**不得重做川麻逻辑、重复建 P2 计番系统或大改已定版 UI**。
 
 ## 国标算法底线
@@ -20,7 +20,7 @@
 - **P3a**：真实和牌上下文及「不可核实」结果状态；特殊结构的正反例（七星不靠/全不靠/组合龙）。只做本批能验收的部分，其他明确登记后停下。
 - **P3b**：同一拆分内计番与不计原则；平和、全带幺、明碰暗刻、杠/四归一、七对、清龙、三风刻及虚假的建议缺牌/末张提示，按风险分小提交。
 - **P3c**：对照 81 番清单补缺，并以独立参考核实大三元、三色三同顺等。**不要求单个提交完成全部81番**，也不允许未完时把结果标成可靠结算。
-- `tests/regression.ts` 目前 41 项正确性守卫 + 12 项国标**错误行为快照**（A04、M04 已在 P3a 转为守卫）。`defect(...)` 不是通过的功能；每修一项，将对应快照改为正反例正确性断言，禁止更新成另一个错误的快照；快照基线因已修缺陷下调时要注明原因。
+- `tests/regression.ts` 目前 44 项正确性守卫 + 12 项国标**错误行为快照**（A04、M04 已在 P3a 转为守卫）。`defect(...)` 不是通过的功能；每修一项，将对应快照改为正反例正确性断言，禁止更新成另一个错误的快照；快照基线因已修缺陷下调时要注明原因。
 - 每批运行 `npm test`、`npm run typecheck`、`npm run build`，检查 [GitHub Actions](https://github.com/Adrerie/Mahjong-Copilot/actions) Web 与 Android Debug APK；未实际验证则如实说明。真机/离线另验。
 - 完成一批删除未使用的新配置、冗余接口和已过期计划步骤；维持单一计划文件，不创建 P3a/P3b/P3c 多份宏大方案。交付简报：修复、牌例、测试证据、限制、精简项，**不自动进入下一批**。
 

@@ -290,7 +290,8 @@ export const recognizeMCRPatterns = (
   }
   
   // 组合龙 (12)：147/258/369 三组龙齐全，且整手牌是合法和牌结构
-  if (knittedRemainders(countArray).length > 0 && checkWinning(countArray, melds.length, GameMode.MCR)) {
+  const concealedCounts = countsToArray(countTiles(hand));
+  if (knittedRemainders(concealedCounts).length > 0 && checkWinning(concealedCounts, melds.length, GameMode.MCR)) {
     const p = getPatternById('zuHeLong');
     if (p) recognized.push({ pattern: p, count: 1 });
   }
@@ -360,7 +361,9 @@ export const recognizeMCRPatterns = (
   }
   
   // 不求人（门前清自摸）：需要已记录的「自摸」事实，来源未知时不计
-  if (melds.length === 0 && winSource === 'selfDraw') {
+  // 不计不求人的特殊型不能加入该番，否则它仍会错误地排除自摸。
+  const excludesFullyConcealed = recognized.some(r => r.pattern.excludes?.includes('buQiuRen'));
+  if (melds.length === 0 && winSource === 'selfDraw' && !excludesFullyConcealed) {
     const p = getPatternById('buQiuRen');
     if (p) recognized.push({ pattern: p, count: 1 });
   }
