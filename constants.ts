@@ -151,7 +151,8 @@ export const TEXT = {
     timesUnit: 'x', // 四川倍数
     potential: 'potential', // 未成牌时的潜力标记
     potentialOnly: 'Not a complete hand: these are patterns that could still be built, not a settlement.',
-    pendingEvents: 'Draw/claim source, kong type and last-tile events are not recorded, so they add nothing here.'
+    pendingEvents: 'Draw/claim source, kong type and last-tile events are not recorded, so they add nothing here.',
+    unstackedReading: 'Other legal decomposition of this hand (not added, convention unverified): '
   },
   zh: {
     mcr: '国标麻将',
@@ -286,6 +287,7 @@ export const TEXT = {
     potential: '潜力', // 未成牌时的潜力标记
     potentialOnly: '尚未成牌：这里只列还能做的番型，不构成结算依据。',
     pendingEvents: '自摸/点炮、杠类型、海底等事件未记录，未计相关加番。',
+    unstackedReading: '同一手牌的另一合法拆分（不叠加，口径待核）：',
   }
 };
 

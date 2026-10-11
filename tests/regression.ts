@@ -571,6 +571,64 @@ test('Sichuan terminal seven pairs checks the pairs in its own decomposition', (
   assert.equal(score.uncappedExponent, 7);
 });
 
+test('Sichuan never adds 对对胡 and 带幺九 from two different decompositions', () => {
+  // 111222333m99911p 有两种合法拆分：
+  //   111/222/333/999 + 11 将 → 对对胡 1 指数番；
+  //   123/123/123/999 + 11 将 → 每副面子与将都带幺九 → 带幺九 2 指数番。
+  // 一次和牌只能按一种拆分结算，取较高者 = 带幺九 2 指数番 = 4 倍，不是 1+2=3 → 8 倍。
+  const hand = [...tiles('111222333', Suit.Man), ...tiles('99911', Suit.Pin)];
+  const position = sichuan(hand, Suit.Sou);
+  assert.deepEqual(validateGameState(position, 'zh'), []);
+  const score = recognizeSichuanPatterns(hand, [], 'zh');
+  assert.deepEqual(score.patterns, [{ id: 'daiYaoJiu', exponent: 2 }]);
+  assert.equal(score.label, '带幺九');
+  assert.equal(score.baseExponent, 2);
+  assert.equal(score.roots, 0);
+  assert.equal(score.uncappedExponent, 2);
+  assert.equal(score.cappedExponent, 2);
+  assert.equal(score.multiplier, 4);
+  assert.equal(analyzeGame(position, 'zh').suggestions[0]?.scoreText, '2 指数番 · 4 倍');
+  // 另一套拆分只在 details 里标注「不叠加」，不进入指数番。
+  assert.ok(
+    score.details.some(detail => detail.includes('对对胡') && detail.includes('不叠加') && detail.includes('待核')),
+    score.details.join(' | '),
+  );
+  // 指数番仍等于选中拆分 + 根，未把两套拆分相加。
+  assert.equal(score.uncappedExponent, score.patterns.reduce((total, hit) => total + hit.exponent, 0) + score.roots);
+});
+
+test('Sichuan 对对胡/带幺九/金钩钓 boundary readings', () => {
+  // 四副幺九刻子但将牌 55m 不含幺九：只有一套拆分 → 对对胡 1 指数番 = 2 倍，不得补带幺九。
+  const pongHand = [...tiles('11199955', Suit.Man), ...tiles('111999', Suit.Pin)];
+  assert.deepEqual(validateGameState(sichuan(pongHand, Suit.Sou), 'zh'), []);
+  assert.equal(checkWinning(countsToArray(countTiles(pongHand)), 0, GameMode.Sichuan), true);
+  const pongScore = recognizeSichuanPatterns(pongHand, [], 'zh');
+  assert.deepEqual(pongScore.patterns, [{ id: 'duiDuiHu', exponent: 1 }]);
+  assert.equal(pongScore.multiplier, 2);
+
+  // 111222333m99977p：刻子拆分是对对胡 1，顺子拆分不给番型 → 取较高的刻子拆分 = 2 倍。
+  const chowOrPung = [...tiles('111222333', Suit.Man), ...tiles('99977', Suit.Pin)];
+  const mixedScore = recognizeSichuanPatterns(chowOrPung, [], 'zh');
+  assert.deepEqual(mixedScore.patterns, [{ id: 'duiDuiHu', exponent: 1 }]);
+  assert.equal(mixedScore.multiplier, 2);
+
+  // 金钩钓（四副明碰 + 单钓将）按来源包含对对胡、不双计；将牌不是幺九就不加带幺九。
+  const jinGouHand = tiles('55', Suit.Pin);
+  const jinGouMelds = [pong(1, Suit.Man), pong(2, Suit.Man), pong(3, Suit.Man), pong(9)];
+  assert.deepEqual(validateGameState(sichuan(jinGouHand, Suit.Sou, jinGouMelds), 'zh'), []);
+  const jinGouScore = recognizeSichuanPatterns(jinGouHand, jinGouMelds, 'zh');
+  assert.deepEqual(jinGouScore.patterns, [{ id: 'jinGouDiao', exponent: 2 }]);
+  assert.equal(jinGouScore.multiplier, 4);
+
+  // 七对与对对胡互斥：反过来真对对胡也不判七对。
+  const duiDuiHand = [...tiles('555', Suit.Man), ...tiles('777', Suit.Man), ...tiles('33', Suit.Man)];
+  const duiDuiScore = recognizeSichuanPatterns(duiDuiHand, [pong(1), pong(9)], 'zh');
+  assert.deepEqual(duiDuiScore.patterns, [{ id: 'duiDuiHu', exponent: 1 }]);
+  const qiDuiScore = recognizeSichuanPatterns(tiles('11114444777799', Suit.Sou), [], 'zh');
+  assert.ok(qiDuiScore.patterns.some(hit => hit.id === 'qiDui'));
+  assert.ok(!qiDuiScore.patterns.some(hit => hit.id === 'duiDuiHu'));
+});
+
 test('Sichuan exponents are capped at 4 and unknown events are never scored', () => {
   // 11112377889999s：清一色 2 + 带幺九 2 + 根 ×2 = 6 指数番 → 封顶 4 = 16 倍（不是 2^6 = 64）。
   const hand = tiles('11112377889999', Suit.Sou);

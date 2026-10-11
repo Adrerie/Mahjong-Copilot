@@ -10,7 +10,11 @@
  *   允许叠加的番型仍须在同一合法拆分中成立，七对和标准面子拆分分别评分后择高。
  * - 倍率 = 2^min(指数番, 封顶)，不再使用旧表「清对 6 番 = 64 倍」这类写法。
  * - 未记录自摸/点炮、杠类型、海底/抢杠等事件，因此不加这些番，只在结果里标注待补。
- * - 番型按**合法面子拆分**判断（对对胡、带幺九），不按「存在几张刻子」推断。
+ * - 番型按**合法面子拆分**判断（对对胡、带幺九），不按「存在几张刻子」推断：
+ *   枚举暗手每个合法「4 副面子 + 1 将」拆分，各拆分成套计番后择高。因此
+ *   111222333m99911p 只计带幺九 2 指数番（123×3 拆分），不叠加另一套刻子拆分的对对胡；
+ *   未被采用的拆分只在 details 里标注「不叠加，口径待核」。
+ * - 清一色与根不依赖拆分，正常与选中的拆分相加。
  */
 
 import { Suit, Tile, Meld, FanSuggestion, Language } from '../types';
@@ -62,63 +66,81 @@ export interface SichuanScore {
 
 // ========== 合法面子拆分 ==========
 
-/** 0-33 索引对应的牌值；字牌返回 0（四川不用字牌）。 */
-const indexValue = (index: number): number => (index < 27 ? (index % 9) + 1 : 0);
-
 /** 幺九：序数牌的 1 或 9。 */
 const isTerminalIndex = (index: number): boolean => index < 27 && (index % 9 === 0 || index % 9 === 8);
 
 const isTerminalValue = (value: number): boolean => value === 1 || value === 9;
 
-interface ShapeRequirement {
-  /** 面子只能是刻子/杠（对对胡）。 */
-  tripletsOnly: boolean;
-  /** 每副面子都必须带幺九（带幺九）。 */
-  terminalMelds: boolean;
-  /** 将牌必须带幺九（带幺九）。 */
-  terminalPair: boolean;
+interface MeldGroup {
+  /** pung = 刻子/杠，chow = 顺子。 */
+  kind: 'pung' | 'chow';
+  /** 刻子的牌索引；顺子的起始牌索引。 */
+  index: number;
 }
 
-/** 递归把剩余牌拆成 need 副面子，所有牌必须用完。 */
-const formGroups = (tiles: number[], need: number, req: ShapeRequirement): boolean => {
-  if (need === 0) return tiles.every(count => count === 0);
+interface Decomposition {
+  /** 除将牌外的 needMelds 副面子。 */
+  groups: MeldGroup[];
+  /** 将牌的牌索引。 */
+  pair: number;
+}
+
+/** 一副面子是否带幺九：刻子看自身，顺子看两端（123/789 算带幺九）。 */
+const groupHasTerminal = (group: MeldGroup): boolean =>
+  group.kind === 'pung'
+    ? isTerminalIndex(group.index)
+    : isTerminalIndex(group.index) || isTerminalIndex(group.index + 2);
+
+const decompositionKey = (groups: MeldGroup[], pair: number): string =>
+  `${pair}|${groups.map(group => `${group.kind}${group.index}`).sort().join(',')}`;
+
+/** 递归用完剩余牌拆出 need 副面子；同一套面子组合只保留一份。 */
+const collectDecompositions = (
+  tiles: number[], need: number, groups: MeldGroup[], pair: number, out: Map<string, Decomposition>,
+): void => {
+  if (need === 0) {
+    if (!tiles.every(count => count === 0)) return;
+    const key = decompositionKey(groups, pair);
+    if (!out.has(key)) out.set(key, { groups: [...groups], pair });
+    return;
+  }
   let first = -1;
   for (let i = 0; i < 34; i++) {
     if (tiles[i] > 0) { first = i; break; }
   }
-  if (first < 0) return false;
+  if (first < 0) return;
 
-  if (tiles[first] >= 3 && (!req.terminalMelds || isTerminalIndex(first))) {
+  if (tiles[first] >= 3) {
     tiles[first] -= 3;
-    if (formGroups(tiles, need - 1, req)) { tiles[first] += 3; return true; }
+    groups.push({ kind: 'pung', index: first });
+    collectDecompositions(tiles, need - 1, groups, pair, out);
+    groups.pop();
     tiles[first] += 3;
   }
 
-  if (!req.tripletsOnly && first < 27 && first % 9 <= 6 &&
-    (!req.terminalMelds || isTerminalIndex(first) || isTerminalIndex(first + 2)) &&
-    tiles[first] >= 1 && tiles[first + 1] >= 1 && tiles[first + 2] >= 1) {
-    tiles[first]--; tiles[first + 1]--; tiles[first + 2]--;
-    if (formGroups(tiles, need - 1, req)) {
-      tiles[first]++; tiles[first + 1]++; tiles[first + 2]++;
-      return true;
-    }
-    tiles[first]++; tiles[first + 1]++; tiles[first + 2]++;
+  if (first < 27 && first % 9 <= 6 && tiles[first + 1] > 0 && tiles[first + 2] > 0) {
+    tiles[first]--;
+    tiles[first + 1]--;
+    tiles[first + 2]--;
+    groups.push({ kind: 'chow', index: first });
+    collectDecompositions(tiles, need - 1, groups, pair, out);
+    groups.pop();
+    tiles[first]++;
+    tiles[first + 1]++;
+    tiles[first + 2]++;
   }
-
-  return false;
 };
 
-/** 暗手能否拆成 needMelds 副面子 + 1 对将，且满足给定约束。 */
-const concealedFits = (counts: number[], needMelds: number, req: ShapeRequirement): boolean => {
-  if (counts.length !== 34) return false;
+/** 枚举暗手的所有合法标准型拆分（needMelds 副面子 + 1 将）。 */
+const enumerateDecompositions = (counts: number[], needMelds: number): Decomposition[] => {
+  const out = new Map<string, Decomposition>();
   for (let pair = 0; pair < 34; pair++) {
     if (counts[pair] < 2) continue;
-    if (req.terminalPair && !isTerminalIndex(pair)) continue;
     const rest = [...counts];
     rest[pair] -= 2;
-    if (formGroups(rest, needMelds, req)) return true;
+    collectDecompositions(rest, needMelds, [], pair, out);
   }
-  return false;
+  return [...out.values()];
 };
 
 /** 四张相同的牌各自算一根（含副露杠的四张）。 */
@@ -150,23 +172,31 @@ export const recognizeSichuanPatterns = (hand: Tile[], melds: Meld[], lang: Lang
 
   const exposedPongs = melds.filter(m => m.type === 'pong' || m.type === 'gang');
   const allMeldsArePongs = exposedPongs.length === melds.length;
+  const allMeldsAreTerminal = melds.every(m => m.tiles.some(tile => isTerminalValue(tile.value)));
   const needMelds = 4 - melds.length;
 
   // 金钩钓：四副碰/杠 + 单钓将，按来源包含对对胡（不再重复计对对胡）
   const isJinGouDiao = melds.length === 4 && allMeldsArePongs && hand.length === 2;
-  const isDuiDui = !isJinGouDiao && allMeldsArePongs &&
-    concealedFits(handCounts, needMelds, { tripletsOnly: true, terminalMelds: false, terminalPair: false });
-  // 带幺九：每副面子与将牌都必须带 1 或 9，顺子 123/789 也算
-  const isDaiYaoJiu = melds.every(m => m.tiles.some(tile => isTerminalValue(tile.value))) &&
-    concealedFits(handCounts, needMelds, { tripletsOnly: false, terminalMelds: true, terminalPair: true });
   // 七对：四张相同的牌按两对计
   const isQiDui = melds.length === 0 && allTiles.length === 14 && countPairs(allCounts) === 7 &&
     [...allCounts.values()].every(count => count % 2 === 0);
 
-  const standardHits: SichuanPatternHit[] = [];
-  if (isJinGouDiao) standardHits.push({ id: 'jinGouDiao', exponent: SICHUAN_PATTERN_EXPONENTS.jinGouDiao });
-  else if (isDuiDui) standardHits.push({ id: 'duiDuiHu', exponent: SICHUAN_PATTERN_EXPONENTS.duiDuiHu });
-  if (isDaiYaoJiu) standardHits.push({ id: 'daiYaoJiu', exponent: SICHUAN_PATTERN_EXPONENTS.daiYaoJiu });
+  // 标准型：每个合法拆分各自成套计番（对对胡要整手刻子，带幺九要每副面子与将都带 1/9）。
+  // 同一手牌可能有两种拆分，但一次和牌只能按其中一种结算，因此各拆分成套后择高，不跨拆分相加。
+  const standardReadings = enumerateDecompositions(handCounts, needMelds).map(decomposition => {
+    const reading: SichuanPatternHit[] = [];
+    const allPungs = allMeldsArePongs && decomposition.groups.every(group => group.kind === 'pung');
+    if (isJinGouDiao) reading.push({ id: 'jinGouDiao', exponent: SICHUAN_PATTERN_EXPONENTS.jinGouDiao });
+    else if (allPungs) reading.push({ id: 'duiDuiHu', exponent: SICHUAN_PATTERN_EXPONENTS.duiDuiHu });
+    if (allMeldsAreTerminal &&
+      decomposition.groups.every(groupHasTerminal) &&
+      isTerminalIndex(decomposition.pair)) {
+      reading.push({ id: 'daiYaoJiu', exponent: SICHUAN_PATTERN_EXPONENTS.daiYaoJiu });
+    }
+    return reading;
+  });
+  const sum = (patterns: SichuanPatternHit[]) => patterns.reduce((total, hit) => total + hit.exponent, 0);
+
   const pairHits: SichuanPatternHit[] = [];
   if (isQiDui) {
     pairHits.push({ id: 'qiDui', exponent: SICHUAN_PATTERN_EXPONENTS.qiDui });
@@ -175,8 +205,13 @@ export const recognizeSichuanPatterns = (hand: Tile[], melds: Meld[], lang: Lang
       pairHits.push({ id: 'daiYaoJiu', exponent: SICHUAN_PATTERN_EXPONENTS.daiYaoJiu });
     }
   }
-  const sum = (patterns: SichuanPatternHit[]) => patterns.reduce((total, hit) => total + hit.exponent, 0);
-  const hits = [...(isQiDui && sum(pairHits) >= sum(standardHits) ? pairHits : standardHits)];
+  // 七对与标准面子拆分各是一套读法，分别评分后择高；同为 2 指数番时按七对读法输出。
+  const readings: SichuanPatternHit[][] = isQiDui ? [pairHits, ...standardReadings] : standardReadings;
+  let bestReading = 0;
+  for (let i = 1; i < readings.length; i++) {
+    if (sum(readings[i]) > sum(readings[bestReading])) bestReading = i;
+  }
+  const hits = readings.length > 0 ? [...readings[bestReading]] : [];
   if (isFullFlush) hits.unshift({ id: 'qingYiSe', exponent: SICHUAN_PATTERN_EXPONENTS.qingYiSe });
   if (hits.length === 0) hits.push({ id: 'pingHu', exponent: SICHUAN_PATTERN_EXPONENTS.pingHu });
 
@@ -185,7 +220,19 @@ export const recognizeSichuanPatterns = (hand: Tile[], melds: Meld[], lang: Lang
     qiDui: t.qiDui, daiYaoJiu: t.daiYaoJiu, jinGouDiao: t.jinGouDiao,
   };
 
-  const baseExponent = hits.reduce((sum, hit) => sum + hit.exponent, 0);
+  // 未被采用的读法只做标注：指数番已按选中的读法结算，不把两套拆分相加。
+  const chosen = new Set(hits.map(hit => hit.id));
+  const unstacked: string[] = [];
+  for (let i = 0; i < readings.length; i++) {
+    if (i === bestReading) continue;
+    for (const hit of readings[i]) {
+      if (chosen.has(hit.id) || hit.exponent <= 0) continue;
+      const text = `${names[hit.id]} (${hit.exponent} ${t.exponentUnit})`;
+      if (!unstacked.includes(text)) unstacked.push(text);
+    }
+  }
+
+  const baseExponent = hits.reduce((total, hit) => total + hit.exponent, 0);
   const uncappedExponent = baseExponent + roots;
   const cappedExponent = Math.min(uncappedExponent, SICHUAN_RULE.capExponent);
   const multiplier = Math.pow(2, cappedExponent);
@@ -211,6 +258,9 @@ export const recognizeSichuanPatterns = (hand: Tile[], melds: Meld[], lang: Lang
   const details = [...hits]
     .sort((a, b) => b.exponent - a.exponent)
     .map(hit => `${names[hit.id]} (${hit.exponent} ${t.exponentUnit})`);
+  if (unstacked.length > 0) {
+    details.push(`${t.unstackedReading}${unstacked.join(lang === 'zh' ? '、' : ', ')}`);
+  }
   if (roots > 0) details.push(`${t.root} ×${roots} (+${roots})`);
   details.push(uncappedExponent > SICHUAN_RULE.capExponent
     ? `${t.exponentUnit} ${uncappedExponent} → ${lang === 'zh' ? '封顶' : 'capped at'} ${SICHUAN_RULE.capExponent} = ${multiplier} ${t.timesUnit}`
