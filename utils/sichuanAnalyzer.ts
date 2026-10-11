@@ -13,7 +13,7 @@
  * - 番型按**合法面子拆分**判断（对对胡、带幺九），不按「存在几张刻子」推断：
  *   枚举暗手每个合法「4 副面子 + 1 将」拆分，各拆分成套计番后择高。因此
  *   111222333m99911p 只计带幺九 2 指数番（123×3 拆分），不叠加另一套刻子拆分的对对胡；
- *   未被采用的拆分只在 details 里标注「不叠加，口径待核」。
+ *   未选拆分不参与计番或普通结果显示。
  * - 清一色与根不依赖拆分，正常与选中的拆分相加。
  */
 
@@ -220,18 +220,6 @@ export const recognizeSichuanPatterns = (hand: Tile[], melds: Meld[], lang: Lang
     qiDui: t.qiDui, daiYaoJiu: t.daiYaoJiu, jinGouDiao: t.jinGouDiao,
   };
 
-  // 未被采用的读法只做标注：指数番已按选中的读法结算，不把两套拆分相加。
-  const chosen = new Set(hits.map(hit => hit.id));
-  const unstacked: string[] = [];
-  for (let i = 0; i < readings.length; i++) {
-    if (i === bestReading) continue;
-    for (const hit of readings[i]) {
-      if (chosen.has(hit.id) || hit.exponent <= 0) continue;
-      const text = `${names[hit.id]} (${hit.exponent} ${t.exponentUnit})`;
-      if (!unstacked.includes(text)) unstacked.push(text);
-    }
-  }
-
   const baseExponent = hits.reduce((total, hit) => total + hit.exponent, 0);
   const uncappedExponent = baseExponent + roots;
   const cappedExponent = Math.min(uncappedExponent, SICHUAN_RULE.capExponent);
@@ -258,9 +246,6 @@ export const recognizeSichuanPatterns = (hand: Tile[], melds: Meld[], lang: Lang
   const details = [...hits]
     .sort((a, b) => b.exponent - a.exponent)
     .map(hit => `${names[hit.id]} (${hit.exponent} ${t.exponentUnit})`);
-  if (unstacked.length > 0) {
-    details.push(`${t.unstackedReading}${unstacked.join(lang === 'zh' ? '、' : ', ')}`);
-  }
   if (roots > 0) details.push(`${t.root} ×${roots} (+${roots})`);
   details.push(uncappedExponent > SICHUAN_RULE.capExponent
     ? `${t.exponentUnit} ${uncappedExponent} → ${lang === 'zh' ? '封顶' : 'capped at'} ${SICHUAN_RULE.capExponent} = ${multiplier} ${t.timesUnit}`
