@@ -125,13 +125,13 @@ npm run preview   # 本地预览构建产物
 
 真实照片必须同时检测**本人明面手牌和公共可见牌池**，还会出现其他人的牌、蓝色背面牌、倾斜、散落与遮挡。它不能使用前述游戏截图的14个固定裁切槽。仓库新增 `scripts/evaluate_real_table.py`：用于在本地用已有 YOLO 权重一次检测**整张照片**，输出带框照片 `detections.jpg` 和候选清单 `detections.json`，全部候选默认归属 `unassigned`（未确认），不凭单帧推断出牌顺序或将所有桌面牌视为弃牌。
 
-开发机批量检验（非 Android 内置功能；准备好的3张实拍放进同一目录）：
+开发机批量检验（非 Android 内置功能；可一次测试3张或更多照片；本次本地评测记录为5张）：
 
 ```powershell
 python -m pip install ultralytics
 # 先从 https://github.com/nikmomo/Mahjong-YOLO 下载 nano .pt 权重到本机
 python scripts/evaluate_real_table.py --image-dir "D:\\Photos\\mahjong" --weights "D:\\models\\mahjong-yolon-best.pt" --out "real-table-eval"
-# 或指定3张：--images "D:\\Photos\\a.jpg" "D:\\Photos\\b.jpg" "D:\\Photos\\c.jpg"
+# 或指定文件：--images "D:\\Photos\\a.jpg" "D:\\Photos\\b.jpg" "D:\\Photos\\c.jpg"
 ```
 
 每张照片分别生成 `detections.jpg` 和 `detections.json`，另有 `summary.json` 与等待人工填写正确框/错框/漏框的 `review.csv`。统计的检测框数量**不是识别准确率**；3张图只作初步可行性判断。候选牌全部标记为 `unassigned`，必须核实本人手牌、可见牌池、副露、他家及未知归属。
