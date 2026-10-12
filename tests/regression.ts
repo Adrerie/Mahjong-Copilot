@@ -102,6 +102,9 @@ test('国标截图导入：固定13+摸入位、有限模板可信匹配及未�
   }
   assert.equal(classifyGlyph('0'.repeat(192)).key, null);
   assert.equal(classifyGlyph('bad').key, null);
+  const reviewedUnknownFace = 'f'.repeat(192);
+  assert.equal(classifyGlyph(reviewedUnknownFace).key, null);
+  assert.equal(classifyGlyph(reviewedUnknownFace, { z7: [reviewedUnknownFace] }).key, 'z7', '本地人工确认模板应被复用');
   // 一份示例中的13张+右侧单独摸入牌：不会以13张误触发弃牌建议。
   const screenHand: Tile[] = [
     ...tiles('1358898', Suit.Man), ...tiles('2', Suit.Sou),
