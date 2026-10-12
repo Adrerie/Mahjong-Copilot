@@ -160,11 +160,24 @@ GitHub 自动统计的 Contributors/贡献图由实际提交作者及合并记�
 
 GitHub Actions 工作流：[Verify and package](.github/workflows/verify-and-package.yml)。在分支推送或 PR 时运行 `npm test`、`npm run typecheck`、`npm run build`，并打包 `web-dist` 与 `mahjong-copilot-debug-apk` 两种可下载的运行产物。Debug APK 供测试安装，**不是正式签名发行包**。构建是否成功以 [Actions 页面](https://github.com/Adrerie/Mahjong-Copilot/actions)的实时结果为准。
 
-## GitHub Releases（版本 Tag 发布）
+## GitHub Releases（正式签名的 Android Beta 包）
 
-普通推送和 PR 仍只上传临时 Actions Artifact，不会产生 Release。**只有推送与版本号一致的 `v*` Tag**，并且现有测试、类型检查、Web 和 Android Debug APK 构建成功后，工作流才自动创建 [Releases](https://github.com/Adrerie/Mahjong-Copilot/releases) 中的 **Pre-release**，附带重命名的 APK。版本 Tag 必须指向 `main` 已包含的提交。
+**发布前需要配置的四项 Repository Secrets**（GitHub → Settings → Secrets and variables → Actions）：
 
-当前版本可这样发布（须先把发布工作流合并到 `main`）：
+- `ANDROID_KEYSTORE_BASE64`：原始签名密钥库文件的 Base64 内容
+- `ANDROID_STORE_PASSWORD`：密钥库密码
+- `ANDROID_KEY_ALIAS`：签名密钥别名
+- `ANDROID_KEY_PASSWORD`：密钥密码
+
+不要将 JKS/keystore、密码、Base64 密钥内容或包含它们的配置文件提交到仓库。CI 运行时才将密钥恢复到临时目录，使用既有 `android/app/build.gradle` 中的环境变量签名配置，并在任务结束时删除临时密钥文件。**不要在 PR 日志或评论中粘贴密钥。**
+
+### 构建及验证机制
+
+- **PR、功能分支**：仅执行 Web 测试、类型检查、前端构建和 Android Debug APK 构建；不会提供签名密钥。
+- **推送到 `main`**：全部基础检查通过后，再构建 `assembleRelease`，用 `keytool` 核验密钥库与别名，用 `apksigner` 核验 APK 签名，并核验包名、版本号。通过后生成 Actions Artifact `mahjong-copilot-signed-release-apk`；**不会自动创建公开的 GitHub Release**。这也是首次配置 Secrets 后的验证方式。
+- **推送 `v*` 版本 Tag**：在上述成功基础上检查 Tag 与 `package.json` / Android `versionName` 一致、提交属于 `main` 历史，然后以**签名 Release APK**创建 GitHub Pre-release。APK 命名为 `Mahjong-Copilot-v<version>-release.apk`。
+
+请先将相关 PR 合并到 `main`，确认 [Actions](https://github.com/Adrerie/Mahjong-Copilot/actions) 中 `Build and verify signed release APK` 运行成功，再创建版本 Tag：
 
 ```bash
 git switch main
@@ -173,7 +186,7 @@ git tag -a v1.1.0-beta.1 -m "Mahjong Copilot 1.1.0 beta 1"
 git push origin v1.1.0-beta.1
 ```
 
-不要在发布工作流合并之前给旧提交打 Tag。本机制只发 **Debug 预览包**，不使用正式发布签名；不同 CI 构建的调试签名可能不同，导致覆盖安装失败，卸载会清除本地局面数据。未来向用户提供可持续升级的安装包时，须先配置稳定的签名密钥并单独构建签名 Release APK。
+构建成功的签名包在 [Releases](https://github.com/Adrerie/Mahjong-Copilot/releases) 中下载。**必须长期保存同一签名密钥**，后续版本才能正常覆盖安装。Debug APK 与 Release APK 使用不同签名证书，不能直接互相覆盖安装；卸载旧版会清除其本地数据。未来每次发布应同步 npm 与 Android 版本号，并递增 `versionCode`。
 
 ## 📄 开源协议
 
