@@ -179,6 +179,38 @@ test('未成牌/听牌/多牌三种暗手形态各自给出正确结论', () => 
   assert.ok(discardable.bestDiscard);
 });
 
+test('国标和四川：13张提示进张、14张推荐打哪张，维持模式分离', () => {
+  const mcr13 = state([...tiles('123456', Suit.Man), ...tiles('7', Suit.Pin)], [pong(1), pong(9)]);
+  const m13 = analyzeGame(mcr13, 'zh');
+  assert.equal(m13.bestDiscard, undefined);
+  assert.ok(m13.improvingDraws?.some(x => x.tile.suit === Suit.Pin && x.tile.value === 7 && x.remaining > 0));
+  const m14 = analyzeGame(state([...tiles('1234568', Suit.Man), ...tiles('7', Suit.Pin)], [pong(1), pong(9)]), 'zh');
+  assert.ok(m14.bestDiscard, '14张国标未和时必须推荐出牌');
+  assert.equal(m14.improvingDraws, undefined);
+
+  const sc13 = sichuan([...tiles('123456789', Suit.Man), ...tiles('1235', Suit.Pin)], Suit.Sou);
+  const s13 = analyzeGame(sc13, 'zh');
+  assert.equal(s13.bestDiscard, undefined);
+  assert.ok(s13.improvingDraws?.some(x => x.tile.suit === Suit.Pin && x.tile.value === 5));
+  const sc14 = sichuan([...tiles('123456789', Suit.Man), ...tiles('12345', Suit.Pin)], Suit.Sou);
+  const s14 = analyzeGame(sc14, 'zh');
+  assert.ok(s14.bestDiscard, '14张四川未和时必须推荐出牌');
+  assert.equal(s14.improvingDraws, undefined);
+
+  const needsVoid = analyzeGame(sichuan([...tiles('123456789', Suit.Man), ...tiles('1235', Suit.Pin)], Suit.Man), 'zh');
+  assert.deepEqual(needsVoid.improvingDraws, [], '仍有定缺牌时不可误报正常进张路线');
+});
+
+test('国标：结构已和但8番待核时显示续打备选，不代替8番核验', () => {
+  const hand = [...tiles('123', Suit.Man), ...tiles('456123', Suit.Pin),
+    ...tiles('789', Suit.Sou), ...tiles('55', Suit.Sou)];
+  const r = analyzeGame(state(hand), 'zh');
+  assert.equal(r.isWinning, true);
+  assert.equal(r.contextPending, true);
+  assert.ok(r.bestDiscard, '结构已和但无法确认起和时需保留继续打的建议');
+  assert.ok(r.warnings.some(w => w.includes('8番未确认')));
+});
+
 test('死叫：牌河已见完的待牌不算听牌', () => {
   const hand = [...tiles('123456789', Suit.Man), ...tiles('555', Suit.Pin), createTile(Suit.Pin, 1)];
   const position = state(hand, [], { discards: tiles('111', Suit.Pin) });
