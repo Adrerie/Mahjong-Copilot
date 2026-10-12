@@ -794,6 +794,37 @@ test('高价值番种：大三元与三色三同顺都要识别且不重复计�
   assert.ok(mcrPatternIds(shiftedPungs).includes('sanSeSanJieGao'));
 });
 
+test('高番不计规则：清幺九/字一色/绿一色/双箭刻按参考口径过滤', () => {
+  // 清幺九 64 + 四暗刻 64 = 128，全带幺/碰碰和/幺九刻/无字不再计
+  const allTerminals = [...tiles('111999', Suit.Man), ...tiles('111999', Suit.Pin), ...tiles('11', Suit.Sou)];
+  const terminalsApi = calculateMCRTotalFan(allTerminals, []);
+  assert.equal(terminalsApi.totalFan, 128);
+  for (const id of ['quanDaiYao', 'pengPengHu', 'yaoJiuKe', 'wuZi']) {
+    assert.ok(!terminalsApi.patterns.some(p => p.id === id), `清幺九不得再计 ${id}`);
+  }
+
+  // 字一色 64 + 三风刻 12 + 箭刻 2 = 78（混幺九/碰碰和/全带幺/幺九刻/缺一门不计）
+  const allHonors = [...tiles('66', Suit.Zihai)];
+  const honorMelds = [pong(1, Suit.Zihai), pong(2, Suit.Zihai), pong(3, Suit.Zihai), pong(5, Suit.Zihai)];
+  assert.equal(mcrFan(allHonors, honorMelds), 78);
+
+  // 绿一色不计混一色与缺一门，但仍计清一色：88 + 四暗刻64 + 清一色24 + 一色三节高24 + 碰碰和6 + 断幺2
+  const allGreen = [...tiles('222333444666', Suit.Sou), ...tiles('88', Suit.Sou)];
+  assert.equal(mcrFan(allGreen, []), 208);
+  // 双箭刻不计箭刻：6 + 双暗刻2 + 幺九刻2 + 缺一门1 + 连六1
+  const twoDragons = [...tiles('555666', Suit.Zihai), ...tiles('123456', Suit.Man), ...tiles('22', Suit.Sou)];
+  assert.equal(mcrFan(twoDragons, []), 12);
+  // 全带五/全双刻不计无字
+  const allFives = [...tiles('555', Suit.Man), ...tiles('456', Suit.Pin), ...tiles('345', Suit.Sou), ...tiles('567', Suit.Sou), ...tiles('55', Suit.Pin)];
+  const fivesApi = calculateMCRTotalFan(allFives, []);
+  assert.ok(fivesApi.patterns.some(p => p.id === 'quanDaiWu'));
+  assert.ok(!fivesApi.patterns.some(p => p.id === 'wuZi'));
+  const evenPungs = [...tiles('222444', Suit.Man), ...tiles('66622', Suit.Pin), ...tiles('888', Suit.Sou)];
+  const evenApi = calculateMCRTotalFan(evenPungs, []);
+  assert.ok(evenApi.patterns.some(p => p.id === 'quanShuangKe'));
+  assert.ok(!evenApi.patterns.some(p => p.id === 'wuZi'));
+});
+
 test('七对/连七对择优，九莲宝灯要核对和牌前的 13 张', () => {
   const qiDui = [...tiles('1111223344', Suit.Man), ...tiles('5566', Suit.Pin)];
   assert.equal(checkWinning(countsToArray(countTiles(qiDui)), 0), true);
@@ -843,6 +874,16 @@ test('国标和牌上下文：门风/圈风刻、和牌张听型、末张与绝�
   assert.equal(patternCounts(windHand, windMelds, 'unknown', { seatWind: 1, roundWind: 1 }).quanFengKe, 1);
   assert.equal(patternCounts(windHand, windMelds, 'unknown', { seatWind: 3, roundWind: 3 }).menFengKe, undefined);
   assert.equal(patternCounts(windHand, windMelds).menFengKe, undefined);
+  // 门风/圈风刻会消化对应风刻的幺九刻：东为门风、南为圈风时两副都不再计幺九刻
+  assert.equal(patternCounts(windHand, windMelds, 'unknown', { seatWind: 1, roundWind: 2 }).yaoJiuKe, undefined);
+  assert.equal(patternCounts(windHand, windMelds, 'unknown', { seatWind: 2, roundWind: 2 }).yaoJiuKe, 1);
+  assert.equal(patternCounts(windHand, windMelds).yaoJiuKe, 2);
+  assert.equal(mcrFan(windHand, windMelds, 'unknown', { seatWind: 1, roundWind: 2 }), 6);
+  // 三风刻扣三副风刻的幺九刻，剩余幺九刻照计
+  const threeWinds = [...tiles('111', Suit.Man), ...tiles('55', Suit.Sou)];
+  const threeWindMelds = [pong(1, Suit.Zihai), pong(2, Suit.Zihai), pong(3, Suit.Zihai)];
+  assert.equal(patternCounts(threeWinds, threeWindMelds).yaoJiuKe, 1);
+  assert.equal(mcrFan(threeWinds, threeWindMelds), 20);
 
   // 和牌张听型：单钓将 / 坎张 / 边张各 1 番，两面听不计
   const pairWait = [...tiles('123456789', Suit.Man), ...tiles('456', Suit.Pin), ...tiles('55', Suit.Sou)];

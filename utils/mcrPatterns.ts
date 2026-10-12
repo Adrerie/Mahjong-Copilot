@@ -253,7 +253,6 @@ const recognizeSetPatterns = (
 
   // 幺九刻 / 箭刻族 / 风刻族
   const yaoJiuPongs = pongIndices.filter(isTerminalOrHonorIndex).length;
-  if (yaoJiuPongs > 0) add('yaoJiuKe', yaoJiuPongs);
 
   const dragonPongs = pongIndices.filter(isDragonIndex).length;
   if (dragonPongs >= 3) add('daSanYuan');
@@ -269,8 +268,21 @@ const recognizeSetPatterns = (
   // 门风刻 / 圈风刻：同一副风刻可以同时是门风和圈风，两番各自成立。
   const seatWindIndex = ctx.seatWind ? 26 + ctx.seatWind : null;
   const roundWindIndex = ctx.roundWind ? 26 + ctx.roundWind : null;
-  if (seatWindIndex !== null && pongIndices.includes(seatWindIndex)) add('menFengKe');
-  if (roundWindIndex !== null && pongIndices.includes(roundWindIndex)) add('quanFengKe');
+  const seatWindPung = seatWindIndex !== null && pongIndices.includes(seatWindIndex);
+  const roundWindPung = roundWindIndex !== null && pongIndices.includes(roundWindIndex);
+  if (seatWindPung) add('menFengKe');
+  if (roundWindPung) add('quanFengKe');
+
+  // 门风/圈风刻与三风刻会消化对应风刻的幺九刻，按参考口径在同一次拆分里扣减：
+  // 三风刻扣三副风刻，门风与圈风各扣一副（同一副只扣一次）。
+  let yaoJiuKeCount = yaoJiuPongs;
+  if (windPongs === 3) {
+    yaoJiuKeCount = Math.max(0, yaoJiuKeCount - 3);
+  } else if (windPongs < 4) {
+    if (seatWindPung) yaoJiuKeCount -= 1;
+    if (roundWindPung && roundWindIndex !== seatWindIndex) yaoJiuKeCount -= 1;
+  }
+  if (yaoJiuKeCount > 0) add('yaoJiuKe', yaoJiuKeCount);
 
   // 边张 / 坎张 / 单钓将：只在记录和牌张时按当前拆分的听牌形状判定。
   const waitShape = ctx.winningTile ? waitPatternId(decomposition, ctx.winningTile) : null;
