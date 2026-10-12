@@ -1,6 +1,6 @@
 import { GameMode, Tile, Meld, Suit } from '../types';
 import { countTiles, countsToArray, indexToTile } from './tileHelpers';
-import { checkWinning } from './winningChecker';
+import { checkWinning, KNITTED_GROUPS, KNITTED_PERMUTATIONS } from './winningChecker';
 
 // Enumerate melds, incomplete groups, the pair, and unused tiles.
 const standardShanten = (input: number[], existing: number): number => {
@@ -46,6 +46,58 @@ export const calculateKokushiShanten = (tiles: number[]): number => {
   return 13 - indices.filter(i => tiles[i] > 0).length - Number(indices.some(i => tiles[i] >= 2));
 };
 
+/**
+ * 不靠（全不靠/七星不靠）与组合龙的向听。
+ * 通用公式：向听 = 暗手张数 − 能固定进最终牌型的牌张数
+ * （其余每张都要被摸到的牌替换；摸到的那张不算在手牌里）。
+ * 吃碰杠是锁定面子：不靠不允许副露，组合龙最多一副副露（顶掉那副顺子/刻子）。
+ */
+const knittedSpecialShanten = (tiles: number[], melds: Meld[]): number | null => {
+  const handCount = tiles.reduce((sum, count) => sum + count, 0);
+  let best: number | null = null;
+  const keep = (value: number) => { best = best === null ? value : Math.min(best, value); };
+
+  // 不靠：三色各取 147/258/369 中的一组，张张不同，加七种字牌（不允许副露）。
+  if (melds.length === 0 && handCount === 13) {
+    const honors = tiles.slice(27).filter(count => count > 0).length;
+    const numbers = KNITTED_PERMUTATIONS.reduce((bestNumbers, permutation) => Math.max(bestNumbers,
+      [0, 1, 2].reduce((matched, suit) => matched +
+        KNITTED_GROUPS[permutation[suit]].filter(offset => tiles[suit * 9 + offset] > 0).length, 0)), 0);
+    keep(13 - Math.min(13, numbers + honors));
+  }
+
+  // 组合龙：三色分别凑齐 147/258/369 共 9 张，其余是一副面子加一对将（最多一副副露）。
+  if (melds.length <= 1) {
+    const needSet = melds.length === 0;
+    for (const permutation of KNITTED_PERMUTATIONS) {
+      const rest = [...tiles];
+      let matched = 0;
+      permutation.forEach((group, suit) =>
+        KNITTED_GROUPS[group].forEach(offset => {
+          if (rest[suit * 9 + offset] > 0) { rest[suit * 9 + offset] -= 1; matched += 1; }
+        }));
+      for (let pair = 0; pair < 34; pair++) {
+        if (rest[pair] < 1) continue;
+        const afterPair = [...rest];
+        const pairMatched = Math.min(2, afterPair[pair]);
+        afterPair[pair] -= pairMatched;
+        let setMatched = 0;
+        if (needSet) {
+          for (let index = 0; index < 34; index++) setMatched = Math.max(setMatched, Math.min(3, afterPair[index]));
+          for (let suit = 0; suit < 3; suit++) {
+            for (let offset = 0; offset <= 6; offset++) {
+              const run = [suit * 9 + offset, suit * 9 + offset + 1, suit * 9 + offset + 2];
+              setMatched = Math.max(setMatched, run.filter(index => afterPair[index] > 0).length);
+            }
+          }
+        }
+        keep(handCount - (matched + pairMatched + setMatched));
+      }
+    }
+  }
+  return best === null ? null : Math.max(0, best);
+};
+
 export const calculateShanten = (hand: Tile[], melds: Meld[], mode: GameMode = GameMode.MCR): number => {
   if (melds.length > 4) return 8;
   const tiles = countsToArray(countTiles(hand));
@@ -66,6 +118,11 @@ export const calculateShanten = (hand: Tile[], melds: Meld[], mode: GameMode = G
   if (melds.length === 0) {
     result = Math.min(result, Math.max(0, calculateQiDuiShanten(tiles)));
     if (mode === GameMode.MCR) result = Math.min(result, Math.max(0, calculateKokushiShanten(tiles)));
+  }
+  // 13 张以外的特殊型距离：不靠与组合龙按固定牌张数算，不再退回常规向听近似。
+  if (mode === GameMode.MCR) {
+    const knitted = knittedSpecialShanten(tiles, melds);
+    if (knitted !== null) result = Math.min(result, knitted);
   }
   return result;
 };

@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { AnalysisResult, Language } from '../types';
+import { AnalysisResult, GameMode, Language } from '../types';
 import { TEXT } from '../constants';
 import TileUI from './TileUI';
 
@@ -32,7 +32,11 @@ const AnalysisResultModal: React.FC<Props> = ({ result, lang, onClose }) => {
                    result.isWinning ? (lang === 'zh'
                       ? (result.contextPending ? '成牌（计番待核）' : '成牌（参考计番）')
                       : (result.contextPending ? 'Complete shape (score unverified)' : 'Complete shape (reference score)')) :
-                   result.isReady ? t.ready : result.shanten !== null ? `${result.shanten} ${t.shanten}` : '—'}
+                   result.isReady
+                     ? (result.mode === GameMode.MCR
+                       ? (lang === 'zh' ? '结构听牌（起和待核）' : 'Shape tenpai (8-fan minimum unverified)')
+                       : t.ready)
+                     : result.shanten !== null ? `${result.shanten} ${t.shanten}` : '—'}
                 </span>
                 {result.warnings.map((w, idx) => (
                    <span key={idx} className="bg-[#FF006E] text-white text-xs font-bold px-2 py-0.5 rounded transform -rotate-1">
@@ -148,6 +152,13 @@ const AnalysisResultModal: React.FC<Props> = ({ result, lang, onClose }) => {
           {(result.isReady || result.status === 'deadWait') && (
             <div>
               <h3 className="text-gray-400 text-xs font-black uppercase tracking-wider mb-3 ml-1">{t.waits}</h3>
+              {result.mode === GameMode.MCR && (
+                <p className="text-xs text-amber-800 bg-amber-50 p-2 rounded-lg mb-2">
+                  {lang === 'zh'
+                    ? '待牌只按牌型计算：能否正式起和还要看实际和牌张、和牌来源、圈门风、末张与杠类型，达到 8 番才算起和。'
+                    : 'Waits are shape-only: whether the hand may actually win also depends on the winning tile, win source, seat/round wind, last tile and kong type, and needs 8 fan.'}
+                </p>
+              )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {result.waitingTiles.map((wait, idx) => (
                   <div key={idx} className="flex items-center justify-between bg-white border-2 border-[#CCFF00] p-2 rounded-xl shadow-[2px_2px_0_0_#CCFF00]">

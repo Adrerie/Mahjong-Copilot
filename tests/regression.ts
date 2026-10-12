@@ -546,6 +546,24 @@ test('国标：结构成牌与 8 番起和分开，空输入不得声明起和',
   const result = analyzeGame(state(hand, melds), 'zh');
   assert.equal(result.isWinning, true);
   assert.equal(result.isReady, false);
+
+  // 无番和8：明吃789m + 234m 345p 678s 中中，点和 4m（两面听）。
+  // 除花牌外确实没有任何番种时才能计；来源未记录时可能还有自摸/门前清，不能判定无番。
+  const noFanHand = [...tiles('234', Suit.Man), ...tiles('345', Suit.Pin), ...tiles('678', Suit.Sou), ...tiles('77', Suit.Zihai)];
+  const noFanMelds = [chi('789', Suit.Man)];
+  const full = { winningTile: createTile(Suit.Man, 4), seatWind: 1 as const, roundWind: 1 as const, lastTile: false, afterKong: false };
+  const noFan = calculateMCRTotalFan(noFanHand, noFanMelds, 'claim', full);
+  assert.deepEqual(noFan.patterns.map(p => p.id), ['wuFanHu']);
+  assert.equal(noFan.confirmedFan, 8);
+  assert.equal(noFan.eligibility, 'met');
+  const noFanUnknown = calculateMCRTotalFan(noFanHand, noFanMelds, 'unknown', full);
+  assert.equal(noFanUnknown.patterns.some(p => p.id === 'wuFanHu'), false);
+  assert.equal(noFanUnknown.confirmedFan, 0);
+  assert.equal(noFanUnknown.eligibility, 'unverified');
+  // 自摸本身是番种，同一手牌不能既是自摸又是无番和
+  const noFanDraw = calculateMCRTotalFan(noFanHand, noFanMelds, 'selfDraw', full);
+  assert.equal(noFanDraw.patterns.some(p => p.id === 'wuFanHu'), false);
+  assert.equal(noFanDraw.confirmedFan, 1);
 });
 
 test('国标：和牌来源未记录时不计 不求人/门前清/自摸', () => {
@@ -668,6 +686,16 @@ test('国标特殊结构：七星不靠/全不靠/组合龙都能成牌', () => 
   // 全部由组合龙的三组牌构成（9 张）+ 一副暗刻 + 将
   const openKnitted = [...tiles('147', Suit.Man), ...tiles('258', Suit.Pin), ...tiles('369', Suit.Sou), ...tiles('111', Suit.Man), ...tiles('22', Suit.Pin)];
   assert.equal(checkWinning(countsToArray(countTiles(openKnitted)), 0), true);
+
+  // 超过一步的特殊型距离也要按固定牌张数算，不能退回常规向听近似。
+  // 不靠差一张：147m 258p 3s + 五种字牌，再补一种字牌即可听牌。
+  const knittedOneAway = [...tiles('147', Suit.Man), ...tiles('258', Suit.Pin), createTile(Suit.Sou, 3), ...tiles('12345', Suit.Zihai), createTile(Suit.Zihai, 1)];
+  assert.equal(calculateShanten(knittedOneAway, [], GameMode.MCR), 1);
+  // 组合龙差一张：九张龙 + 55z 将 + 单张 2m，摸 2m 的刻子位仍差两张（换掉 8p 后听牌）
+  const knittedTwoAway = [...tiles('147', Suit.Man), ...tiles('258', Suit.Pin), ...tiles('369', Suit.Sou), ...tiles('55', Suit.Zihai), createTile(Suit.Man, 2), createTile(Suit.Pin, 8)];
+  assert.equal(calculateShanten(knittedTwoAway, [], GameMode.MCR), 1);
+  // 常规 13 张牌不受特殊型公式影响
+  assert.equal(calculateShanten([...tiles('123456789', Suit.Man), ...tiles('123', Suit.Pin), ...tiles('5', Suit.Sou)], [], GameMode.MCR), 0);
 });
 
 test('国标特殊结构：重复牌、缺张、错位与带副露的假结构都被拒', () => {
@@ -1008,6 +1036,24 @@ test('建议层：一色三步高按实体牌算缺张，不重复借用同一�
   const fixedChow = [chi('123', Suit.Man)];
   const chowHand = [...tiles('456789', Suit.Man), ...tiles('22', Suit.Pin), ...tiles('333', Suit.Sou)];
   assert.ok(analyzeMCR(chowHand, fixedChow, 'zh', 50).some(s => s.name === TEXT.zh.pureStraight));
+});
+
+test('建议层：明碰/明杠不能拆成顺子，也不能被重复计入刻子', () => {
+  // 明碰 1m + 三组 23m：碰牌不能改当 123m 的三副顺子。
+  const openPong = analyzeMCR([...tiles('23', Suit.Man), ...tiles('23', Suit.Man), ...tiles('23', Suit.Man),
+    ...tiles('55', Suit.Pin), ...tiles('55', Suit.Sou)], [pong(1, Suit.Man)], 'zh', 50);
+  assert.ok(!openPong.some(s => s.name.includes('一色三同顺') || s.name.includes('一色四同顺')));
+  // 碰碰和：两副碰只算两刻，不能与牌面统计重复相加。
+  const allPungs = analyzeMCR([...tiles('333', Suit.Man), ...tiles('44', Suit.Sou), createTile(Suit.Zihai, 5)],
+    [pong(1, Suit.Man), pong(2, Suit.Pin)], 'zh', 50).find(s => s.name.includes('碰碰和'));
+  assert.ok(allPungs);
+  assert.ok(allPungs.patternDetails.some(d => d.includes('已有3刻')));
+  // 明杠不是暗刻；暗杠才是。
+  const exposed = analyzeMCR([...tiles('222333444', Suit.Man), ...tiles('55', Suit.Pin)], [gang(1, Suit.Man)], 'zh', 50);
+  assert.ok(!exposed.some(s => s.name.includes('四暗刻')));
+  const concealed = analyzeMCR([...tiles('222333444', Suit.Man), ...tiles('55', Suit.Pin)],
+    [gang(1, Suit.Man, 'concealed')], 'zh', 50);
+  assert.ok(concealed.some(s => s.name.includes('四暗刻')));
 });
 
 test('建议层：五门齐报出的向听等于真实向听', () => {

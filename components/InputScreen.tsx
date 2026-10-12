@@ -187,10 +187,10 @@ const InputScreen: React.FC<Props> = ({ mode, lang, setLang, onBack }) => {
   };
 
   return (
-    <div className={`flex flex-col h-screen bg-gradient-to-b ${THEME.bgGradient}`}>
+    <div className={`mc-screen flex flex-col bg-gradient-to-b ${THEME.bgGradient}`}>
 
       {/* 1. Header */}
-      <div className="bg-white border-b-2 border-blue-100 z-10 px-4 pb-3 pt-12 shadow-sm shrink-0">
+      <div className="mc-header bg-white border-b-2 border-blue-100 z-10 pb-3 shadow-sm shrink-0">
         <div className="flex items-center justify-between mb-2">
           <button onClick={onBack} aria-label={t.back} className="w-8 h-8 flex items-center justify-center bg-gray-100 rounded-full hover:bg-gray-200">
              <span className="text-xl">←</span>
@@ -290,8 +290,10 @@ const InputScreen: React.FC<Props> = ({ mode, lang, setLang, onBack }) => {
         )}
       </div>
 
-      {/* 2. Scrollable Canvas */}
-      <div ref={canvasRef} className={`flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar transition-[padding] duration-300 ${showKeyboard ? 'pb-96' : 'pb-32'}`}>
+      {/* 2. Scrollable Canvas：窄屏单列，平板/桌面（≥1000px）分两栏，不再整屏拉成一条 */}
+      <div ref={canvasRef} className={`mc-canvas flex-1 overflow-y-auto no-scrollbar transition-[padding] duration-300 ${showKeyboard ? 'mc-canvas--keyboard' : ''}`}>
+        <div className="mc-canvas-inner">
+        <div className="mc-column">
 
         {/* === TEXT ENTRY === */}
         <div className="bg-white rounded-2xl border-2 border-blue-100 shadow-sm p-3">
@@ -400,6 +402,9 @@ const InputScreen: React.FC<Props> = ({ mode, lang, setLang, onBack }) => {
                 </div>
             </div>
         )}
+        </div>
+
+        <div className="mc-column">
 
         {/* === COMBINED PLAYER AREA === */}
         <div className="bg-white rounded-3xl border-2 border-blue-100 shadow-sm transition-all duration-300 overflow-hidden">
@@ -514,10 +519,12 @@ const InputScreen: React.FC<Props> = ({ mode, lang, setLang, onBack }) => {
                 {discards.length === 0 && (!showKeyboard || activeZone !== 'discards') && <p className="text-gray-300 text-sm italic">{t.emptyRiver}</p>}
             </div>
         </div>
+        </div>
+        </div>
       </div>
 
       {/* 3. Floating Action Button (Analysis) */}
-      <div className={`fixed bottom-6 right-6 z-30 transition-all duration-300 ${showKeyboard ? 'opacity-0 pointer-events-none translate-y-10' : 'opacity-100 translate-y-0'}`}>
+      <div className={`mc-fab fixed z-30 transition-all duration-300 ${showKeyboard ? 'opacity-0 pointer-events-none translate-y-10' : 'opacity-100 translate-y-0'}`}>
             <button
                 onClick={handleAnalyze}
                 className="bg-[#CCFF00] text-black font-black text-lg px-8 py-4 rounded-full border-2 border-black shadow-neu hover:scale-105 active:scale-95 transition-all flex items-center gap-2"
@@ -528,7 +535,7 @@ const InputScreen: React.FC<Props> = ({ mode, lang, setLang, onBack }) => {
 
       {/* 4. Slide-up Keyboard */}
       <div ref={keyboardRef} className={`
-          fixed bottom-0 left-0 w-full bg-white/95 backdrop-blur-xl border-t border-blue-100 rounded-t-3xl shadow-[0_-4px_30px_rgba(0,0,0,0.1)] z-40 pt-2 px-2 pb-[calc(1.5rem+env(safe-area-inset-bottom))]
+          mc-keyboard fixed bottom-0 bg-white/95 backdrop-blur-xl border-t border-blue-100 rounded-t-3xl shadow-[0_-4px_30px_rgba(0,0,0,0.1)] z-40 pt-2
           transform transition-transform duration-300 ease-out
           ${showKeyboard ? 'translate-y-0' : 'translate-y-full'}
       `}>

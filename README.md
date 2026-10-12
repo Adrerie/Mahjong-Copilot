@@ -127,6 +127,8 @@ npm run android:assembleDebug
 
 `android/` 工程已随仓库提交，`capacitor.config.json` 的 `webDir` 指向 `dist`。Debug APK 不是正式签名发行包。
 
+应用在 Android 上使用 edge-to-edge 主题，界面按安全区（`env(safe-area-inset-*)`）留边；平板横屏（≥1000px）为录牌/上下文与手牌/牌河双栏，竖屏和手机保持单列，键盘在宽屏上限宽居中，不用固定宽度容器包裹整页。
+
 ---
 
 ## 🛠 技术栈

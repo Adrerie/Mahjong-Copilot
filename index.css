@@ -40,6 +40,89 @@ body {
   box-shadow: 2px 2px 0px 0px #000000;
 }
 
+/* ============================================================
+   响应式外壳：安全区 + 平板/横屏布局
+   参考 XiaoLiuRenArchive 的分断点做法（safe-area 变量 + 1000px 起双栏 + 横屏矮屏留白），
+   只保留本项目需要的部分。
+   ============================================================ */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --content-max: 1200px;
+}
+
+/* 用 dvh 而不是 vh：移动端浏览器地址栏收放时不会截断底部内容。 */
+.mc-screen {
+  height: 100dvh;
+}
+
+.mc-header {
+  padding-top: calc(0.75rem + max(1rem, var(--safe-top)));
+  padding-inline: calc(1rem + var(--safe-left)) calc(1rem + var(--safe-right));
+}
+
+.mc-canvas {
+  padding-inline: calc(1rem + var(--safe-left)) calc(1rem + var(--safe-right));
+  padding-bottom: calc(8rem + var(--safe-bottom));
+}
+.mc-canvas--keyboard {
+  padding-bottom: calc(24rem + var(--safe-bottom));
+}
+
+.mc-canvas-inner {
+  display: grid;
+  gap: 1rem;
+  width: 100%;
+  max-width: var(--content-max);
+  margin-inline: auto;
+  align-content: start;
+}
+.mc-column {
+  display: grid;
+  gap: 1rem;
+  align-content: start;
+}
+
+.mc-fab {
+  bottom: calc(1.5rem + var(--safe-bottom));
+  right: calc(1.5rem + var(--safe-right));
+}
+
+.mc-keyboard {
+  left: 0;
+  right: 0;
+  max-width: var(--content-max);
+  max-height: calc(100dvh - 4rem);
+  overflow-y: auto;
+  margin-inline: auto;
+  padding-bottom: calc(1.5rem + var(--safe-bottom));
+  padding-inline: calc(0.5rem + var(--safe-left)) calc(0.5rem + var(--safe-right));
+}
+
+/* 平板/桌面：更大的基准字号让点按目标随之变大，双栏排布避免整屏被拉成一条。 */
+@media (min-width: 1000px) {
+  html {
+    font-size: 17px;
+  }
+  .mc-canvas-inner {
+    grid-template-columns: minmax(320px, 0.9fr) minmax(0, 1.1fr);
+  }
+}
+@media (min-width: 1440px) {
+  html {
+    font-size: 18px;
+  }
+}
+
+/* 横屏矮屏：键盘占满下半屏，给画布留出足够滚动空间。 */
+@media (orientation: landscape) and (max-height: 560px) {
+  .mc-canvas--keyboard {
+    padding-bottom: calc(22rem + var(--safe-bottom));
+  }
+}
+
 /* Animation classes */
 @keyframes pop {
   0% { transform: scale(0.9); }

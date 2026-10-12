@@ -63,6 +63,49 @@ const planSequences = (
   return { cost: missing.length, missing };
 };
 
+/** 暗手里某张牌的实体张数。 */
+const handCopies = (hand: Tile[], suit: Suit, value: number): number =>
+  hand.filter(t => t.suit === suit && t.value === value).length;
+
+/** 已锁定为刻子的副露（碰/杠），按同一张牌去重后计数。 */
+const meldedPungs = (melds: Meld[], suit: Suit, value: number): number =>
+  melds.filter(m => (m.type === 'pong' || m.type === 'gang') &&
+    m.tiles[0]?.suit === suit && m.tiles[0]?.value === value).length;
+
+/**
+ * 刻子路线的可用张数（最多 3）：暗手实体张数 + 已锁定的碰/杠。
+ * 吃牌副露的牌不能改当刻子用，所以不计入。
+ */
+const pungTiles = (hand: Tile[], melds: Meld[], suit: Suit, value: number): number =>
+  Math.min(3, handCopies(hand, suit, value) + meldedPungs(melds, suit, value) * 3);
+
+/**
+ * 顺子路线的可用副数：暗手能凑出的同序顺子 + 完全匹配的明吃。
+ * 碰/杠是锁定面子，不能拆成顺子；非同一序数的吃牌也不能改当这副顺子。
+ */
+const chowAvailable = (hand: Tile[], melds: Meld[], suit: Suit, startVal: number): number => {
+  const meldedChows = melds.filter(m => m.type === 'chi' && m.tiles[0]?.suit === suit &&
+    Math.min(...m.tiles.map(t => t.value)) === startVal).length;
+  return Math.min(handCopies(hand, suit, startVal),
+    handCopies(hand, suit, startVal + 1), handCopies(hand, suit, startVal + 2)) + meldedChows;
+};
+
+/** 补足 need 副同序顺子还缺的牌（每副顺子三张牌各缺一张）。 */
+const missingChowTiles = (suit: Suit, startVal: number, need: number, available: number): Tile[] => {
+  const gap = Math.max(0, need - available);
+  if (gap === 0) return [];
+  return [startVal, startVal + 1, startVal + 2].flatMap(value =>
+    Array.from({ length: gap }, () => createTile(suit, value)));
+};
+
+/** countTiles 的键（如 "1m"）还原成牌，用于把候选将牌显示给用户。 */
+const tileFromKey = (key: string): Tile => {
+  const value = parseInt(key[0]);
+  const suitChar = key.slice(1);
+  const suit = suitChar === 'm' ? Suit.Man : suitChar === 'p' ? Suit.Pin : suitChar === 's' ? Suit.Sou : Suit.Zihai;
+  return createTile(suit, value);
+};
+
 
 
 /**
@@ -77,19 +120,21 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
   const suggestions: FanSuggestion[] = [];
   const allTiles = [...hand, ...melds.flatMap(m => m.tiles)];
   const counts = countTiles(allTiles);
+  const handCounts = countTiles(hand);
   
   // --- 48番 番种检测 ---
 
   // 0a. Quadruple Chow (Yi Se Si Tong Shun) - 48 Fan
-  // 一色四同顺：一种花色4组相同序数的顺子
+  // 一色四同顺：一种花色4组相同序数的顺子（碰杠不能改当顺子）
   [Suit.Man, Suit.Pin, Suit.Sou].forEach(s => {
     for (let i = 1; i <= 7; i++) {
-      const has1 = allTiles.filter(tile => tile.suit === s && tile.value === i).length;
-      const has2 = allTiles.filter(tile => tile.suit === s && tile.value === i + 1).length;
-      const has3 = allTiles.filter(tile => tile.suit === s && tile.value === i + 2).length;
-      const minCount = Math.min(has1, has2, has3);
-      
-      if (minCount >= 4) {
+      // 一色四同顺要占满四副面子：只有完全匹配的明吃能算其中一副。
+      const matchingChows = melds.filter(m => m.type === 'chi' && m.tiles[0]?.suit === s &&
+        Math.min(...m.tiles.map(tile => tile.value)) === i).length;
+      if (melds.length > matchingChows) continue;
+      const availableChows = chowAvailable(hand, melds, s, i);
+
+      if (availableChows >= 4) {
         const { score: extraScore, details: extraDetails } = calculateMCRExtras(allTiles, melds, ['yiSeSiTongShun', 'yiSeSanTongShun', 'yiBanGao', 'siGuiYi']);
         suggestions.push({
           name: t.quadrupleChow || '一色四同顺',
@@ -99,13 +144,10 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
           missingTiles: [],
           patternDetails: [`${t.quadrupleChow || '一色四同顺'} (48)`, ...extraDetails]
         });
-      } else if (minCount >= 3) {
+      } else if (availableChows >= 3) {
         // 已有3组，缺1组
-        const missing: Tile[] = [];
-        if (has1 < 4) missing.push(createTile(s, i));
-        if (has2 < 4) missing.push(createTile(s, i + 1));
-        if (has3 < 4) missing.push(createTile(s, i + 2));
-        
+        const missing = missingChowTiles(s, i, 4, availableChows);
+
         const { score: extraScore, details: extraDetails } = calculateMCRExtras(allTiles, melds, ['yiSeSiTongShun', 'yiSeSanTongShun', 'yiBanGao', 'siGuiYi']);
         suggestions.push({
           name: t.quadrupleChow || '一色四同顺',
@@ -123,10 +165,14 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
   // 一色四节高：一种花色4个依次递增1的刻子 (如1111 2222 3333 4444)
   [Suit.Man, Suit.Pin, Suit.Sou].forEach(s => {
     for (let i = 1; i <= 6; i++) {
-      const has1 = allTiles.filter(tile => tile.suit === s && tile.value === i).length;
-      const has2 = allTiles.filter(tile => tile.suit === s && tile.value === i + 1).length;
-      const has3 = allTiles.filter(tile => tile.suit === s && tile.value === i + 2).length;
-      const has4 = allTiles.filter(tile => tile.suit === s && tile.value === i + 3).length;
+      // 一色四节高同样要占满四副刻子：只有这张牌的碰/杠能算其中一副。
+      const matchingPungs = [i, i + 1, i + 2, i + 3]
+        .reduce((total, value) => total + meldedPungs(melds, s, value), 0);
+      if (melds.length > matchingPungs) continue;
+      const has1 = pungTiles(hand, melds, s, i);
+      const has2 = pungTiles(hand, melds, s, i + 1);
+      const has3 = pungTiles(hand, melds, s, i + 2);
+      const has4 = pungTiles(hand, melds, s, i + 3);
       
       if (has1 >= 3 && has2 >= 3 && has3 >= 3 && has4 >= 3) {
         const { score: extraScore, details: extraDetails } = calculateMCRExtras(allTiles, melds, ['yiSeSiJieGao', 'yiSeSanJieGao', 'pengPengHu']);
@@ -168,15 +214,11 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
     for (let i = 1; i <= 7; i++) {
       // 检查该花色是否有3组相同顺子的潜力
       const seqCost = costToMakeSeq(hand, melds, s, i);
-      
-      // 检查这个花色的该顺子可以组成几组（统计牌数）
-      const has1 = allTiles.filter(tile => tile.suit === s && tile.value === i).length;
-      const has2 = allTiles.filter(tile => tile.suit === s && tile.value === i + 1).length;
-      const has3 = allTiles.filter(tile => tile.suit === s && tile.value === i + 2).length;
-      const minCount = Math.min(has1, has2, has3);
-      
-      // 如果已经有足够的牌组成3组相同顺子
-      if (minCount >= 3) {
+
+      // 这个序数的顺子能凑几组：暗手实体张数 + 完全匹配的明吃，碰杠不算
+      const availableChows = chowAvailable(hand, melds, s, i);
+
+      if (availableChows >= 3) {
         const { score: extraScore, details: extraDetails } = calculateMCRExtras(allTiles, melds, ['yiSeSanTongShun']);
         suggestions.push({
           name: t.pureTripleChow || '一色三同顺',
@@ -186,13 +228,10 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
           missingTiles: [],
           patternDetails: [`${t.pureTripleChow || '一色三同顺'} (24)`, ...extraDetails]
         });
-      } else if (minCount >= 2 && seqCost === 0) {
+      } else if (availableChows >= 2 && seqCost === 0) {
         // 已有2组，缺1组
-        const missing: Tile[] = [];
-        if (has1 < 3) missing.push(createTile(s, i));
-        if (has2 < 3) missing.push(createTile(s, i + 1));
-        if (has3 < 3) missing.push(createTile(s, i + 2));
-        
+        const missing = missingChowTiles(s, i, 3, availableChows);
+
         const { score: extraScore, details: extraDetails } = calculateMCRExtras(allTiles, melds, ['yiSeSanTongShun']);
         suggestions.push({
           name: t.pureTripleChow || '一色三同顺',
@@ -210,10 +249,10 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
   // 一色三节高：同一花色3个依次递增1的刻子 (如111万222万333万)
   [Suit.Man, Suit.Pin, Suit.Sou].forEach(s => {
     for (let i = 1; i <= 7; i++) {
-      // 检查连续3个值的刻子
-      const has1 = allTiles.filter(tile => tile.suit === s && tile.value === i).length;
-      const has2 = allTiles.filter(tile => tile.suit === s && tile.value === i + 1).length;
-      const has3 = allTiles.filter(tile => tile.suit === s && tile.value === i + 2).length;
+      // 检查连续3个值的刻子（暗手张数 + 已锁定的碰杠；吃牌不能改当刻子）
+      const has1 = pungTiles(hand, melds, s, i);
+      const has2 = pungTiles(hand, melds, s, i + 1);
+      const has3 = pungTiles(hand, melds, s, i + 2);
       
       // 每个都需要至少3张才能成刻子
       if (has1 >= 3 && has2 >= 3 && has3 >= 3) {
@@ -292,9 +331,9 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
   // 1e. Triple Pung (San Tong Ke) - 16 Fan  
   // 三同刻：3种花色相同序数的刻子
   for (let v = 1; v <= 9; v++) {
-    const hasMan = allTiles.filter(tile => tile.suit === Suit.Man && tile.value === v).length;
-    const hasPin = allTiles.filter(tile => tile.suit === Suit.Pin && tile.value === v).length;
-    const hasSou = allTiles.filter(tile => tile.suit === Suit.Sou && tile.value === v).length;
+    const hasMan = pungTiles(hand, melds, Suit.Man, v);
+    const hasPin = pungTiles(hand, melds, Suit.Pin, v);
+    const hasSou = pungTiles(hand, melds, Suit.Sou, v);
     
     if (hasMan >= 3 && hasPin >= 3 && hasSou >= 3) {
       const { score: extraScore, details: extraDetails } = calculateMCRExtras(allTiles, melds, ['sanTongKe']);
@@ -389,9 +428,9 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
   
   for (let i = 1; i <= 7; i++) {
     for (const [s1, s2, s3] of pungPerms) {
-      const has1 = allTiles.filter(tile => tile.suit === s1 && tile.value === i).length;
-      const has2 = allTiles.filter(tile => tile.suit === s2 && tile.value === i + 1).length;
-      const has3 = allTiles.filter(tile => tile.suit === s3 && tile.value === i + 2).length;
+      const has1 = pungTiles(hand, melds, s1, i);
+      const has2 = pungTiles(hand, melds, s2, i + 1);
+      const has3 = pungTiles(hand, melds, s3, i + 2);
       
       if (has1 >= 3 && has2 >= 3 && has3 >= 3) {
         const { score: extraScore, details: extraDetails } = calculateMCRExtras(allTiles, melds, ['sanSeSanJieGao']);
@@ -588,12 +627,7 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
   // 同一花色2组相同序数的顺子
   [Suit.Man, Suit.Pin, Suit.Sou].forEach(s => {
     for (let i = 1; i <= 7; i++) {
-      const has1 = allTiles.filter(tile => tile.suit === s && tile.value === i).length;
-      const has2 = allTiles.filter(tile => tile.suit === s && tile.value === i + 1).length;
-      const has3 = allTiles.filter(tile => tile.suit === s && tile.value === i + 2).length;
-      const minCount = Math.min(has1, has2, has3);
-      
-      if (minCount >= 2) {
+      if (chowAvailable(hand, melds, s, i) >= 2) {
         suggestions.push({
           name: t.pureDoubleChow || '一般高',
           baseFan: 1,
@@ -607,17 +641,10 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
   });
   
   // 5b. 连六 (Lian Liu) - 1 Fan
-  // 同一花色6张连续的序数牌
+  // 同一花色两组相连的顺子（如123+456）；碰杠不能拆成顺子
   [Suit.Man, Suit.Pin, Suit.Sou].forEach(s => {
     for (let i = 1; i <= 4; i++) {
-      let hasAll = true;
-      for (let j = 0; j < 6; j++) {
-        if (!allTiles.some(tile => tile.suit === s && tile.value === i + j)) {
-          hasAll = false;
-          break;
-        }
-      }
-      if (hasAll) {
+      if (chowAvailable(hand, melds, s, i) >= 1 && chowAvailable(hand, melds, s, i + 3) >= 1) {
         suggestions.push({
           name: t.shortStraight || '连六',
           baseFan: 1,
@@ -713,14 +740,9 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
   // 6. Seven Pairs (七对) - 24 Fan
   let pairs = 0;
   const singleTiles: Tile[] = [];
-  counts.forEach((c, key) => { 
-    if (c >= 2) pairs++;
-    if (c === 1) {
-      const value = parseInt(key[0]);
-      const suitChar = key.slice(1);
-      const suit = suitChar === 'm' ? Suit.Man : suitChar === 'p' ? Suit.Pin : suitChar === 's' ? Suit.Sou : Suit.Zihai;
-      singleTiles.push(createTile(suit, value));
-    }
+  counts.forEach((count, key) => {
+    if (count >= 2) pairs++;
+    if (count === 1) singleTiles.push(tileFromKey(key));
   });
   
   const pairsNeeded = 7 - pairs;
@@ -743,12 +765,15 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
   
   // 7. Four Concealed Pungs (四暗刻) - 64 Fan
   {
-    let anKeCountForSuggestion = 0;
-    counts.forEach(c => { if(c >= 3) anKeCountForSuggestion++; });
-    
-    const hasMingPong = melds.some(m => m.type === 'pong');
-    
-    if (anKeCountForSuggestion >= 4 && !hasMingPong) {
+    // 暗刻只能来自暗手或暗杠；明吃/明碰/明杠/补杠都不是暗刻。
+    const concealedKongs = melds.filter(m => m.type === 'gang' && m.kongKind === 'concealed').length;
+    let anKeCountForSuggestion = concealedKongs;
+    handCounts.forEach(count => { if (count >= 3) anKeCountForSuggestion++; });
+
+    const hasExposedMeld = melds.some(m =>
+      m.type === 'chi' || m.type === 'pong' || (m.type === 'gang' && m.kongKind !== 'concealed'));
+
+    if (anKeCountForSuggestion >= 4 && !hasExposedMeld) {
       const { score: exScoreSiAnKe, details: exDetailsSiAnKe } = calculateMCRExtras(allTiles, melds, ['siAnKe', 'pengPengHu', 'menQianQing', 'buQiuRen', 'sanAnKe', 'shuangAnKe']);
       
       suggestions.push({
@@ -759,16 +784,9 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
         missingTiles: [],
         patternDetails: [`${t.fourConcealedPungs || '四暗刻'} (64)`, `已有${anKeCountForSuggestion}个暗刻`, ...exDetailsSiAnKe]
       });
-    } else if (anKeCountForSuggestion >= 3 && !hasMingPong) {
+    } else if (anKeCountForSuggestion >= 3 && !hasExposedMeld) {
       const pairTilesForSiAnKe: Tile[] = [];
-      counts.forEach((c, key) => {
-        if (c === 2) {
-          const value = parseInt(key[0]);
-          const suitChar = key.slice(1);
-          const suit = suitChar === 'm' ? Suit.Man : suitChar === 'p' ? Suit.Pin : suitChar === 's' ? Suit.Sou : Suit.Zihai;
-          pairTilesForSiAnKe.push(createTile(suit, value));
-        }
-      });
+      handCounts.forEach((count, key) => { if (count === 2) pairTilesForSiAnKe.push(tileFromKey(key)); });
       
       if (pairTilesForSiAnKe.length > 0) {
         const { score: exScoreSiAnKe, details: exDetailsSiAnKe } = calculateMCRExtras(allTiles, melds, ['siAnKe', 'pengPengHu', 'menQianQing', 'buQiuRen', 'sanAnKe', 'shuangAnKe']);
@@ -786,25 +804,20 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
   }
   
   // 8. All Pungs (碰碰和) - 6 Fan
+  // 刻子只数暗手里的三张；碰/杠副露单独按副计数，避免同一副被重复计入。
   let trips = 0;
   const pongMeldsCount = melds.filter(m => m.type === 'pong' || m.type === 'gang').length;
-  counts.forEach(c => { if(c >= 3) trips++; });
+  handCounts.forEach(count => { if (count >= 3) trips++; });
   
   const totalTrips = trips + pongMeldsCount;
   
   const pairTilesForPeng: Tile[] = [];
-  counts.forEach((c, key) => {
-    if (c === 2) {
-      const value = parseInt(key[0]);
-      const suitChar = key.slice(1);
-      const suit = suitChar === 'm' ? Suit.Man : suitChar === 'p' ? Suit.Pin : suitChar === 's' ? Suit.Sou : Suit.Zihai;
-      pairTilesForPeng.push(createTile(suit, value));
-    }
-  });
+  handCounts.forEach((count, key) => { if (count === 2) pairTilesForPeng.push(tileFromKey(key)); });
   
   // 检查是否有更高番型（如四暗刻）排除了碰碰和
   const anKeForPeng = trips;
-  const hasSiAnKe = anKeForPeng >= 4 && melds.every(m => m.type !== 'pong');
+  const hasSiAnKe = anKeForPeng >= 4 && melds.every(m =>
+    m.type !== 'chi' && m.type !== 'pong' && (m.type !== 'gang' || m.kongKind === 'concealed'));
   
   if ((totalTrips >= 2 || pairTilesForPeng.length >= 4) && !hasSiAnKe) {
     const tripsNeededForPeng = Math.max(0, 4 - totalTrips);

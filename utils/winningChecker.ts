@@ -10,10 +10,10 @@
 import { GameMode } from '../types';
 
 /** 三种花色的「不能错位」分组：147 / 258 / 369（花色内相对牌值索引）。 */
-const KNITTED_GROUPS: number[][] = [[0, 3, 6], [1, 4, 7], [2, 5, 8]];
+export const KNITTED_GROUPS: number[][] = [[0, 3, 6], [1, 4, 7], [2, 5, 8]];
 
 /** 分组与三种花色的对应关系，共 6 种排列。 */
-const KNITTED_PERMUTATIONS: number[][] = [
+export const KNITTED_PERMUTATIONS: number[][] = [
   [0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0],
 ];
 

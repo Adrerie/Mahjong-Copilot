@@ -199,7 +199,19 @@ export const calculateMCRTotalFan = (
       totalFan: 0, details: [], isValid: false, patterns: [], missingContext: [] };
   }
 
-  const score = (source: WinSource) => calculateTotalFan(recognizeMCRPatterns(hand, melds, source, ctx));
+  const score = (source: WinSource) => {
+    const result = calculateTotalFan(recognizeMCRPatterns(hand, melds, source, ctx));
+    // 无番和（8番）：除花牌外确实没有任何其他番种时才计。
+    // 和牌来源未记录时可能还有自摸/门前清，此时不能判定「无番」。
+    if (source === 'unknown' || result.validPatterns.length > 0) return result;
+    const pattern = getPatternById('wuFanHu');
+    if (!pattern) return result;
+    return {
+      totalFan: pattern.fan,
+      validPatterns: [{ pattern, count: 1 }],
+      details: [`${pattern.nameZh} (${pattern.fan}番)`],
+    };
+  };
   const confirmed = score(winSource);
   const possible = winSource === 'unknown' ? [score('selfDraw'), score('claim')] : [];
   const maxPossibleFan = possible.reduce((best, alt) => Math.max(best, alt.totalFan), confirmed.totalFan);
