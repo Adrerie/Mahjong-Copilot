@@ -160,6 +160,21 @@ GitHub 自动统计的 Contributors/贡献图由实际提交作者及合并记�
 
 GitHub Actions 工作流：[Verify and package](.github/workflows/verify-and-package.yml)。在分支推送或 PR 时运行 `npm test`、`npm run typecheck`、`npm run build`，并打包 `web-dist` 与 `mahjong-copilot-debug-apk` 两种可下载的运行产物。Debug APK 供测试安装，**不是正式签名发行包**。构建是否成功以 [Actions 页面](https://github.com/Adrerie/Mahjong-Copilot/actions)的实时结果为准。
 
+## GitHub Releases（版本 Tag 发布）
+
+普通推送和 PR 仍只上传临时 Actions Artifact，不会产生 Release。**只有推送与版本号一致的 `v*` Tag**，并且现有测试、类型检查、Web 和 Android Debug APK 构建成功后，工作流才自动创建 [Releases](https://github.com/Adrerie/Mahjong-Copilot/releases) 中的 **Pre-release**，附带重命名的 APK。版本 Tag 必须指向 `main` 已包含的提交。
+
+当前版本可这样发布（须先把发布工作流合并到 `main`）：
+
+```bash
+git switch main
+git pull --ff-only origin main
+git tag -a v1.1.0-beta.1 -m "Mahjong Copilot 1.1.0 beta 1"
+git push origin v1.1.0-beta.1
+```
+
+不要在发布工作流合并之前给旧提交打 Tag。本机制只发 **Debug 预览包**，不使用正式发布签名；不同 CI 构建的调试签名可能不同，导致覆盖安装失败，卸载会清除本地局面数据。未来向用户提供可持续升级的安装包时，须先配置稳定的签名密钥并单独构建签名 Release APK。
+
 ## 📄 开源协议
 
 GPL-3.0 License © 2026 [Adrerie](https://github.com/Adrerie)
