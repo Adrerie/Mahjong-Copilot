@@ -30,6 +30,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      - run: python -m py_compile scripts/evaluate_real_table.py
       - run: npm run typecheck
       - run: npm run build
       - name: Upload web dist
