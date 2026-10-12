@@ -33,6 +33,7 @@ import {
 import { validateGameState } from '../utils/inputValidation';
 import { recognizeSichuanPatterns } from '../utils/sichuanAnalyzer';
 import { classifyGlyph, HAND_CENTERS, isScreenshotRatio, REFERENCE_GLYPHS, TILE_OPTIONS } from '../utils/mcrScreenshot';
+import { compareHandSnapshots } from '../utils/gameSnapshot';
 import {
   decodeEntryState,
   encodeEntryState,
@@ -111,6 +112,18 @@ test('国标截图导入：固定13+摸入位、有限模板可信匹配及未�
   assert.deepEqual(validateGameState(input, 'zh'), []);
   assert.ok(analyzeGame(input, 'zh').status !== 'invalid');
   assert.equal(analyzeGame({ ...input, hand: screenHand.slice(0, 13) }, 'zh').bestDiscard, undefined);
+});
+
+test('游戏连续截图：只有单次摸牌/打牌变化才允许明确标记，不推断跳帧', () => {
+  const base = ['1m', '1m', '2m', '3m', '4m', '5m', '6m', '7m', '8m', '9m', '1p', '2p', '3p'];
+  const draw = compareHandSnapshots(base, [...base, '9p']);
+  assert.deepEqual(draw, { added: ['9p'], removed: [], kind: 'draw' });
+  const discard = compareHandSnapshots([...base, '9p'], base);
+  assert.deepEqual(discard, { added: [], removed: ['9p'], kind: 'discard' });
+  assert.equal(compareHandSnapshots(base, [...base].reverse()).kind, 'unchanged');
+  const multi = compareHandSnapshots(base, [...base.slice(0, 11), '7s', '8s']);
+  assert.equal(multi.kind, 'ambiguous', '跨多个动作不能推断为单次弃牌');
+  assert.deepEqual(compareHandSnapshots(['1m', '1m'], ['1m']).removed, ['1m']);
 });
 
 // ============================================================
