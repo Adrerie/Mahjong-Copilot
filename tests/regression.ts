@@ -495,8 +495,8 @@ test('国标：结构成牌与 8 番起和分开，空输入不得声明起和',
     assert.equal(result.isValid, false);
     assert.equal(result.structuralWin, false);
   }
-  // 明吃234m/345m/567p + 暗手456s55m：非门清、非全求人，事件未记录 → 不足 8 番
-  const hand = [...tiles('456', Suit.Sou), ...tiles('55', Suit.Man)];
+  // 明吃234m/345m/567p + 暗手789s55m：非门清，且没有三色三步高，已知番不足8。
+  const hand = [...tiles('789', Suit.Sou), ...tiles('55', Suit.Man)];
   const melds = [chi('234', Suit.Man), chi('345', Suit.Man), chi('567', Suit.Pin)];
   assert.deepEqual(validateGameState(state(hand, melds), 'zh'), []);
   assert.equal(checkWinning(countsToArray(countTiles(hand)), melds.length), true);
@@ -510,21 +510,22 @@ test('国标：结构成牌与 8 番起和分开，空输入不得声明起和',
 });
 
 test('国标：和牌来源未记录时不计 不求人/门前清/自摸', () => {
-  // 234m/345m/567p/456s/55m：断幺2 + 平和2 = 4
+  // 234m/345m/567p/456s/55m：还成立 345m/456s/567p 三色三步高6，
+  // 本测试只确认自摸/点和分别额外计4/2，不能锁定旧错误总番。
   const hand = [...tiles('234', Suit.Man), ...tiles('345', Suit.Man), ...tiles('567', Suit.Pin), ...tiles('456', Suit.Sou), ...tiles('55', Suit.Man)];
   assert.equal(checkWinning(countsToArray(countTiles(hand)), 0), true);
   const unknown = calculateMCRTotalFan(hand, []);
-  assert.equal(unknown.confirmedFan, 4);
-  assert.equal(unknown.eligibility, 'unverified');
-  assert.equal(unknown.isValid, false);
-  assert.equal(unknown.maxPossibleFan, 8);
+  assert.ok(unknown.patterns.some(p => p.id === 'sanSeSanBuGao'));
+  assert.equal(unknown.eligibility, 'met');
+  assert.equal(unknown.isValid, true);
+  assert.equal(unknown.maxPossibleFan, unknown.confirmedFan + 4);
   assert.ok(unknown.missingContext.includes('winSource'));
   assert.deepEqual(patternCounts(hand, [], 'unknown').buQiuRen, undefined);
   assert.deepEqual(patternCounts(hand, [], 'unknown').menQianQing, undefined);
   assert.deepEqual(patternCounts(hand, [], 'unknown').ziMo, undefined);
 
   const selfDraw = calculateMCRTotalFan(hand, [], 'selfDraw');
-  assert.equal(selfDraw.confirmedFan, 8);
+  assert.equal(selfDraw.confirmedFan, unknown.confirmedFan + 4);
   assert.equal(selfDraw.eligibility, 'met');
   assert.equal(selfDraw.isValid, true);
   assert.equal(patternCounts(hand, [], 'selfDraw').buQiuRen, 1);
@@ -532,8 +533,8 @@ test('国标：和牌来源未记录时不计 不求人/门前清/自摸', () =>
   assert.equal(patternCounts(hand, [], 'selfDraw').menQianQing, undefined);
 
   const claim = calculateMCRTotalFan(hand, [], 'claim');
-  assert.equal(claim.confirmedFan, 6);
-  assert.equal(claim.eligibility, 'unverified');
+  assert.equal(claim.confirmedFan, unknown.confirmedFan + 2);
+  assert.equal(claim.eligibility, 'met');
   assert.equal(patternCounts(hand, [], 'claim').menQianQing, 1);
   assert.equal(patternCounts(hand, [], 'claim').buQiuRen, undefined);
 
