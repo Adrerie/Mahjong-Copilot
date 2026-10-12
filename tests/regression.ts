@@ -202,12 +202,11 @@ test('国标和四川：13张提示进张、14张推荐打哪张，维持模式�
 });
 
 test('国标：结构已和但8番待核时显示续打备选，不代替8番核验', () => {
-  const hand = [...tiles('123', Suit.Man), ...tiles('456123', Suit.Pin),
-    ...tiles('789', Suit.Sou), ...tiles('55', Suit.Sou)];
+  const hand = [...tiles('123456', Suit.Man), ...tiles('123789', Suit.Pin), ...tiles('55', Suit.Sou)];
   const r = analyzeGame(state(hand), 'zh');
   assert.equal(r.isWinning, true);
   assert.equal(r.contextPending, true);
-  assert.ok(r.bestDiscard, '结构已和但无法确认起和时需保留继续打的建议');
+  assert.ok(r.bestDiscard, '结构已和但无法确认起和时需保留继续打的建议：'+JSON.stringify({suggestions:r.suggestions.map(x=>x.patternDetails),warnings:r.warnings}));
   assert.ok(r.warnings.some(w => w.includes('8番未确认')));
 });
 
