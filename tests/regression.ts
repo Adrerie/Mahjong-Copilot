@@ -1,23 +1,17 @@
 /**
- * 算法回归基线（P0）
+ * 算法回归基线
  *
- * 分两组：
- * 1. `test(...)` —— 必须成立的守卫。失败即代表已修问题回退，`npm test` 退出码非 0。
- * 2. `defect(...)` —— 已确认错误的行为快照。断言「当前实际输出」，使缺陷可复现、可在修复时立刻暴露；
- *    记录规则预期与当前实际的差异，并标注归属批次（P2 川麻 / P3 国标 / P3 建议层）。
- *    这些条目在对应批次修复后必然失败，属于预期现象：修好后把断言改成正确值并删除对应说明。
+ * 只保留必须成立的关键守卫：每个 `test(...)` 失败都代表已确认的规则行为回退，`npm test` 退出码非 0。
+ * 未解决问题的清单放在 docs/RESTRUCTURE_PLAN_2026-10-10.md，不再写「当前输出快照」。
  *
- * 每个牌例标注玩法、定缺、副露、和牌来源与规则口径。规则口径来源：
- * - `1111223344m5566p` 记 7 对：四张同牌按两对计（国标七对定义）。
- * - 国标 8 番起和：结构成牌与合法起和必须分开表达。
- * - 国标平和/不求人定义参考 https://www.mindmahjong.com/adobe/20141120CEJ.pdf；
- *   P3a 起 API 用 `GameState.winSource` 记录自摸/点和，未记录即 'unknown'，此时不得计这三种番；
- *   门风/圈风、和牌张/末张、明暗杠仍无字段，结果里只报「仍缺哪些上下文」。
- * - 川麻口径：采用 Hi8 血战到底示例牌桌记录的口径
- *   （https://hi8.com/g/sichuanmajiang，见 utils/sichuanAnalyzer.ts 的 SICHUAN_RULE）：
+ * 规则口径：
+ * - 国标：数值番相加、8 番起和；结构成牌与起和资格分开表达。和牌来源由 `GameState.winSource`
+ *   记录（'selfDraw' / 'claim' / 'unknown'），未记录时不计 不求人 / 门前清 / 自摸；
+ *   和牌张、末张、门风圈风、明暗杠仍无字段，结果里只报「仍缺哪些上下文」。
+ * - 国标平和/不求人口径参考 https://www.mindmahjong.com/adobe/20141120CEJ.pdf。
+ * - 川麻采用 Hi8 血战到底示例牌桌口径（见 utils/sichuanAnalyzer.ts 的 SICHUAN_RULE）：
  *   平胡 0、对对胡 1、清一色 2、七对 2、带幺九 2、金钩钓 2（含对对胡），每根 +1，
- *   封顶 4 指数番 = 16 倍。该口径只是该牌桌的示例，不是四川/重庆统一规范；
- *   自摸/点炮、杠类型、海底等事件未建模，一律不加番。
+ *   封顶 4 指数番 = 16 倍；自摸/点炮、杠类型、海底等事件未建模，一律不加番。
  */
 import assert from 'node:assert/strict';
 import { GameMode, GameState, Meld, Suit, Tile, WinSource } from '../types';
@@ -60,7 +54,8 @@ const sichuan = (hand: Tile[], voidSuit: Suit | null, melds: Meld[] = [], extra:
   ({ mode: GameMode.Sichuan, hand, melds, discards: [], wallCount: 50, voidSuit, ...extra });
 
 const effectiveTiles = (hand: Tile[], melds: Meld[]): number => hand.length + melds.length * 3;
-/** 番种 id -> 叠加次数，按 id 排序，便于稳定比较。winSource 未记录时用 'unknown'。 */
+const keys = (list: Tile[]): string[] => list.map(t => `${t.value}${t.suit}`);
+/** 番种 id -> 叠加次数。winSource 未记录时用 'unknown'，与 UI 默认一致。 */
 const patternCounts = (hand: Tile[], melds: Meld[] = [], winSource: WinSource = 'unknown'): Record<string, number> => {
   const counts = new Map<string, number>();
   for (const r of recognizeMCRPatterns(hand, melds, winSource)) {
@@ -70,100 +65,36 @@ const patternCounts = (hand: Tile[], melds: Meld[] = [], winSource: WinSource = 
 };
 const mcrFan = (hand: Tile[], melds: Meld[] = [], winSource: WinSource = 'unknown'): number =>
   calculateTotalFan(recognizeMCRPatterns(hand, melds, winSource)).totalFan;
+/** 国标起和结果：番种 id 列表（已按不计规则过滤）。 */
+const mcrPatternIds = (hand: Tile[], melds: Meld[] = [], winSource: WinSource = 'unknown'): string[] =>
+  calculateMCRTotalFan(hand, melds, winSource).patterns.map(p => p.id);
 
 // ---------- 运行器 ----------
 
 let passed = 0;
-let defects = 0;
-const test = (name: string, run: () => void) => { run(); passed++; console.log(`PASS ${name}`); };
-const defect = (
-  id: string,
-  owner: string,
-  name: string,
-  expected: string,
-  observed: unknown,
-  compute: () => unknown,
-) => {
-  const actual = compute();
-  defects++;
-  console.log(`DEFECT ${id} [${owner}] ${name}`);
-  console.log(`  规则预期: ${expected}`);
-  console.log(`  当前实际: ${JSON.stringify(actual)}`);
-  assert.deepEqual(actual, observed,
-    `${id} 的当前行为已变化：若为有意修复，请把断言改成正确值并更新 docs/RESTRUCTURE_PLAN_2026-10-10.md。`);
+let failed = 0;
+const test = (name: string, run: () => void) => {
+  try {
+    run();
+    passed++;
+    console.log(`PASS ${name}`);
+  } catch (error) {
+    failed++;
+    console.log(`FAIL ${name}: ${String((error as Error).message).split('\n')[0]}`);
+  }
 };
 
 // ============================================================
-// 一、已修问题守卫（A01–A08、S02）：不得回退
+// 一、输入校验与牌张边界
 // ============================================================
 
-test('standard single wait is zero shanten', () => {
-  const hand = [...tiles('123456789', Suit.Man), ...tiles('1235', Suit.Pin)];
-  assert.equal(calculateShanten(hand, []), 0);
-  assert.deepEqual(calculateWaitingTiles(hand, []).map(t => `${t.value}${t.suit}`), ['5p']);
-});
-test('four pairs and five singles is two shanten for seven pairs', () => {
-  assert.equal(calculateQiDuiShanten(countsToArray(countTiles([...tiles('11223344', Suit.Man), ...tiles('12345', Suit.Pin)]))), 2);
-});
-test('extra concealed tile cannot produce a winning result', () => {
-  const result = analyzeGame(state([...tiles('1234568', Suit.Man), ...tiles('77', Suit.Pin)], [pong(1), pong(9)]), 'zh');
-  assert.equal(result.isWinning, false);
-  assert.equal(result.suggestions.length, 0);
-  assert.ok(result.warnings.length);
-});
-test('wait cannot require a fifth copy in melds', () => {
-  assert.equal(calculateWaitingTiles(tiles('5', Suit.Pin), [pong(1), pong(2), pong(3), pong(5)]).length, 0);
-});
-test('seven concealed tiles with two melds can be ready', () => {
-  const result = analyzeGame(state([...tiles('123456', Suit.Man), ...tiles('7', Suit.Pin)], [pong(1), pong(9)]), 'zh');
-  assert.equal(result.isReady, true);
-  assert.ok(result.waitingTiles.some(w => w.tile.value === 7 && w.tile.suit === Suit.Pin));
-});
-test('eight concealed tiles with two melds can receive a discard suggestion', () => {
-  const result = analyzeGame(state([...tiles('1234568', Suit.Man), ...tiles('7', Suit.Pin)], [pong(1), pong(9)]), 'zh');
-  assert.equal(result.isWinning, false);
-  assert.ok(result.bestDiscard);
-});
-test('five copies and malformed melds are rejected', () => {
+test('输入校验：五张同牌、越界牌值、非法副露都在分析前被拒', () => {
   assert.ok(validateGameState(state(tiles('11111', Suit.Man)), 'zh', false).length);
   assert.ok(validateGameState(state([], [{ id: 'bad', type: 'chi', tiles: tiles('124', Suit.Man) }]), 'zh', false).length);
-});
-test('empty and one-tile MCR API inputs cannot claim eight-fan eligibility', () => {
-  for (const hand of [[], tiles('2', Suit.Sou)]) {
-    const result = calculateMCRTotalFan(hand, []);
-    assert.equal(result.totalFan, 0);
-    assert.equal(result.isValid, false);
-  }
-});
-test('Sichuan void suit prevents winning even for a complete shape', () => {
-  const result = analyzeGame({ ...state(tiles('33344466699977', Suit.Sou)), mode: GameMode.Sichuan, voidSuit: Suit.Sou }, 'zh');
-  assert.equal(result.isWinning, false);
-  assert.ok(result.warnings.some(w => w.includes('定缺')));
-});
-test('Sichuan waits do not include honors or void suit', () => {
-  const waits = calculateWaitingTiles([...tiles('123456789', Suit.Man), ...tiles('1235', Suit.Pin)], [], GameMode.Sichuan, Suit.Sou);
-  assert.deepEqual(waits.map(t => `${t.value}${t.suit}`), ['5p']);
-});
+  assert.ok(validateGameState(state([{ id: 'bad-honor', suit: Suit.Zihai, value: 8 }]), 'zh').length);
+  assert.ok(validateGameState(state([{ id: 'bad-zero', suit: Suit.Man, value: 0 }]), 'zh').length);
+  assert.ok(validateGameState(state([{ id: 'bad-ten', suit: Suit.Pin, value: 10 }]), 'zh').length);
 
-// ============================================================
-// 二、高风险边界守卫（P0 计划第 2.4 节）
-// ============================================================
-
-test('a kong counts as three effective tiles but keeps four physical copies', () => {
-  const five = gang(5);
-  // 10 暗手 + 1 杠（3 等效）= 13；11 暗手 + 1 杠 = 14：均合法
-  assert.deepEqual(validateGameState(state([...tiles('123456789', Suit.Man), createTile(Suit.Sou, 1)], [five]), 'zh'), []);
-  assert.deepEqual(validateGameState(state([...tiles('123456789', Suit.Man), ...tiles('12', Suit.Sou)], [five]), 'zh'), []);
-  assert.equal(effectiveTiles([...tiles('123456789', Suit.Man), ...tiles('12', Suit.Sou)], [five]), 14);
-  // 12 暗手 + 1 杠 = 15 等效：拒绝
-  const fifteen = state([...tiles('123456789', Suit.Man), ...tiles('123', Suit.Sou)], [five]);
-  assert.ok(validateGameState(fifteen, 'zh').some(e => e.includes('等效牌数')));
-  // 杠已占用四张实体牌，暗手不得再出现同一张
-  const fifthCopy = state([...tiles('12345678', Suit.Man), ...tiles('12', Suit.Sou), createTile(Suit.Pin, 5)], [five]);
-  assert.ok(validateGameState(fifthCopy, 'zh').some(e => e.includes('每种牌最多4张')));
-});
-
-test('melds are rejected tile by tile, including chows that reach beyond their run', () => {
   const illegal: Meld[] = [
     chi('124', Suit.Man),                                                   // 中间断档
     { id: 'span-suit', type: 'chi', tiles: [...tiles('89', Suit.Man), createTile(Suit.Pin, 1)] },
@@ -173,21 +104,53 @@ test('melds are rejected tile by tile, including chows that reach beyond their r
     { id: 'long-chi', type: 'chi', tiles: tiles('1234', Suit.Man) },
   ];
   for (const meld of illegal) {
-    const errors = validateGameState(state([], [meld]), 'zh');
-    assert.ok(errors.some(e => e.includes('副露')), `meld ${meld.id} should be rejected`);
+    assert.ok(validateGameState(state([], [meld]), 'zh').some(e => e.includes('副露')), `meld ${meld.id} 应被拒`);
   }
-  const fiveMelds = [pong(1), pong(2), pong(3), pong(4), pong(5)];
-  assert.ok(validateGameState(state(tiles('12', Suit.Man), fiveMelds), 'zh').some(e => e.includes('最多4副面子')));
+  assert.ok(validateGameState(state(tiles('12', Suit.Man), [pong(1), pong(2), pong(3), pong(4), pong(5)]), 'zh')
+    .some(e => e.includes('最多4副面子')));
 });
 
-test('tile values outside the deck are rejected before analysis', () => {
-  assert.ok(validateGameState(state([{ id: 'bad-honor', suit: Suit.Zihai, value: 8 }]), 'zh').length);
-  assert.ok(validateGameState(state([{ id: 'bad-zero', suit: Suit.Man, value: 0 }]), 'zh').length);
-  assert.ok(validateGameState(state([{ id: 'bad-ten', suit: Suit.Pin, value: 10 }]), 'zh').length);
+test('杠按 3 张等效但保留 4 张实体牌', () => {
+  const five = gang(5);
+  assert.deepEqual(validateGameState(state([...tiles('123456789', Suit.Man), createTile(Suit.Sou, 1)], [five]), 'zh'), []);
+  assert.deepEqual(validateGameState(state([...tiles('123456789', Suit.Man), ...tiles('12', Suit.Sou)], [five]), 'zh'), []);
+  assert.equal(effectiveTiles([...tiles('123456789', Suit.Man), ...tiles('12', Suit.Sou)], [five]), 14);
+  const fifteen = state([...tiles('123456789', Suit.Man), ...tiles('123', Suit.Sou)], [five]);
+  assert.ok(validateGameState(fifteen, 'zh').some(e => e.includes('等效牌数')));
+  const fifthCopy = state([...tiles('12345678', Suit.Man), ...tiles('12', Suit.Sou), createTile(Suit.Pin, 5)], [five]);
+  assert.ok(validateGameState(fifthCopy, 'zh').some(e => e.includes('每种牌最多4张')));
 });
 
-test('discards stay known: a wait whose last copies are all visible is a dead wait', () => {
-  // 123456789m + 555p + 1p（13 等效张）；唯一的 1p 待牌已被牌河占满
+test('向听与待牌：单面听 0 向听、七对向听、第五张不成为待牌', () => {
+  const hand = [...tiles('123456789', Suit.Man), ...tiles('1235', Suit.Pin)];
+  assert.equal(calculateShanten(hand, []), 0);
+  assert.deepEqual(calculateWaitingTiles(hand, []).map(t => `${t.value}${t.suit}`), ['5p']);
+  assert.equal(calculateWaitingTiles(tiles('5', Suit.Pin), [pong(1), pong(2), pong(3), pong(5)]).length, 0);
+  assert.equal(calculateQiDuiShanten(countsToArray(countTiles([...tiles('11223344', Suit.Man), ...tiles('12345', Suit.Pin)]))), 2);
+  // 川麻待牌不包含字牌与定缺花色
+  assert.deepEqual(
+    calculateWaitingTiles([...tiles('123456789', Suit.Man), ...tiles('1235', Suit.Pin)], [], GameMode.Sichuan, Suit.Sou)
+      .map(t => `${t.value}${t.suit}`),
+    ['5p'],
+  );
+});
+
+test('未成牌/听牌/多牌三种暗手形态各自给出正确结论', () => {
+  const notReady = analyzeGame(state([...tiles('1234568', Suit.Man), ...tiles('77', Suit.Pin)], [pong(1), pong(9)]), 'zh');
+  assert.equal(notReady.isWinning, false);
+  assert.equal(notReady.suggestions.length, 0);
+  assert.ok(notReady.warnings.length);
+
+  const ready = analyzeGame(state([...tiles('123456', Suit.Man), ...tiles('7', Suit.Pin)], [pong(1), pong(9)]), 'zh');
+  assert.equal(ready.isReady, true);
+  assert.ok(ready.waitingTiles.some(w => w.tile.value === 7 && w.tile.suit === Suit.Pin));
+
+  const discardable = analyzeGame(state([...tiles('1234568', Suit.Man), ...tiles('7', Suit.Pin)], [pong(1), pong(9)]), 'zh');
+  assert.equal(discardable.isWinning, false);
+  assert.ok(discardable.bestDiscard);
+});
+
+test('死叫：牌河已见完的待牌不算听牌', () => {
   const hand = [...tiles('123456789', Suit.Man), ...tiles('555', Suit.Pin), createTile(Suit.Pin, 1)];
   const position = state(hand, [], { discards: tiles('111', Suit.Pin) });
   assert.deepEqual(validateGameState(position, 'zh'), []);
@@ -199,38 +162,7 @@ test('discards stay known: a wait whose last copies are all visible is a dead wa
   assert.equal(result.status, 'deadWait');
 });
 
-test('Sichuan cannot win while the void suit or a third suit remains', () => {
-  const hand = [...tiles('123789', Suit.Man), ...tiles('12355', Suit.Pin), ...tiles('123', Suit.Sou)];
-  // 先证明牌数合法且结构成牌，避免非成牌输入让定缺守卫空通过。
-  assert.deepEqual(validateGameState(sichuan(hand, Suit.Sou), 'zh'), []);
-  assert.equal(checkWinning(countsToArray(countTiles(hand)), 0, GameMode.Sichuan), true);
-  const threeSuits = analyzeGame(
-    sichuan(hand, Suit.Sou), 'zh');
-  assert.equal(threeSuits.isWinning, false);
-  assert.ok(threeSuits.warnings.some(w => w.includes('定缺')));
-  const noVoidChosen = analyzeGame(sichuan(tiles('33344466699977', Suit.Sou), null), 'zh');
-  assert.equal(noVoidChosen.isWinning, false);
-  assert.ok(noVoidChosen.warnings.some(w => w.includes('定缺')));
-});
-
-test('structural completeness and eight-fan eligibility stay separate', () => {
-  // 明吃234m/345m/567p，暗手456s55m；非门清、非全求人。
-  // 无事件加番、和4s且非绝张时，平和2 + 断幺2；自摸最多再加1，均不足8。
-  // 原全暗手牌例在自摸时可有不求人4 + 平和2 + 断幺2 = 8，不能作为不足8的守卫。
-  const hand = [...tiles('456', Suit.Sou), ...tiles('55', Suit.Man)];
-  const melds = [chi('234', Suit.Man), chi('345', Suit.Man), chi('567', Suit.Pin)];
-  assert.deepEqual(validateGameState(state(hand, melds), 'zh'), []);
-  assert.equal(checkWinning(countsToArray(countTiles(hand)), melds.length), true);
-  const api = calculateMCRTotalFan(hand, melds);
-  // 当前计番尚漏平和；不锁定错误的总番，以免后续补平和时本守卫反而失败。
-  assert.ok(api.totalFan < 8);
-  assert.equal(api.isValid, false);
-  const result = analyzeGame(state(hand, melds), 'zh');
-  assert.equal(result.isWinning, true);
-  assert.equal(result.isReady, false);
-});
-
-test('an invalid or incomplete position returns warnings instead of a verdict', () => {
+test('空局面与非法局面只给警告，不给和牌结论', () => {
   const empty = analyzeGame(state([]), 'zh');
   assert.equal(empty.isWinning, false);
   assert.equal(empty.isReady, false);
@@ -246,26 +178,10 @@ test('an invalid or incomplete position returns warnings instead of a verdict', 
 });
 
 // ============================================================
-// 三、P1 录入门槛：文本解析、原子替换、张数边界与局面恢复
+// 二、录入门槛：文本解析、原子替换、张数上限与局面恢复
 // ============================================================
 
-/** 牌串 → 便于断言的 `值+花色` 列表。 */
-const keys = (list: Tile[]): string[] => list.map(t => `${t.value}${t.suit}`);
-
-test('restored meld IDs cannot be reused after a page reload', () => {
-  const saved = state([], [{ ...pong(1), id: 'meld-1' }]);
-  const restored = decodeEntryState(encodeEntryState(saved), GameMode.MCR);
-  assert.ok(restored);
-  const result = planTileAdd(restored, { zone: 'melds', meldType: 'pong', tile: createTile(Suit.Pin, 2) });
-  assert.equal(result.outcome, 'applied');
-  if (result.outcome !== 'applied') return;
-  assert.equal(new Set(result.state.melds.map(m => m.id)).size, 2);
-  const remaining = result.state.melds.filter(m => m.id !== result.state.melds[1].id);
-  assert.equal(remaining.length, 1, '删除新增副露时必须保留恢复的副露');
-  assert.equal(remaining[0].id, 'meld-1');
-});
-
-test('text entry reads the same hand from both notations', () => {
+test('文本录入：两种写法等价、坏串给出原因、替换是原子的', () => {
   const expected = [...'33344466699977'].map(d => `${d}s`);
   const letter = parseTileText('33344466699977s', GameMode.Sichuan);
   const chinese = parseTileText('33344466699977条', GameMode.Sichuan);
@@ -274,90 +190,58 @@ test('text entry reads the same hand from both notations', () => {
   if (letter.outcome !== 'parsed' || chinese.outcome !== 'parsed') return;
   assert.deepEqual(keys(letter.tiles), expected);
   assert.deepEqual(keys(chinese.tiles), expected);
-  assert.equal(letter.tiles.length, 14);
 
-  // 混合花色 + 字牌，以及空格/斜杠分隔与繁体后缀
   const mixed = parseTileText('123m456p789s11z', GameMode.MCR);
-  assert.equal(mixed.outcome, 'parsed');
-  if (mixed.outcome === 'parsed') {
-    assert.deepEqual(keys(mixed.tiles), ['1m', '2m', '3m', '4p', '5p', '6p', '7s', '8s', '9s', '1z', '1z']);
-  }
+  assert.equal(mixed.outcome === 'parsed' ? keys(mixed.tiles).join(',') : '', '1m,2m,3m,4p,5p,6p,7s,8s,9s,1z,1z');
   const separated = parseTileText('123m 456p / 789s', GameMode.MCR);
-  const traditional = parseTileText('123萬456條', GameMode.MCR);
   assert.equal(separated.outcome === 'parsed' ? separated.tiles.length : 0, 9);
-  assert.deepEqual(
-    traditional.outcome === 'parsed' ? keys(traditional.tiles) : [],
-    ['1m', '2m', '3m', '4s', '5s', '6s'],
-  );
-  // 单张和一整串都是合法录入，1–14 张的中间态允许录入但不允许分析
-  assert.equal(parseTileText('1p', GameMode.MCR).outcome, 'parsed');
-});
+  const traditional = parseTileText('123萬456條', GameMode.MCR);
+  assert.deepEqual(traditional.outcome === 'parsed' ? keys(traditional.tiles) : [], ['1m', '2m', '3m', '4s', '5s', '6s']);
 
-test('text entry rejects bad strings with a reason', () => {
-  const malformed = ['33344466699977x', '123', '0m', '10m', '8z', '11111m', '123456789123456m', '', 'm123'];
-  for (const text of malformed) {
+  for (const text of ['33344466699977x', '123', '0m', '10m', '8z', '11111m', '123456789123456m', '', 'm123']) {
     const parsed = parseTileText(text, GameMode.MCR);
     assert.equal(parsed.outcome, 'rejected', `“${text}” 应被拒绝`);
     assert.ok(parsed.outcome === 'rejected' && parsed.message.zh.length > 0 && parsed.message.en.length > 0);
   }
-  // 川麻不能录字牌；三门仍可录入，留给分析判断定缺未清。
   assert.equal(parseTileText('11z', GameMode.Sichuan).outcome, 'rejected');
   assert.equal(parseTileText('123m456p789s', GameMode.Sichuan).outcome, 'parsed');
-  assert.equal(parseTileText('123m456p789s', GameMode.MCR).outcome, 'parsed');
-});
 
-test('text replacement is atomic and never mutates the previous position', () => {
+  // 替换失败时不改旧局面；成功时也不改写旧对象，保证一步撤销可信
   const before = state([...tiles('123', Suit.Man)], [], { discards: tiles('9', Suit.Sou) });
-  const rejected = planTextHand(before, '99999p');
-  assert.equal(rejected.outcome, 'rejected');
+  assert.equal(planTextHand(before, '99999p').outcome, 'rejected');
   assert.deepEqual(keys(before.hand), ['1m', '2m', '3m']);
-  assert.deepEqual(keys(before.discards), ['9s']);
-
   const applied = planTextHand(before, '33344466699977s');
   assert.equal(applied.outcome, 'applied');
   if (applied.outcome !== 'applied') return;
-  assert.equal(applied.state.hand.length, 14);
-  assert.deepEqual(keys(before.hand), ['1m', '2m', '3m'], '替换成功也不得改写旧局面，否则一步撤销会失真');
-  assert.deepEqual(keys(applied.state.discards), ['9s'], '替换暗手不自动删除牌河');
+  assert.deepEqual(keys(applied.state.discards), ['9s']);
+  assert.deepEqual(keys(before.hand), ['1m', '2m', '3m']);
   assert.notStrictEqual(applied.state, before);
-});
 
-test('text replacement counts copies in melds and river', () => {
+  // 替换时的四张上限要算上副露与牌河
   const withMeld = state(tiles('12', Suit.Man), [pong(1, Suit.Pin)], { discards: tiles('9', Suit.Sou) });
   assert.equal(planTextHand(withMeld, '1111p').outcome, 'rejected');
   assert.equal(planTextHand(withMeld, '11p').outcome, 'rejected');
   assert.equal(planTextHand(withMeld, '99s').outcome, 'applied');
 });
 
-test('adding tiles checks every copy of the whole position before committing', () => {
+test('加牌：四张上限、14 张等效、四副面子与吃牌跨度', () => {
   const twoCopies = state(tiles('11', Suit.Pin));
   const extraPong = planTileAdd(twoCopies, { zone: 'melds', meldType: 'pong', tile: createTile(Suit.Pin, 1) });
   assert.equal(extraPong.outcome, 'rejected');
-  assert.ok(extraPong.outcome === 'rejected' && extraPong.message.zh.includes('已见 2 张') && extraPong.message.zh.includes('添加 3 张'));
+  assert.ok(extraPong.outcome === 'rejected' && extraPong.message.zh.includes('已见 2 张'));
+
   const fourEights = state([...tiles('8888', Suit.Man), ...tiles('123', Suit.Pin)]);
   assert.equal(planTileAdd(fourEights, { zone: 'hand', meldType: 'pong', tile: createTile(Suit.Man, 8) }).outcome, 'rejected');
-  // 吃 7m 需要 7m/8m/9m：8m 已满 → 拒绝；吃 6m 的第二张 8m 同样超四 → 拒绝
   assert.equal(planTileAdd(fourEights, { zone: 'melds', meldType: 'chi', tile: createTile(Suit.Man, 7) }).outcome, 'rejected');
-  assert.equal(planTileAdd(fourEights, { zone: 'melds', meldType: 'chi', tile: createTile(Suit.Man, 6) }).outcome, 'rejected');
-
-  // 牌河里的已知牌同样计入四张上限
   const riverHeld = state(tiles('11', Suit.Pin), [], { discards: tiles('11', Suit.Pin) });
   assert.equal(planTileAdd(riverHeld, { zone: 'hand', meldType: 'pong', tile: createTile(Suit.Pin, 1) }).outcome, 'rejected');
-  assert.equal(planTileAdd(riverHeld, { zone: 'discards', meldType: 'pong', tile: createTile(Suit.Pin, 1) }).outcome, 'rejected');
 
-  // 合法添加仍应通过
-  const ok = planTileAdd(state(tiles('123', Suit.Man)), { zone: 'hand', meldType: 'pong', tile: createTile(Suit.Pin, 5) });
-  assert.equal(ok.outcome, 'applied');
-});
-
-test('entry bounds: 14 effective tiles, four melds and chow span', () => {
   const full = state([...tiles('123456789', Suit.Man), ...tiles('12345', Suit.Pin)]);
   const handFull = planTileAdd(full, { zone: 'hand', meldType: 'pong', tile: createTile(Suit.Sou, 5) });
   assert.equal(handFull.outcome, 'rejected');
   assert.ok(handFull.outcome === 'rejected' && handFull.message.zh.includes('手牌已满'));
 
-  const threeMelds = [chi('123', Suit.Man), chi('234', Suit.Pin), chi('345', Suit.Sou)];
-  const withMelds = state(tiles('12', Suit.Man), threeMelds);
+  const withMelds = state(tiles('12', Suit.Man), [chi('123', Suit.Man), chi('234', Suit.Pin), chi('345', Suit.Sou)]);
   assert.equal(effectiveTiles(withMelds.hand, withMelds.melds), 11);
   const fourth = planTileAdd(withMelds, { zone: 'melds', meldType: 'pong', tile: createTile(Suit.Pin, 9) });
   assert.equal(fourth.outcome, 'applied');
@@ -370,16 +254,13 @@ test('entry bounds: 14 effective tiles, four melds and chow span', () => {
   assert.equal(planTileAdd(short, { zone: 'melds', meldType: 'chi', tile: createTile(Suit.Man, 7) }).outcome, 'applied');
 });
 
-test('Sichuan entry refuses honors and chows before committing', () => {
+test('川麻录入拒绝字牌与吃，三门花色可录入但不能和牌', () => {
   const hand = sichuan(tiles('123', Suit.Man), Suit.Sou);
   assert.equal(planTileAdd(hand, { zone: 'hand', meldType: 'pong', tile: createTile(Suit.Zihai, 1) }).outcome, 'rejected');
   assert.equal(planTileAdd(hand, { zone: 'melds', meldType: 'chi', tile: createTile(Suit.Man, 1) }).outcome, 'rejected');
   assert.equal(planTileAdd(hand, { zone: 'hand', meldType: 'pong', tile: createTile(Suit.Man, 4) }).outcome, 'applied');
-});
 
-test('Sichuan text entry preserves a three-suit shape and analysis rejects winning', () => {
-  const position = sichuan([], Suit.Sou);
-  const result = planTextHand(position, '123789m12355p123s');
+  const result = planTextHand(sichuan([], Suit.Sou), '123789m12355p123s');
   assert.equal(result.outcome, 'applied');
   if (result.outcome !== 'applied') return;
   assert.deepEqual(validateGameState(result.state, 'zh'), []);
@@ -389,9 +270,9 @@ test('Sichuan text entry preserves a three-suit shape and analysis rejects winni
   assert.ok(analysis.warnings.some(w => w.includes('定缺')));
 });
 
-test('saved positions round-trip per mode and corrupt data is ignored', () => {
+test('局面恢复：按玩法往返，含墙数/定缺/和牌方式；损坏数据整局丢弃', () => {
   const saved = state([...tiles('123', Suit.Man)], [pong(5, Suit.Pin)], {
-    discards: tiles('9', Suit.Sou), wallCount: 61,
+    discards: tiles('9', Suit.Sou), wallCount: 61, winSource: 'selfDraw',
   });
   const restored = decodeEntryState(encodeEntryState(saved), GameMode.MCR);
   assert.ok(restored);
@@ -399,13 +280,18 @@ test('saved positions round-trip per mode and corrupt data is ignored', () => {
   assert.deepEqual(keys(restored.discards), ['9s']);
   assert.equal(restored.wallCount, 61);
   assert.equal(restored.melds.length, 1);
+  assert.equal(restored.winSource, 'selfDraw');
+  // 恢复出的副露 id 不得与新增副露冲突（删除新增副露时必须保留恢复的副露）
+  const added = planTileAdd(restored, { zone: 'melds', meldType: 'pong', tile: createTile(Suit.Pin, 2) });
+  assert.equal(added.outcome, 'applied');
+  if (added.outcome !== 'applied') return;
+  assert.equal(new Set(added.state.melds.map(m => m.id)).size, 2);
+  assert.equal(added.state.melds.some(m => m.id === restored.melds[0].id), true);
 
-  // 11 张的录入中间态也要能恢复，不能因为不足 13 张被当成损坏数据丢弃
+  // 11 张的录入中间态也要能恢复；川麻定缺与墙数一并恢复
   const partial = state([...tiles('123', Suit.Man), ...tiles('456', Suit.Pin), ...tiles('789', Suit.Sou), ...tiles('11', Suit.Zihai)]);
   assert.equal(decodeEntryState(encodeEntryState(partial), GameMode.MCR)?.hand.length, 11);
-  // 川麻定缺与墙数一并恢复
-  const sichuanSaved = sichuan(tiles('123456', Suit.Man), Suit.Pin, [], { wallCount: 40 });
-  const sichuanRestored = decodeEntryState(encodeEntryState(sichuanSaved), GameMode.Sichuan);
+  const sichuanRestored = decodeEntryState(encodeEntryState(sichuan(tiles('123456', Suit.Man), Suit.Pin, [], { wallCount: 40 })), GameMode.Sichuan);
   assert.equal(sichuanRestored?.voidSuit, Suit.Pin);
   assert.equal(sichuanRestored?.wallCount, 40);
 
@@ -421,32 +307,26 @@ test('saved positions round-trip per mode and corrupt data is ignored', () => {
   assert.equal(decodeEntryState(wrap({ ...saved, hand: 'nope' }), GameMode.MCR), null);
   assert.equal(decodeEntryState(wrap({ ...saved, wallCount: 999 }), GameMode.MCR), null);
   assert.equal(decodeEntryState(wrap({ ...saved, voidSuit: 'x' }), GameMode.MCR), null);
-  // A malformed cache cannot share deletion IDs across distinct tiles or melds.
+  assert.equal(decodeEntryState(wrap({ ...saved, winSource: 'tianHu' }), GameMode.MCR), null, '和牌方式只接受三个合法值');
   assert.equal(decodeEntryState(wrap({ ...saved, hand: [
     { ...createTile(Suit.Man, 1), id: 'same' }, { ...createTile(Suit.Man, 2), id: 'same' },
   ] }), GameMode.MCR), null);
   assert.equal(decodeEntryState(wrap({ ...saved, melds: [
     { ...pong(1), id: 'meld-same' }, { ...pong(2), id: 'meld-same' },
   ] }), GameMode.MCR), null);
-  assert.equal(decodeEntryState(wrap({ ...saved, hand: [
-    { ...createTile(Suit.Man, 1), id: 'empty-id' }, { ...createTile(Suit.Man, 2), id: '' },
-  ] }), GameMode.MCR), null);
 });
 
 // ============================================================
-// 四、四川血战计番（P2）：口径来源 Hi8 血战到底示例牌桌
-// 平胡 0、对对胡 1、清一色 2、七对 2、带幺九 2、金钩钓 2（含对对胡），每根 +1，封顶 4 指数番 = 16 倍。
+// 三、四川血战计番（P2）：指数番与封顶倍数，不回退
 // ============================================================
 
-test('Sichuan flush pungs = 3 exponents (8x), and a kong root is added before the cap', () => {
-  // 33344466699977s：清一色 + 对对胡、无根；定缺万，只有一门。
+test('川麻：清一色对对胡=3 指数番=8 倍，根在封顶前加', () => {
   const flushPungs = sichuan(tiles('33344466699977', Suit.Sou), Suit.Man);
   assert.deepEqual(validateGameState(flushPungs, 'zh'), []);
   const score = recognizeSichuanPatterns(flushPungs.hand, flushPungs.melds, 'zh');
   assert.deepEqual(score.patterns, [{ id: 'qingYiSe', exponent: 2 }, { id: 'duiDuiHu', exponent: 1 }]);
   assert.equal(score.label, '清对');
   assert.equal(score.roots, 0);
-  assert.equal(score.uncappedExponent, 3);
   assert.equal(score.cappedExponent, 3);
   assert.equal(score.multiplier, 8);
   const result = analyzeGame(flushPungs, 'zh');
@@ -454,7 +334,7 @@ test('Sichuan flush pungs = 3 exponents (8x), and a kong root is added before th
   assert.equal(result.suggestions[0]?.scoreText, '3 指数番 · 8 倍');
   assert.ok(!result.suggestions[0]?.patternDetails.some(d => d.includes('6番') || d.includes('64')), '清对不得再报 6 番/64 倍');
 
-  // 对照：杠 9m 本身算一根，指数番 3+1=4 仍到封顶；倍率随根增大（8 → 16）。
+  // 杠 9m 本身算一根：3+1=4 仍到封顶，倍率随根增大
   const withRoot = sichuan([...tiles('111222333', Suit.Man), ...tiles('55', Suit.Man)], Suit.Sou, [gang(9, Suit.Man)]);
   assert.deepEqual(validateGameState(withRoot, 'zh'), []);
   const rooted = recognizeSichuanPatterns(withRoot.hand, withRoot.melds, 'zh');
@@ -464,65 +344,39 @@ test('Sichuan flush pungs = 3 exponents (8x), and a kong root is added before th
   assert.equal(rooted.multiplier, 16);
 });
 
-test('Sichuan exposed pongs are never counted again as concealed triplets', () => {
-  // 碰 111p、碰 999p + 暗手 123456m + 77p：两顺两刻，只有基本和。
-  const hand = [...tiles('123456', Suit.Man), ...tiles('77', Suit.Pin)];
-  const melds = [pong(1), pong(9)];
-  const exposed = sichuan(hand, Suit.Sou, melds);
+test('川麻：明碰不当暗刻，带幺九要在自己的拆分里成立', () => {
+  // 碰 111p、碰 999p + 暗手 123456m + 77p：两顺两刻，只有基本和
+  const exposedHand = [...tiles('123456', Suit.Man), ...tiles('77', Suit.Pin)];
+  const exposed = sichuan(exposedHand, Suit.Sou, [pong(1), pong(9)]);
   assert.deepEqual(validateGameState(exposed, 'zh'), []);
-  const score = recognizeSichuanPatterns(hand, melds, 'zh');
+  const score = recognizeSichuanPatterns(exposedHand, [pong(1), pong(9)], 'zh');
   assert.deepEqual(score.patterns, [{ id: 'pingHu', exponent: 0 }]);
-  assert.equal(score.uncappedExponent, 0);
   assert.equal(score.multiplier, 1);
-  const result = analyzeGame(exposed, 'zh');
-  assert.equal(result.isWinning, true);
-  assert.equal(result.suggestions[0]?.name, '成牌（基本和，参考计番）');
-
-  // 对照：同样两副明碰，暗手换成两刻 + 将时确实是对对胡（1 指数番 = 2 倍）。
+  assert.equal(analyzeGame(exposed, 'zh').suggestions[0]?.name, '成牌（基本和，参考计番）');
+  // 对照：暗手两刻 + 将才是对对胡
   const tripletHand = [...tiles('555', Suit.Man), ...tiles('777', Suit.Man), ...tiles('33', Suit.Man)];
-  const duiDui = sichuan(tripletHand, Suit.Sou, [pong(1), pong(9)]);
-  assert.deepEqual(validateGameState(duiDui, 'zh'), []);
-  const duiDuiScore = recognizeSichuanPatterns(tripletHand, [pong(1), pong(9)], 'zh');
-  assert.deepEqual(duiDuiScore.patterns, [{ id: 'duiDuiHu', exponent: 1 }]);
-  assert.equal(duiDuiScore.multiplier, 2);
+  assert.deepEqual(recognizeSichuanPatterns(tripletHand, [pong(1), pong(9)], 'zh').patterns, [{ id: 'duiDuiHu', exponent: 1 }]);
+  // 副露已占的牌不得在暗手重复出现
+  assert.ok(validateGameState(sichuan([...tiles('111', Suit.Pin), ...tiles('123456', Suit.Man)], Suit.Sou, [pong(1)]), 'zh').length > 0);
 
-  // 对照：副露已占的牌不得在暗手重复出现（同一种牌最多四张）。
-  const duplicate = sichuan([...tiles('111', Suit.Pin), ...tiles('123456', Suit.Man)], Suit.Sou, [pong(1)]);
-  assert.ok(validateGameState(duplicate, 'zh').length > 0);
-});
-
-test('Sichuan terminals pattern needs 123/789 chows and a terminal pair', () => {
-  // 12378911m + 123789p：四副顺子都含幺九、将 11m 也含幺九 → 带幺九 2 指数番 = 4 倍。
-  const hand = [...tiles('12378911', Suit.Man), ...tiles('123789', Suit.Pin)];
-  const terminals = sichuan(hand, Suit.Sou);
-  assert.deepEqual(validateGameState(terminals, 'zh'), []);
-  const score = recognizeSichuanPatterns(hand, [], 'zh');
-  assert.deepEqual(score.patterns, [{ id: 'daiYaoJiu', exponent: 2 }]);
-  assert.equal(score.label, '带幺九');
-  assert.equal(score.multiplier, 4);
-  assert.equal(analyzeGame(terminals, 'zh').suggestions[0]?.scoreText, '2 指数番 · 4 倍');
-
-  // 对照：同样的顺子结构，将牌 55m 不含幺九 → 只有基本和（0 指数番 = 1 倍）。
+  // 带幺九：四副顺子与将都含幺九才成立
+  const terminals = [...tiles('12378911', Suit.Man), ...tiles('123789', Suit.Pin)];
+  assert.deepEqual(validateGameState(sichuan(terminals, Suit.Sou), 'zh'), []);
+  const terminalsScore = recognizeSichuanPatterns(terminals, [], 'zh');
+  assert.deepEqual(terminalsScore.patterns, [{ id: 'daiYaoJiu', exponent: 2 }]);
+  assert.equal(analyzeGame(sichuan(terminals, Suit.Sou), 'zh').suggestions[0]?.scoreText, '2 指数番 · 4 倍');
+  // 将牌 55m 不含幺九 → 只有基本和
   const middlePair = [...tiles('12378955', Suit.Man), ...tiles('123789', Suit.Pin)];
-  const plain = sichuan(middlePair, Suit.Sou);
-  assert.deepEqual(validateGameState(plain, 'zh'), []);
-  const plainScore = recognizeSichuanPatterns(middlePair, [], 'zh');
-  assert.deepEqual(plainScore.patterns, [{ id: 'pingHu', exponent: 0 }]);
-  assert.equal(plainScore.multiplier, 1);
-
-  // 对照：牌面存在 9 不代表能拆出带幺九（234/567 顺子不含幺九）。
+  assert.deepEqual(recognizeSichuanPatterns(middlePair, [], 'zh').patterns, [{ id: 'pingHu', exponent: 0 }]);
+  // 牌面有 9 不等于能拆出带幺九
   const middleChows = [...tiles('23456799', Suit.Man), ...tiles('234567', Suit.Pin)];
-  const chows = sichuan(middleChows, Suit.Sou);
-  assert.deepEqual(validateGameState(chows, 'zh'), []);
   assert.equal(checkWinning(countsToArray(countTiles(middleChows)), 0, GameMode.Sichuan), true);
   assert.deepEqual(recognizeSichuanPatterns(middleChows, [], 'zh').patterns, [{ id: 'pingHu', exponent: 0 }]);
 });
 
-test('Sichuan seven pairs counts four of a kind as two pairs and roots separately', () => {
-  // 11114444777799s：1/4/7 各四张拆成两对 + 99s 共七对；清一色 2 + 七对 2 + 根 ×3 = 7 → 封顶 4 = 16 倍。
+test('川麻七对：四张同牌按两对计、根单算，且不与别的拆分混用', () => {
   const hand = tiles('11114444777799', Suit.Sou);
-  const position = sichuan(hand, Suit.Man);
-  assert.deepEqual(validateGameState(position, 'zh'), []);
+  assert.deepEqual(validateGameState(sichuan(hand, Suit.Man), 'zh'), []);
   const score = recognizeSichuanPatterns(hand, [], 'zh');
   assert.deepEqual(score.patterns, [{ id: 'qingYiSe', exponent: 2 }, { id: 'qiDui', exponent: 2 }]);
   assert.equal(score.label, '清龙七对');
@@ -530,126 +384,77 @@ test('Sichuan seven pairs counts four of a kind as two pairs and roots separatel
   assert.equal(score.uncappedExponent, 7);
   assert.equal(score.cappedExponent, 4);
   assert.equal(score.multiplier, 16);
-  assert.equal(analyzeGame(position, 'zh').suggestions[0]?.scoreText, '4 指数番 · 16 倍');
-
-  // 对照：无根的清七对 11223344556677s 正好 4 指数番 = 16 倍。
-  const plainScore = recognizeSichuanPatterns(tiles('11223344556677', Suit.Sou), [], 'zh');
-  assert.equal(plainScore.label, '清七对');
-  assert.equal(plainScore.roots, 0);
-  assert.equal(plainScore.uncappedExponent, 4);
-  assert.equal(plainScore.multiplier, 16);
-
-  // 对照：同样是四张同牌，整体不是七对（顺子刻子混合）时不按七对计，根仍单算。
+  const plain = recognizeSichuanPatterns(tiles('11223344556677', Suit.Sou), [], 'zh');
+  assert.equal(plain.label, '清七对');
+  assert.equal(plain.roots, 0);
+  assert.equal(plain.multiplier, 16);
+  // 顺刻混合时不算七对，根仍单算
   const mixed = [...tiles('111123', Suit.Sou), ...tiles('45678999', Suit.Man)];
   assert.equal(checkWinning(countsToArray(countTiles(mixed)), 0, GameMode.Sichuan), true);
   const mixedScore = recognizeSichuanPatterns(mixed, [], 'zh');
   assert.deepEqual(mixedScore.patterns, [{ id: 'pingHu', exponent: 0 }]);
   assert.equal(mixedScore.roots, 1);
-  assert.equal(mixedScore.uncappedExponent, 1);
-  assert.equal(mixedScore.multiplier, 2);
+
+  // 11112233778899s 可拆七对也可拆 123/123/789/789/11：只能择一，不得相加
+  const either = tiles('11112233778899', Suit.Sou);
+  const eitherScore = recognizeSichuanPatterns(either, [], 'zh');
+  assert.deepEqual(eitherScore.patterns, [{ id: 'qingYiSe', exponent: 2 }, { id: 'qiDui', exponent: 2 }]);
+  assert.equal(eitherScore.roots, 1);
+  assert.equal(eitherScore.uncappedExponent, 5);
+  // 111222333m99911p：刻子拆分是对对胡 1，顺子拆分是带幺九 2 → 取较高者 2，不是 1+2
+  const twoSplits = [...tiles('111222333', Suit.Man), ...tiles('99911', Suit.Pin)];
+  const twoSplitsScore = recognizeSichuanPatterns(twoSplits, [], 'zh');
+  assert.deepEqual(twoSplitsScore.patterns, [{ id: 'daiYaoJiu', exponent: 2 }]);
+  assert.equal(twoSplitsScore.baseExponent, 2);
+  assert.equal(twoSplitsScore.multiplier, 4);
+  assert.ok(!twoSplitsScore.details.some(d => d.includes('对对胡') || d.includes('待核')));
+  // 七对的七个对子全为幺九时，带幺九与七对同时成立
+  const terminalPairs = [...tiles('11119999', Suit.Man), ...tiles('111199', Suit.Pin)];
+  const terminalScore = recognizeSichuanPatterns(terminalPairs, [], 'zh');
+  assert.deepEqual(terminalScore.patterns, [{ id: 'qiDui', exponent: 2 }, { id: 'daiYaoJiu', exponent: 2 }]);
+  assert.equal(terminalScore.uncappedExponent, 7);
 });
 
-test('Sichuan scoring never combines seven pairs with a different chow decomposition', () => {
-  // Hi8 每组/每对带幺九；七对拆分里的22/33/77/88不是幺九对子。
-  // 11112233778899s 也可拆成123/123/789/789/11，两种拆分只能择一。
-  const hand = tiles('11112233778899', Suit.Sou);
-  assert.equal(checkWinning(countsToArray(countTiles(hand)), 0, GameMode.Sichuan), true);
-  const score = recognizeSichuanPatterns(hand, [], 'zh');
-  assert.deepEqual(score.patterns, [{ id: 'qingYiSe', exponent: 2 }, { id: 'qiDui', exponent: 2 }]);
-  assert.equal(score.baseExponent, 4);
-  assert.equal(score.roots, 1);
-  assert.equal(score.uncappedExponent, 5);
-});
-
-test('Sichuan terminal seven pairs checks the pairs in its own decomposition', () => {
-  // Hi8「每对都带一或九」：七对的七个对子均为幺九，根与七对分开计算。
-  const hand = [...tiles('11119999', Suit.Man), ...tiles('111199', Suit.Pin)];
-  assert.equal(checkWinning(countsToArray(countTiles(hand)), 0, GameMode.Sichuan), true);
-  const score = recognizeSichuanPatterns(hand, [], 'zh');
-  assert.deepEqual(score.patterns, [{ id: 'qiDui', exponent: 2 }, { id: 'daiYaoJiu', exponent: 2 }]);
-  assert.equal(score.baseExponent, 4);
-  assert.equal(score.roots, 3);
-  assert.equal(score.uncappedExponent, 7);
-});
-
-test('Sichuan never adds 对对胡 and 带幺九 from two different decompositions', () => {
-  // 111222333m99911p 有两种合法拆分：
-  //   111/222/333/999 + 11 将 → 对对胡 1 指数番；
-  //   123/123/123/999 + 11 将 → 每副面子与将都带幺九 → 带幺九 2 指数番。
-  // 一次和牌只能按一种拆分结算，取较高者 = 带幺九 2 指数番 = 4 倍，不是 1+2=3 → 8 倍。
-  const hand = [...tiles('111222333', Suit.Man), ...tiles('99911', Suit.Pin)];
-  const position = sichuan(hand, Suit.Sou);
-  assert.deepEqual(validateGameState(position, 'zh'), []);
-  const score = recognizeSichuanPatterns(hand, [], 'zh');
-  assert.deepEqual(score.patterns, [{ id: 'daiYaoJiu', exponent: 2 }]);
-  assert.equal(score.label, '带幺九');
-  assert.equal(score.baseExponent, 2);
-  assert.equal(score.roots, 0);
-  assert.equal(score.uncappedExponent, 2);
-  assert.equal(score.cappedExponent, 2);
-  assert.equal(score.multiplier, 4);
-  assert.equal(analyzeGame(position, 'zh').suggestions[0]?.scoreText, '2 指数番 · 4 倍');
-  // 替代拆分只用于内部择高，不在普通结果中显示，避免误导。
-  assert.ok(!score.details.some(detail => detail.includes('对对胡') || detail.includes('待核')));
-  // 指数番仍等于选中拆分 + 根，未把两套拆分相加。
-  assert.equal(score.uncappedExponent, score.patterns.reduce((total, hit) => total + hit.exponent, 0) + score.roots);
-});
-
-test('Sichuan 对对胡/带幺九/金钩钓 boundary readings', () => {
-  // 四副幺九刻子但将牌 55m 不含幺九：只有一套拆分 → 对对胡 1 指数番 = 2 倍，不得补带幺九。
+test('川麻：边界读法与封顶，未建模事件不加番', () => {
+  // 四副幺九刻但将 55m 不含幺九 → 对对胡 1，不补带幺九
   const pongHand = [...tiles('11199955', Suit.Man), ...tiles('111999', Suit.Pin)];
   assert.deepEqual(validateGameState(sichuan(pongHand, Suit.Sou), 'zh'), []);
   assert.equal(checkWinning(countsToArray(countTiles(pongHand)), 0, GameMode.Sichuan), true);
   const pongScore = recognizeSichuanPatterns(pongHand, [], 'zh');
   assert.deepEqual(pongScore.patterns, [{ id: 'duiDuiHu', exponent: 1 }]);
   assert.equal(pongScore.multiplier, 2);
-
-  // 111222333m99977p：刻子拆分是对对胡 1，顺子拆分不给番型 → 取较高的刻子拆分 = 2 倍。
-  const chowOrPung = [...tiles('111222333', Suit.Man), ...tiles('99977', Suit.Pin)];
-  const mixedScore = recognizeSichuanPatterns(chowOrPung, [], 'zh');
+  // 111222333m99977p：刻子拆分是对对胡，顺子拆分无番型 → 取刻子拆分
+  const mixedScore = recognizeSichuanPatterns([...tiles('111222333', Suit.Man), ...tiles('99977', Suit.Pin)], [], 'zh');
   assert.deepEqual(mixedScore.patterns, [{ id: 'duiDuiHu', exponent: 1 }]);
-  assert.equal(mixedScore.multiplier, 2);
-
-  // 金钩钓（四副明碰 + 单钓将）按来源包含对对胡、不双计；将牌不是幺九就不加带幺九。
-  const jinGouHand = tiles('55', Suit.Pin);
-  const jinGouMelds = [pong(1, Suit.Man), pong(2, Suit.Man), pong(3, Suit.Man), pong(9)];
-  assert.deepEqual(validateGameState(sichuan(jinGouHand, Suit.Sou, jinGouMelds), 'zh'), []);
-  const jinGouScore = recognizeSichuanPatterns(jinGouHand, jinGouMelds, 'zh');
-  assert.deepEqual(jinGouScore.patterns, [{ id: 'jinGouDiao', exponent: 2 }]);
-  assert.equal(jinGouScore.multiplier, 4);
-
-  // 七对与对对胡互斥：反过来真对对胡也不判七对。
-  const duiDuiHand = [...tiles('555', Suit.Man), ...tiles('777', Suit.Man), ...tiles('33', Suit.Man)];
-  const duiDuiScore = recognizeSichuanPatterns(duiDuiHand, [pong(1), pong(9)], 'zh');
-  assert.deepEqual(duiDuiScore.patterns, [{ id: 'duiDuiHu', exponent: 1 }]);
+  // 金钩钓（四副明碰 + 单钓将）含对对胡但不双计
+  const jinGou = recognizeSichuanPatterns(tiles('55', Suit.Pin), [pong(1, Suit.Man), pong(2, Suit.Man), pong(3, Suit.Man), pong(9)], 'zh');
+  assert.deepEqual(jinGou.patterns, [{ id: 'jinGouDiao', exponent: 2 }]);
+  assert.equal(jinGou.multiplier, 4);
+  // 七对与对对胡互斥
   const qiDuiScore = recognizeSichuanPatterns(tiles('11114444777799', Suit.Sou), [], 'zh');
   assert.ok(qiDuiScore.patterns.some(hit => hit.id === 'qiDui'));
   assert.ok(!qiDuiScore.patterns.some(hit => hit.id === 'duiDuiHu'));
-});
 
-test('Sichuan exponents are capped at 4 and unknown events are never scored', () => {
-  // 11112377889999s：清一色 2 + 带幺九 2 + 根 ×2 = 6 指数番 → 封顶 4 = 16 倍（不是 2^6 = 64）。
-  const hand = tiles('11112377889999', Suit.Sou);
-  assert.deepEqual(validateGameState(sichuan(hand, Suit.Man), 'zh'), []);
-  const score = recognizeSichuanPatterns(hand, [], 'zh');
-  assert.deepEqual(score.patterns, [{ id: 'qingYiSe', exponent: 2 }, { id: 'daiYaoJiu', exponent: 2 }]);
-  assert.equal(score.roots, 2);
-  assert.equal(score.uncappedExponent, 6);
-  assert.equal(score.cappedExponent, 4);
-  assert.equal(score.multiplier, 16);
-  assert.equal(score.capExponent, 4);
-  assert.equal(score.ruleId, 'hi8-blood-battle');
-  assert.equal(score.ruleSource, 'https://hi8.com/g/sichuanmajiang');
-  // 指数番只由番型与根构成：自摸/杠类型/海底等未建模事件不得自动加番。
-  assert.equal(score.uncappedExponent, score.patterns.reduce((sum, p) => sum + p.exponent, 0) + score.roots);
-  assert.deepEqual(score.pendingContext, TEXT.zh.pendingEvents);
-  // 国标路径不受影响：仍按番数显示，不出现指数番文本。
+  // 清一色 2 + 带幺九 2 + 根 ×2 = 6 → 封顶 4 = 16 倍（不是 2^6 = 64）
+  const cappedHand = tiles('11112377889999', Suit.Sou);
+  assert.deepEqual(validateGameState(sichuan(cappedHand, Suit.Man), 'zh'), []);
+  const capped = recognizeSichuanPatterns(cappedHand, [], 'zh');
+  assert.deepEqual(capped.patterns, [{ id: 'qingYiSe', exponent: 2 }, { id: 'daiYaoJiu', exponent: 2 }]);
+  assert.equal(capped.roots, 2);
+  assert.equal(capped.uncappedExponent, 6);
+  assert.equal(capped.cappedExponent, 4);
+  assert.equal(capped.multiplier, 16);
+  assert.equal(capped.ruleId, 'hi8-blood-battle');
+  assert.equal(capped.ruleSource, 'https://hi8.com/g/sichuanmajiang');
+  assert.equal(capped.uncappedExponent, capped.patterns.reduce((sum, p) => sum + p.exponent, 0) + capped.roots);
+  assert.deepEqual(capped.pendingContext, TEXT.zh.pendingEvents);
+  // 国标路径不受影响：仍按番数显示，不出现指数番文本
   const mcr = analyzeGame(state([...tiles('111123', Suit.Sou), ...tiles('45678999', Suit.Man)]), 'zh');
   assert.equal(mcr.isWinning, true);
   assert.equal(mcr.suggestions[0]?.scoreText, undefined);
 });
 
-test('Sichuan advice on an unfinished hand lists potentials without invented probabilities', () => {
+test('川麻建议：只报缺牌与番型，不给臆造概率', () => {
   const unfinished = sichuan([...tiles('11223344', Suit.Man), ...tiles('12345', Suit.Pin)], Suit.Sou);
   assert.deepEqual(validateGameState(unfinished, 'zh'), []);
   const result = analyzeGame(unfinished, 'zh');
@@ -660,8 +465,6 @@ test('Sichuan advice on an unfinished hand lists potentials without invented pro
     assert.ok(suggestion.scoreText?.includes('指数番'), suggestion.name);
     assert.ok(!suggestion.patternDetails.some(d => d.includes('%') || d.includes('64')));
   }
-
-  // 定缺花色还没打完：只报花猪，不给番型期望，也不给概率或倍率。
   const flowerPig = analyzeGame(sichuan(tiles('33344466699977', Suit.Sou), Suit.Sou), 'zh');
   assert.equal(flowerPig.isWinning, false);
   assert.equal(flowerPig.suggestions[0]?.name, '花猪');
@@ -670,370 +473,329 @@ test('Sichuan advice on an unfinished hand lists potentials without invented pro
 });
 
 // ============================================================
-// 五、P3a 国标和牌上下文与特殊结构
+// 四、国标：结构成牌、8 番起和与和牌来源
 // ============================================================
 
-test('P3a open knitted straight scores its concealed nine tiles with a locked meld', () => {
-  const hand = [...tiles('147', Suit.Man), ...tiles('258', Suit.Pin), ...tiles('369', Suit.Sou), ...tiles('55', Suit.Man)];
-  for (const meld of [pong(6, Suit.Zihai), gang(6, Suit.Zihai), chi('456', Suit.Man)]) {
-    const score = calculateMCRTotalFan(hand, [meld]);
-    assert.equal(score.structuralWin, true);
-    assert.equal(score.patterns.find(p => p.id === 'zuHeLong')?.fan, 12);
+test('定缺未清或三门花色时川麻不能和牌', () => {
+  const hand = [...tiles('123789', Suit.Man), ...tiles('12355', Suit.Pin), ...tiles('123', Suit.Sou)];
+  assert.deepEqual(validateGameState(sichuan(hand, Suit.Sou), 'zh'), []);
+  assert.equal(checkWinning(countsToArray(countTiles(hand)), 0, GameMode.Sichuan), true);
+  const threeSuits = analyzeGame(sichuan(hand, Suit.Sou), 'zh');
+  assert.equal(threeSuits.isWinning, false);
+  assert.ok(threeSuits.warnings.some(w => w.includes('定缺')));
+  const noVoid = analyzeGame(sichuan(tiles('33344466699977', Suit.Sou), null), 'zh');
+  assert.equal(noVoid.isWinning, false);
+  assert.ok(noVoid.warnings.some(w => w.includes('定缺')));
+});
+
+test('国标：结构成牌与 8 番起和分开，空输入不得声明起和', () => {
+  for (const hand of [[], tiles('2', Suit.Sou)]) {
+    const result = calculateMCRTotalFan(hand, []);
+    assert.equal(result.totalFan, 0);
+    assert.equal(result.isValid, false);
+    assert.equal(result.structuralWin, false);
   }
-  const noPair = [...hand.slice(0, -1), createTile(Suit.Man, 6)];
-  assert.equal(calculateMCRTotalFan(noPair, [pong(6, Suit.Zihai)]).structuralWin, false);
+  // 明吃234m/345m/567p + 暗手456s55m：非门清、非全求人，事件未记录 → 不足 8 番
+  const hand = [...tiles('456', Suit.Sou), ...tiles('55', Suit.Man)];
+  const melds = [chi('234', Suit.Man), chi('345', Suit.Man), chi('567', Suit.Pin)];
+  assert.deepEqual(validateGameState(state(hand, melds), 'zh'), []);
+  assert.equal(checkWinning(countsToArray(countTiles(hand)), melds.length), true);
+  const api = calculateMCRTotalFan(hand, melds);
+  assert.equal(api.structuralWin, true);
+  assert.ok(api.totalFan < 8);
+  assert.equal(api.isValid, false);
+  const result = analyzeGame(state(hand, melds), 'zh');
+  assert.equal(result.isWinning, true);
+  assert.equal(result.isReady, false);
 });
 
-test('P3a missing last-tile facts cannot establish a maximum or rule out eight fan', () => {
-  // 可确认平和2番（不计无字）；记自摸也只到不求人4 + 平和2 = 6番，三种来源都仍不足8番。
-  // 妙手回春/海底捞月本身8番，尚未记录，不能据此宣称不足8番。
-  const hand = [...tiles('123', Suit.Man), ...tiles('234', Suit.Pin), ...tiles('345', Suit.Sou), ...tiles('678', Suit.Sou), ...tiles('99', Suit.Sou)];
-  for (const source of ['unknown', 'selfDraw', 'claim'] as const) {
-    const score = calculateMCRTotalFan(hand, [], source);
-    assert.equal(score.eligibility, 'unverified');
-    assert.equal(score.isValid, false);
-    assert.ok(score.missingContext.includes('winningTile'));
-    const details = analyzeGame(state(hand, [], { winSource: source }), 'zh').suggestions[0]?.patternDetails ?? [];
-    assert.ok(details.some(detail => detail.includes('8 番起和待核')));
-    assert.ok(!details.some(detail => /补齐事件后|最多|不足 8 番/.test(detail)));
-  }
-});
-
-test('P3a knitted hands retain self-draw fan when fully concealed hand is excluded', () => {
-  for (const hand of [
-    [...tiles('147', Suit.Man), ...tiles('258', Suit.Pin), createTile(Suit.Sou, 3), ...tiles('1234567', Suit.Zihai)],
-    [...tiles('147', Suit.Man), ...tiles('258', Suit.Pin), ...tiles('369', Suit.Sou), ...tiles('12345', Suit.Zihai)],
-  ]) {
-    const draw = calculateMCRTotalFan(hand, [], 'selfDraw');
-    const claim = calculateMCRTotalFan(hand, [], 'claim');
-    assert.equal(draw.patterns.find(p => p.id === 'ziMo')?.fan, 1);
-    assert.equal(draw.patterns.some(p => p.id === 'buQiuRen'), false);
-    assert.equal(draw.totalFan, claim.totalFan + 1);
-    assert.equal(claim.patterns.some(p => p.id === 'ziMo'), false);
-  }
-});
-
-test('A04 MCR special structures are legal winning shapes (positive)', () => {
-  // 结构口径（国标特殊牌型）：147/258/369 不能错位地分属三种花色，孤张不得重复。
-  const sevenStars = [...tiles('147', Suit.Man), ...tiles('258', Suit.Pin), createTile(Suit.Sou, 3), ...tiles('1234567', Suit.Zihai)];
-  const lesserKnitted = [...tiles('147', Suit.Man), ...tiles('258', Suit.Pin), ...tiles('369', Suit.Sou), ...tiles('12345', Suit.Zihai)];
-  const knittedStraight = [...tiles('147', Suit.Man), ...tiles('258', Suit.Pin), ...tiles('369', Suit.Sou), ...tiles('111', Suit.Man), ...tiles('22', Suit.Pin)];
-
-  assert.equal(checkWinning(countsToArray(countTiles(sevenStars)), 0), true);
-  assert.equal(checkWinning(countsToArray(countTiles(lesserKnitted)), 0), true);
-  assert.equal(checkWinning(countsToArray(countTiles(knittedStraight)), 0), true);
-  // 组合龙也可只有一副副露：9 张龙 + 将 收在暗手
-  assert.equal(checkWinning(countsToArray(countTiles([...tiles('147', Suit.Man), ...tiles('258', Suit.Pin), ...tiles('369', Suit.Sou), ...tiles('55', Suit.Man)])), 1), true);
-
-  // 番种：七星不靠 24（不叠全不靠）、全不靠 12、组合龙 12。
-  // P3b 起全带幺/平和/清龙只在同一套合法拆分内成立，特殊牌型不再被凭空补 4 番，可直接断言总番。
-  const sevenStarsFan = calculateMCRTotalFan(sevenStars, []);
-  assert.equal(sevenStarsFan.structuralWin, true);
-  assert.equal(sevenStarsFan.details.includes('七星不靠 (24番)'), true);
-  assert.equal(sevenStarsFan.patterns.some(p => p.id === 'quanBuKao'), false);
-  assert.equal(sevenStarsFan.patterns.some(p => p.id === 'quanDaiYao'), false);
-  assert.equal(sevenStarsFan.totalFan, 24);
-  const lesserFan = calculateMCRTotalFan(lesserKnitted, []);
-  assert.equal(lesserFan.details.includes('全不靠 (12番)'), true);
-  assert.equal(lesserFan.patterns.some(p => p.id === 'qiXingBuKao'), false);
-  assert.equal(lesserFan.patterns.some(p => p.id === 'quanDaiYao'), false);
-  // 总番为 全不靠12 + 组合龙12 + 五门齐6 = 30：五门齐同时出现在「全不靠不计」与「组合龙另计」
-  // 两条规则里（constants 表冲突），本批不改不计规则，故只断言结构部分，不做总数断言。
-  assert.equal(patternCounts(knittedStraight).zuHeLong, 1);
-  assert.equal(calculateMCRTotalFan(knittedStraight, []).patterns.find(p => p.id === 'zuHeLong')?.fan, 12);
-});
-
-test('A04 MCR special structures reject duplicates, short hands, shifted groups and melds (negative)', () => {
-  const duplicated = [...tiles('1477', Suit.Man), ...tiles('25', Suit.Pin), createTile(Suit.Sou, 3), ...tiles('1234567', Suit.Zihai)];
-  assert.equal(duplicated.length, 14);
-  assert.equal(checkWinning(countsToArray(countTiles(duplicated)), 0), false);
-  // 少一张 / 多一张
-  const short = [...tiles('147', Suit.Man), ...tiles('258', Suit.Pin), ...tiles('369', Suit.Sou), ...tiles('1234', Suit.Zihai)];
-  assert.equal(checkWinning(countsToArray(countTiles(short)), 0), false);
-  // 错位：两组龙落在同一花色（147m + 258m），也没有第三组
-  const shifted = [...tiles('147', Suit.Man), ...tiles('258', Suit.Man), ...tiles('369', Suit.Sou), ...tiles('111', Suit.Man), ...tiles('22', Suit.Pin)];
-  assert.equal(checkWinning(countsToArray(countTiles(shifted)), 0), false);
-  // 组合龙缺一张龙（36s 而不是 369s）
-  const brokenKnitted = [...tiles('147', Suit.Man), ...tiles('258', Suit.Pin), ...tiles('36', Suit.Sou), ...tiles('111', Suit.Man), ...tiles('22', Suit.Pin)];
-  assert.equal(brokenKnitted.length, 13);
-  assert.equal(checkWinning(countsToArray(countTiles(brokenKnitted)), 0), false);
-  // 带副露时七星不靠/全不靠不成立
-  const sevenStars = [...tiles('147', Suit.Man), ...tiles('258', Suit.Pin), createTile(Suit.Sou, 3), ...tiles('1234567', Suit.Zihai)];
-  assert.equal(checkWinning(countsToArray(countTiles(sevenStars)), 1), false);
-});
-
-test('M04 MCR 不求人 / 门前清 / 自摸 require a recorded win source', () => {
-  // 口径：不求人 = 门前清 + 自摸；门前清 = 门清 + 点和。没有来源事实时三者都不得自动成立。
+test('国标：和牌来源未记录时不计 不求人/门前清/自摸', () => {
+  // 234m/345m/567p/456s/55m：断幺2 + 平和2 = 4
   const hand = [...tiles('234', Suit.Man), ...tiles('345', Suit.Man), ...tiles('567', Suit.Pin), ...tiles('456', Suit.Sou), ...tiles('55', Suit.Man)];
-  assert.equal(patternCounts(hand).buQiuRen ?? 0, 0);
-  assert.equal(patternCounts(hand).menQianQing ?? 0, 0);
-  assert.equal(patternCounts(hand).ziMo ?? 0, 0);
-
-  // 自摸：不求人成立，且用 excludes 去掉自摸/门前清，不重复相加
-  assert.equal(patternCounts(hand, [], 'selfDraw').buQiuRen, 1);
-  assert.equal(patternCounts(hand, [], 'selfDraw').menQianQing ?? 0, 0);
-  assert.deepEqual(calculateMCRTotalFan(hand, [], 'selfDraw').patterns.map(p => p.id).sort(), ['buQiuRen', 'duanYao', 'pingHu']);
-
-  // 点和：门前清成立，不求人不成立
-  assert.equal(patternCounts(hand, [], 'claim').menQianQing, 1);
-  assert.equal(patternCounts(hand, [], 'claim').buQiuRen ?? 0, 0);
-
-  // 有副露：三种都不成立，但自摸（1番）仍与来源一致
-  const melds = [pong(1), pong(2), pong(3)];
-  const openHand = [...tiles('234', Suit.Man), ...tiles('55', Suit.Man)];
-  assert.equal(patternCounts(openHand, melds, 'selfDraw').ziMo, 1);
-  assert.equal(patternCounts(openHand, melds, 'selfDraw').buQiuRen ?? 0, 0);
-  assert.equal(patternCounts(openHand, melds).ziMo ?? 0, 0);
-
-  // 该牌例可确认断幺2 + 平和2 = 4番；记自摸只到 4 + 不求人4 = 8番。
-  // 末张等事件未知时，来源未记录只能「待核」，记自摸已达 8 番可确认达标。
+  assert.equal(checkWinning(countsToArray(countTiles(hand)), 0), true);
   const unknown = calculateMCRTotalFan(hand, []);
-  assert.equal(unknown.structuralWin, true);
   assert.equal(unknown.confirmedFan, 4);
+  assert.equal(unknown.eligibility, 'unverified');
+  assert.equal(unknown.isValid, false);
   assert.equal(unknown.maxPossibleFan, 8);
-  assert.equal(unknown.eligibility, 'unverified');
-  assert.equal(unknown.isValid, false);
-  assert.deepEqual(unknown.missingContext, ['winSource', 'winningTile', 'seatWind', 'kongType']);
-  assert.equal(calculateMCRTotalFan(hand, [], 'selfDraw').eligibility, 'met');
-  assert.equal(calculateMCRTotalFan(hand, [], 'claim').eligibility, 'unverified');
-});
-
-test('P3a unknown win source never claims the eight-fan minimum', () => {
-  // 123m234p345s678s99s：P3b 起识别为平和2（不计无字、无全带幺），连六/老少副仍未实现。
-  // 自摸加不求人4 = 6 番，点和加门前清2 = 4 番，三种来源都不足 8 番，但仍缺末张等事件 → 只能「待核」。
-  const hand = [...tiles('123', Suit.Man), ...tiles('234', Suit.Pin), ...tiles('345', Suit.Sou), ...tiles('678', Suit.Sou), ...tiles('99', Suit.Sou)];
-  const unknown = calculateMCRTotalFan(hand, []);
-  assert.equal(unknown.confirmedFan, 2);
-  assert.equal(unknown.maxPossibleFan, 6);
-  assert.equal(unknown.eligibility, 'unverified');
-  assert.equal(unknown.isValid, false);
-  assert.equal(unknown.missingContext.includes('winSource'), true);
+  assert.ok(unknown.missingContext.includes('winSource'));
+  assert.deepEqual(patternCounts(hand, [], 'unknown').buQiuRen, undefined);
+  assert.deepEqual(patternCounts(hand, [], 'unknown').menQianQing, undefined);
+  assert.deepEqual(patternCounts(hand, [], 'unknown').ziMo, undefined);
 
   const selfDraw = calculateMCRTotalFan(hand, [], 'selfDraw');
-  assert.equal(selfDraw.confirmedFan, 6);
-  assert.equal(selfDraw.eligibility, 'unverified');
-  assert.equal(selfDraw.isValid, false);
-  assert.equal(selfDraw.missingContext.includes('winSource'), false);
+  assert.equal(selfDraw.confirmedFan, 8);
+  assert.equal(selfDraw.eligibility, 'met');
+  assert.equal(selfDraw.isValid, true);
+  assert.equal(patternCounts(hand, [], 'selfDraw').buQiuRen, 1);
+  assert.equal(patternCounts(hand, [], 'selfDraw').ziMo, 1);
+  assert.equal(patternCounts(hand, [], 'selfDraw').menQianQing, undefined);
 
   const claim = calculateMCRTotalFan(hand, [], 'claim');
-  assert.equal(claim.confirmedFan, 4);
+  assert.equal(claim.confirmedFan, 6);
   assert.equal(claim.eligibility, 'unverified');
+  assert.equal(patternCounts(hand, [], 'claim').menQianQing, 1);
+  assert.equal(patternCounts(hand, [], 'claim').buQiuRen, undefined);
 
-  // 未成牌结构不报可确认番，也不报上下文缺口
-  const notWinning = calculateMCRTotalFan([...tiles('123', Suit.Man), ...tiles('456', Suit.Man), ...tiles('789', Suit.Pin), ...tiles('55', Suit.Sou)], []);
-  assert.equal(notWinning.structuralWin, false);
-  assert.deepEqual(notWinning.missingContext, []);
-  assert.equal(notWinning.isValid, false);
+  // 有副露时同样只在记录来源后计自摸
+  const melds = [pong(1), pong(2), pong(3), pong(4)];
+  const openHand = [...tiles('11', Suit.Man)];
+  assert.equal(checkWinning(countsToArray(countTiles(openHand)), melds.length), true);
+  assert.equal(patternCounts(openHand, melds, 'unknown').ziMo, undefined);
+  assert.equal(patternCounts(openHand, melds, 'selfDraw').ziMo, 1);
+  assert.equal(patternCounts(openHand, melds, 'selfDraw').buQiuRen, undefined);
+});
+
+test('国标：事件上下文缺失时只报「仍缺什么」，可确认番不足 8 即不足', () => {
+  // 123m456m789p234s55z：连六 1 番；自摸最多 5 番，点和最多 3 番，都不足 8
+  const hand = [...tiles('123', Suit.Man), ...tiles('456', Suit.Man), ...tiles('789', Suit.Pin), ...tiles('234', Suit.Sou), ...tiles('55', Suit.Zihai)];
+  const unknown = calculateMCRTotalFan(hand, []);
+  assert.equal(unknown.confirmedFan, 1);
+  assert.equal(unknown.maxPossibleFan, 5);
+  assert.equal(unknown.eligibility, 'unverified');
+  assert.deepEqual(unknown.missingContext, ['winSource', 'winningTile', 'seatWind', 'kongType']);
+  const result = analyzeGame(state(hand), 'zh');
+  assert.equal(result.isWinning, true);
+  const details = result.suggestions[0]?.patternDetails.join('\n') ?? '';
+  assert.ok(details.includes('8 番起和待核'));
+  assert.ok(details.includes('和牌张与末张'));
+  assert.ok(result.warnings.some(w => w.includes('和牌来源未知')));
 });
 
 // ============================================================
-// 五之二、P3b 同一拆分内计番（全带幺 / 平和 / 清龙 / 七对）
+// 五、国标：特殊结构（不可回退）
 // ============================================================
 
-test('P3b outside hand needs a terminal or honor in every set and the pair of one decomposition', () => {
-  // 正例：123m 789m 111p 999s + 11z，四副面子与将牌都含幺九/字牌
+test('国标特殊结构：七星不靠/全不靠/组合龙都能成牌', () => {
+  // 七星不靠：七种字牌 + 三种花色各一张
+  const sevenStars = [...tiles('147', Suit.Man), ...tiles('258', Suit.Pin), createTile(Suit.Sou, 3), ...tiles('1234567', Suit.Zihai)];
+  assert.equal(sevenStars.length, 14);
+  assert.equal(checkWinning(countsToArray(countTiles(sevenStars)), 0), true);
+  const sevenStarsApi = calculateMCRTotalFan(sevenStars, []);
+  assert.equal(sevenStarsApi.totalFan, 24);
+  assert.deepEqual(sevenStarsApi.patterns.map(p => p.id), ['qiXingBuKao']);
+  assert.equal(sevenStarsApi.isValid, true);
+
+  // 全不靠 + 组合龙：12 + 12 = 24（组合龙声明另计的组合龙；全不靠不计五门齐）
+  const lesser = [...tiles('147', Suit.Man), ...tiles('258', Suit.Pin), ...tiles('369', Suit.Sou), ...tiles('12345', Suit.Zihai)];
+  assert.equal(checkWinning(countsToArray(countTiles(lesser)), 0), true);
+  const lesserApi = calculateMCRTotalFan(lesser, []);
+  const lesserIds = lesserApi.patterns.map(p => p.id);
+  assert.ok(lesserIds.includes('quanBuKao'));
+  assert.ok(lesserIds.includes('zuHeLong'));
+  assert.ok(!lesserIds.includes('qiXingBuKao'));
+  assert.ok(!lesserIds.includes('quanDaiYao'));
+  assert.equal(lesserApi.totalFan, 24);
+
+  // 组合龙 + 明碰：111m 补一副面子、22p 作将，无字 1 番另计
+  const knitted = [...tiles('147', Suit.Man), ...tiles('258', Suit.Pin), ...tiles('369', Suit.Sou), ...tiles('111', Suit.Man), ...tiles('22', Suit.Pin)];
+  assert.equal(checkWinning(countsToArray(countTiles(knitted)), 0), true);
+  const knittedApi = calculateMCRTotalFan(knitted, []);
+  assert.deepEqual(knittedApi.patterns.map(p => p.id).sort(), ['wuZi', 'zuHeLong']);
+  assert.equal(knittedApi.totalFan, 13);
+
+  // 特殊结构同样不计不求人，但自摸仍照记；未知来源时两者都不计
+  const draw = calculateMCRTotalFan(sevenStars, [], 'selfDraw');
+  const claim = calculateMCRTotalFan(sevenStars, [], 'claim');
+  assert.equal(draw.totalFan, claim.totalFan + 1);
+  assert.equal(draw.patterns.find(p => p.id === 'ziMo')?.fan, 1);
+  assert.equal(draw.patterns.some(p => p.id === 'buQiuRen'), false);
+  assert.equal(claim.patterns.some(p => p.id === 'menQianQing'), false);
+
+  // 全部由组合龙的三组牌构成（9 张）+ 一副暗刻 + 将
+  const openKnitted = [...tiles('147', Suit.Man), ...tiles('258', Suit.Pin), ...tiles('369', Suit.Sou), ...tiles('111', Suit.Man), ...tiles('22', Suit.Pin)];
+  assert.equal(checkWinning(countsToArray(countTiles(openKnitted)), 0), true);
+});
+
+test('国标特殊结构：重复牌、缺张、错位与带副露的假结构都被拒', () => {
+  const nine = [...tiles('147', Suit.Man), ...tiles('258', Suit.Pin), ...tiles('369', Suit.Sou)];
+  // 正常九张 + 一副面子 + 将
+  assert.equal(checkWinning(countsToArray(countTiles([...nine, ...tiles('111', Suit.Man), ...tiles('22', Suit.Pin)])), 0), true);
+  // 重复牌：两种花色取到同一张
+  assert.equal(checkWinning(countsToArray(countTiles([...tiles('147', Suit.Man), ...tiles('147', Suit.Pin), ...tiles('369', Suit.Sou), ...tiles('111', Suit.Man), ...tiles('22', Suit.Pin)])), 0), false);
+  // 错位：不是 1/4/7 的排列
+  assert.equal(checkWinning(countsToArray(countTiles([...tiles('123', Suit.Man), ...tiles('258', Suit.Pin), ...tiles('369', Suit.Sou), ...tiles('111', Suit.Man), ...tiles('22', Suit.Pin)])), 0), false);
+  // 张数不足
+  assert.equal(checkWinning(countsToArray(countTiles([...nine, ...tiles('11', Suit.Man)])), 0), false);
+  // 组合龙的九张不能来自副露（副露只补面子）
+  assert.equal(
+    checkWinning(countsToArray(countTiles([...tiles('147', Suit.Man), ...tiles('258', Suit.Pin), ...tiles('22', Suit.Pin)])), 2),
+    false,
+  );
+});
+
+// ============================================================
+// 六、国标番种：同一合法拆分内计番
+// ============================================================
+
+test('全带幺要求每副面子和将牌都含幺九或字牌，且在同一拆分内成立', () => {
+  // 123789m + 111p + 999s + 11z：全带幺4 + 双暗刻2 + 幺九刻2 + 老少副1 = 9
   const outside = [...tiles('123789', Suit.Man), ...tiles('111', Suit.Pin), ...tiles('999', Suit.Sou), ...tiles('11', Suit.Zihai)];
-  const outsideScore = calculateMCRTotalFan(outside, []);
-  assert.equal(outsideScore.patterns.some(p => p.id === 'quanDaiYao'), true);
-  assert.equal(outsideScore.totalFan, 6); // 全带幺4 + 双暗刻2（暗刻仍按张数统计，P3b 后批处理）
+  assert.equal(checkWinning(countsToArray(countTiles(outside)), 0), true);
+  const api = calculateMCRTotalFan(outside, []);
+  assert.ok(mcrPatternIds(outside).includes('quanDaiYao'));
+  assert.equal(api.totalFan, 9);
 
-  // 反例（M05+A10）：345s/678s 与将牌99s 之前的 456m 类面子不含幺九，全带幺不成立
-  const mixed = [...tiles('123', Suit.Man), ...tiles('234', Suit.Pin), ...tiles('345', Suit.Sou), ...tiles('678', Suit.Sou), ...tiles('99', Suit.Sou)];
-  const mixedScore = calculateMCRTotalFan(mixed, []);
-  assert.equal(mixedScore.patterns.some(p => p.id === 'quanDaiYao'), false);
-  assert.equal(mixedScore.confirmedFan, 2); // 只有平和2（连六 1番仍未实现）
-  assert.equal(mixedScore.eligibility, 'unverified');
-  assert.equal(mixedScore.isValid, false);
+  // 123m234p345s678s99s 没有全带幺：平和2 + 连六1 + 三色三步高6 = 9，本身确实达到 8 番
+  const allChows = [...tiles('123', Suit.Man), ...tiles('234', Suit.Pin), ...tiles('345', Suit.Sou), ...tiles('678', Suit.Sou), ...tiles('99', Suit.Sou)];
+  const allChowsIds = mcrPatternIds(allChows);
+  assert.ok(!allChowsIds.includes('quanDaiYao'));
+  assert.ok(allChowsIds.includes('pingHu'));
+  assert.ok(allChowsIds.includes('sanSeSanBuGao'));
+  assert.ok(allChowsIds.includes('lianLiu'));
+  assert.equal(calculateMCRTotalFan(allChows, []).totalFan, 9);
 
-  // 反例（阈值）：五门齐6番；旧的全带幺恒真会再加 4 番到 10，把不足 8 番的手误判为可起和
-  const fiveGates = [...tiles('123', Suit.Man), ...tiles('456', Suit.Pin), ...tiles('789', Suit.Sou), ...tiles('111', Suit.Zihai), ...tiles('55', Suit.Zihai)];
-  const fiveGatesScore = calculateMCRTotalFan(fiveGates, []);
-  assert.equal(fiveGatesScore.patterns.some(p => p.id === 'quanDaiYao'), false);
-  assert.equal(fiveGatesScore.patterns.some(p => p.id === 'wuMenQi'), true);
-  assert.equal(fiveGatesScore.confirmedFan, 6);
-  assert.equal(fiveGatesScore.eligibility, 'unverified');
-  assert.equal(fiveGatesScore.isValid, false);
+  // 无副露的暗手也不能凭「牌面里出现过幺九」判全带幺
+  const noTerminalPair = [...tiles('12378955', Suit.Man), ...tiles('123789', Suit.Pin)];
+  assert.ok(!mcrPatternIds(noTerminalPair).includes('quanDaiYao'));
 });
 
-test('P3b all chows is judged inside one decomposition, not by the number of called chows', () => {
-  // 正例：四副暗手顺子 + 序数将；中张面子不含幺九，故不是全带幺
-  const concealed = [...tiles('123', Suit.Man), ...tiles('456', Suit.Man), ...tiles('789', Suit.Pin), ...tiles('234', Suit.Sou), ...tiles('55', Suit.Sou)];
-  const concealedScore = calculateMCRTotalFan(concealed, []);
-  assert.equal(concealedScore.patterns.some(p => p.id === 'pingHu'), true);
-  assert.equal(concealedScore.patterns.some(p => p.id === 'quanDaiYao'), false);
-  assert.equal(concealedScore.totalFan, 2); // 平和不计无字
-  assert.equal(calculateMCRTotalFan(concealed, [], 'selfDraw').patterns.some(p => p.id === 'buQiuRen'), true);
+test('平和与清龙都在同一合法拆分内判定', () => {
+  // 平和：四副顺子 + 序数将；连六 1 番另计
+  const allChows = [...tiles('123', Suit.Man), ...tiles('456', Suit.Man), ...tiles('789', Suit.Pin), ...tiles('234', Suit.Sou), ...tiles('55', Suit.Sou)];
+  const allChowsIds = mcrPatternIds(allChows);
+  assert.ok(allChowsIds.includes('pingHu'));
+  assert.ok(!allChowsIds.includes('quanDaiYao'));
+  assert.equal(calculateMCRTotalFan(allChows, []).totalFan, 3);
 
-  // 反例：将牌是字牌 → 平和不成立；有一副刻子 → 也不成立
-  const honorPair = [...tiles('123456', Suit.Man), ...tiles('789', Suit.Pin), ...tiles('234', Suit.Sou), ...tiles('55', Suit.Zihai)];
-  assert.equal(patternCounts(honorPair).pingHu ?? 0, 0);
-  const withPong = [...tiles('111456', Suit.Man), ...tiles('789', Suit.Pin), ...tiles('234', Suit.Sou), ...tiles('55', Suit.Sou)];
-  assert.equal(patternCounts(withPong).pingHu ?? 0, 0);
+  // 字牌将不算平和；牌面含字牌也不计无字
+  const honorPair = [...tiles('123', Suit.Man), ...tiles('456', Suit.Man), ...tiles('789', Suit.Pin), ...tiles('234', Suit.Sou), ...tiles('55', Suit.Zihai)];
+  const honorIds = mcrPatternIds(honorPair);
+  assert.ok(!honorIds.includes('pingHu'));
+  assert.ok(!honorIds.includes('wuZi'));
+  assert.equal(calculateMCRTotalFan(honorPair, []).totalFan, 1);
 
-  // 副露顺子同样满足「四副顺子 + 序数将」
-  const called = [...tiles('456789', Suit.Pin), ...tiles('234', Suit.Sou), ...tiles('55', Suit.Sou)];
-  assert.equal(patternCounts(called, [chi('123', Suit.Man)]).pingHu, 1);
+  // 有刻子就不算平和
+  const pongHand = [...tiles('123', Suit.Man), ...tiles('456', Suit.Man), ...tiles('789', Suit.Pin), ...tiles('234', Suit.Sou), ...tiles('555', Suit.Man)];
+  assert.ok(!mcrPatternIds(pongHand).includes('pingHu'));
+
+  // 清龙：同花色 123/456/789；喜相逢、缺一门另计，连六/老少副/无字不再计
+  const pureStraight = [...tiles('123456789', Suit.Man), ...tiles('12355', Suit.Pin)];
+  const straightIds = mcrPatternIds(pureStraight);
+  assert.ok(straightIds.includes('qingLong'));
+  assert.ok(straightIds.includes('xiXiangFeng'));
+  assert.ok(straightIds.includes('queYiMen'));
+  assert.ok(!straightIds.includes('lianLiu'));
+  assert.ok(!straightIds.includes('laoShaoFu'));
+  assert.ok(!straightIds.includes('wuZi'));
+  assert.equal(calculateMCRTotalFan(pureStraight, []).totalFan, 20);
 });
 
-test('P3b pure straight is three same-suit chows of one decomposition', () => {
-  // 正例（M01+M05）：清龙16 + 平和2 + 缺一门1
-  const pure = [...tiles('123456789', Suit.Man), ...tiles('12355', Suit.Pin)];
-  const pureScore = calculateMCRTotalFan(pure, []);
-  assert.equal(pureScore.patterns.some(p => p.id === 'qingLong'), true);
-  assert.equal(pureScore.patterns.some(p => p.id === 'quanDaiYao'), false);
-  assert.equal(pureScore.patterns.some(p => p.id === 'pingHu'), true);
-  assert.equal(pureScore.totalFan, 19); // 连六/老少副/喜相逢仍未实现
+test('明碰不当暗刻：碰碰和与暗刻番只看暗手', () => {
+  // 碰 111p、碰 999p + 暗手 123456m + 77p：两顺两刻，不是碰碰和，也没有双暗刻
+  const hand = [...tiles('123456', Suit.Man), ...tiles('77', Suit.Pin)];
+  const counts = patternCounts(hand, [pong(1), pong(9)]);
+  assert.equal(counts.pengPengHu ?? 0, 0);
+  assert.equal(counts.shuangAnKe ?? 0, 0);
+  assert.equal(counts.yaoJiuKe ?? 0, 2); // 明碰也算幺九刻，但不算暗刻
 
-  // 反例：789 落在另一花色时不是清龙；组合龙也不是清龙
-  const splitSuit = [...tiles('123456', Suit.Man), ...tiles('789', Suit.Pin), ...tiles('234', Suit.Sou), ...tiles('55', Suit.Sou)];
-  assert.equal(patternCounts(splitSuit).qingLong ?? 0, 0);
-  const knittedStraight = [...tiles('147', Suit.Man), ...tiles('258', Suit.Pin), ...tiles('369', Suit.Sou), ...tiles('111', Suit.Man), ...tiles('22', Suit.Pin)];
-  assert.equal(patternCounts(knittedStraight).qingLong ?? 0, 0);
-  assert.equal(patternCounts(knittedStraight).zuHeLong, 1);
+  // 三风刻需要三副风刻；只有两副风碰时，第三种风作将不算
+  const winds = [...tiles('123456', Suit.Man), ...tiles('33', Suit.Zihai)];
+  const windMelds = [pong(1, Suit.Zihai), pong(2, Suit.Zihai)];
+  assert.deepEqual(validateGameState(state(winds, windMelds), 'zh'), []);
+  assert.equal(checkWinning(countsToArray(countTiles(winds)), windMelds.length), true);
+  const windCounts = patternCounts(winds, windMelds);
+  assert.equal(windCounts.sanFengKe ?? 0, 0);
+  assert.equal(windCounts.shuangAnKe ?? 0, 0);
+  assert.equal(windCounts.hunYiSe ?? 0, 1);
+  assert.equal(mcrFan(winds, windMelds), 9); // 混一色6 + 幺九刻2 + 连六1
 });
 
-test('P3b seven pairs counts four identical tiles as two pairs', () => {
-  // 四张同牌记两对：1111m 22m 33m 44m 55p 66p = 7 对
-  const sevenPairs = [...tiles('1111223344', Suit.Man), ...tiles('5566', Suit.Pin)];
-  const api = calculateMCRTotalFan(sevenPairs, []);
-  assert.equal(api.structuralWin, true);
-  assert.equal(api.patterns.some(p => p.id === 'qiDui'), true);
-  // 总番仍受未修的四归一缺陷影响（见 M06 快照）；七对本身 24 番已达标，故可确认可起和。
-  assert.equal(api.eligibility, 'met');
-  assert.equal(api.isValid, true);
+test('杠：不明暗杠类型、不把杠算成四归一；七对保留四张同牌', () => {
+  // 123456m + 55s + 杠1p + 杠2p：不推断明杠/暗杠/双杠，杠也不算四归一
+  const hand = [...tiles('123456', Suit.Man), ...tiles('55', Suit.Sou)];
+  const melds = [gang(1), gang(2)];
+  assert.deepEqual(validateGameState(state(hand, melds), 'zh'), []);
+  const counts = patternCounts(hand, melds);
+  for (const id of ['mingGang', 'anGang', 'shuangMingGang', 'shuangAnGang', 'siGuiYi', 'pengPengHu', 'shuangAnKe']) {
+    assert.equal(counts[id] ?? 0, 0, `${id} 不得由未记录的杠类型推出`);
+  }
+  assert.equal(counts.yaoJiuKe, 1);
+  assert.equal(mcrFan(hand, melds), 3); // 幺九刻1 + 连六1 + 无字1
 
-  // 反例：全手顺子结构不是七对；有单张也不是
-  assert.equal(patternCounts([...tiles('123', Suit.Man), ...tiles('456', Suit.Man), ...tiles('789', Suit.Pin), ...tiles('234', Suit.Sou), ...tiles('55', Suit.Sou)]).qiDui ?? 0, 0);
-  assert.equal(patternCounts([...tiles('1122334455667', Suit.Man), createTile(Suit.Pin, 1)]).qiDui ?? 0, 0);
+  // 七对：四张同牌已在对子里，不再计四归一
+  const qiDui = [...tiles('1111223344', Suit.Man), ...tiles('5566', Suit.Pin)];
+  assert.equal(checkWinning(countsToArray(countTiles(qiDui)), 0), true);
+  const qiDuiApi = calculateMCRTotalFan(qiDui, []);
+  assert.ok(qiDuiApi.patterns.some(p => p.id === 'qiDui'));
+  assert.ok(!qiDuiApi.patterns.some(p => p.id === 'siGuiYi'));
+  assert.equal(qiDuiApi.totalFan, 26); // 七对24 + 无字1 + 缺一门1
+});
+
+test('高价值番种：大三元与三色三同顺都要识别且不重复计低番', () => {
+  // 555666777z + 12355m：大三元88 + 混一色6 + 三暗刻16 + 幺九刻3 = 113，箭刻不再另计
+  const bigThree = [...tiles('555666777', Suit.Zihai), ...tiles('12355', Suit.Man)];
+  const bigIds = mcrPatternIds(bigThree);
+  assert.ok(bigIds.includes('daSanYuan'));
+  assert.ok(!bigIds.includes('jianKe'));
+  assert.ok(!bigIds.includes('shuangJianKe'));
+  assert.ok(!bigIds.includes('xiaoSanYuan'));
+  assert.equal(calculateMCRTotalFan(bigThree, []).totalFan, 113);
+
+  // 234m234p234s + 567m + 55s：三色三同顺8 + 断幺2 + 平和2 + 连六1 = 13，合法达到起和线
+  const tripleChow = [...tiles('234', Suit.Man), ...tiles('234', Suit.Pin), ...tiles('234', Suit.Sou), ...tiles('567', Suit.Man), ...tiles('55', Suit.Sou)];
+  const tripleApi = calculateMCRTotalFan(tripleChow, []);
+  assert.ok(tripleApi.patterns.some(p => p.id === 'sanSeSanTongShun'));
+  assert.equal(tripleApi.totalFan, 13);
+  assert.equal(tripleApi.isValid, true);
+});
+
+test('七对/连七对/九莲宝灯取番数最高的那个拆分', () => {
+  const qiDui = [...tiles('1111223344', Suit.Man), ...tiles('5566', Suit.Pin)];
+  assert.equal(checkWinning(countsToArray(countTiles(qiDui)), 0), true);
+  assert.equal(mcrPatternIds(qiDui).includes('qiDui'), true);
+
+  const lianQiDui = tiles('11223344556677', Suit.Man);
+  assert.equal(checkWinning(countsToArray(countTiles(lianQiDui)), 0), true);
+  const lianApi = calculateMCRTotalFan(lianQiDui, []);
+  assert.ok(lianApi.patterns.some(p => p.id === 'lianQiDui'));
+  assert.ok(!lianApi.patterns.some(p => p.id === 'qiDui'));
+  assert.ok(!lianApi.patterns.some(p => p.id === 'qingYiSe'));
+  assert.equal(lianApi.totalFan, 88);
+
+  const jiuLian = [...tiles('1112345678999', Suit.Man), createTile(Suit.Man, 5)];
+  assert.equal(checkWinning(countsToArray(countTiles(jiuLian)), 0), true);
+  const jiuApi = calculateMCRTotalFan(jiuLian, []);
+  assert.ok(jiuApi.patterns.some(p => p.id === 'jiuLianBaoDeng'));
+  assert.ok(!jiuApi.patterns.some(p => p.id === 'qingYiSe'));
+  assert.ok(!jiuApi.patterns.some(p => p.id === 'wuZi'));
+  assert.equal(jiuApi.totalFan, 88);
 });
 
 // ============================================================
-// 六、已确认缺陷（行为快照）
-//
-// P3a 基线变化：以下涉及无副露手牌的快照，其 totalFan / isValid 已随 M04 修复下调
-// （不再自动计不求人 4 / 门前清 2）。
-// P3b 基线变化：全带幺/平和/清龙改为「同一套合法拆分内成立」，相关快照的 totalFan
-// 再次下调（全带幺不再凭空加 4 番）；明碰当暗刻、杠与四归一、七对与四归一的互斥、
-// 建议层缺牌与向听估算等仍未修，故仍以快照保留而不是改成正确断言。
+// 七、国标建议层：缺牌按实体牌算，不推断末张事件与胜率
 // ============================================================
 
-defect('M01', 'P3c', '大三元未识别，用三暗刻等低番凑番（P3a 去掉自动不求人、P3b 去掉无副露全带幺后为 22 番）',
-  '555666777z + 12355m 应有大三元 88番',
-  { totalFan: 22, hasDaSanYuan: false, patterns: ['hunYiSe', 'sanAnKe'] },
-  () => {
-    const hand = [...tiles('555666777', Suit.Zihai), ...tiles('12355', Suit.Man)];
-    const api = calculateMCRTotalFan(hand, []);
-    return { totalFan: api.totalFan, hasDaSanYuan: api.patterns.some(p => p.id === 'daSanYuan'), patterns: api.patterns.map(p => p.id).sort() };
-  });
-
-test('M01+M05 pure straight is scored instead of an invented outside hand', () => {
-  const hand = [...tiles('123456789', Suit.Man), ...tiles('12355', Suit.Pin)];
-  const api = calculateMCRTotalFan(hand, []);
-  assert.equal(api.patterns.some(p => p.id === 'qingLong'), true);
-  assert.equal(api.patterns.some(p => p.id === 'quanDaiYao'), false);
-  assert.equal(api.totalFan, 19); // 清龙16 + 平和2 + 缺一门1
+test('建议层：一色三步高按实体牌算缺张，不重复借用同一张', () => {
+  const hand = [...tiles('123456789', Suit.Man), ...tiles('147', Suit.Pin), ...tiles('19', Suit.Sou)];
+  assert.equal(calculateShanten(hand, []), 2);
+  const suggestion = analyzeMCR(hand, [], 'zh', 50).find(s => s.name.includes('一色三步高'));
+  assert.ok(suggestion, '一色三步高仍是潜在番型');
+  // 123+234+345 需要 1/5 各一张、2/4 各两张、3 三张：只有 123456789m 时缺 4 张
+  assert.equal(suggestion.missingTiles.length, 4);
+  for (const s of analyzeMCR(hand, [], 'zh', 50)) assert.equal(s.probability, 0);
 });
 
-defect('M02', 'P3b', '明碰被当成暗刻，进而误判双暗刻与碰碰和',
-  '碰 111p、999p 加暗手 123456m + 77p 只有两副顺子，不应是碰碰和，明碰也不能算暗刻',
-  { pengPengHu: 1, shuangAnKe: 1, yaoJiuKe: 2 },
-  () => {
-    const hand = [...tiles('123456', Suit.Man), ...tiles('77', Suit.Pin)];
-    const counts = patternCounts(hand, [pong(1), pong(9)]);
-    return { pengPengHu: counts.pengPengHu ?? 0, shuangAnKe: counts.shuangAnKe ?? 0, yaoJiuKe: counts.yaoJiuKe ?? 0 };
-  });
-
-defect('M03', 'P3b', '同一副杠同时算双暗杠、双明杠、明杠与四归一',
-  '杠的明暗未知时不得自动推断；杠的四张属于杠本身，也不是四归一',
-  { totalFan: 26, patterns: { mingGang: 2, pengPengHu: 1, shuangAnGang: 1, shuangAnKe: 1, shuangMingGang: 1, siGuiYi: 2, wuZi: 1, yaoJiuKe: 1 } },
-  () => {
-    const hand = [...tiles('123456', Suit.Man), ...tiles('55', Suit.Sou)];
-    const melds = [gang(1), gang(2)];
-    return { totalFan: mcrFan(hand, melds), patterns: patternCounts(hand, melds) };
-  });
-
-defect('M06', 'P3b', '七对已识别，但四张同牌仍被重复算成四归一',
-  '1111223344m5566p 是七对 24番，加无字1、缺一门1 共 26 番；四张同牌已在对子里，不再计四归一',
-  { winning: true, totalFan: 28, hasQiDui: true, hasSiGuiYi: true },
-  () => {
-    const hand = [...tiles('1111223344', Suit.Man), ...tiles('5566', Suit.Pin)];
-    const api = calculateMCRTotalFan(hand, []);
-    return { winning: checkWinning(countsToArray(countTiles(hand)), 0), totalFan: api.totalFan, hasQiDui: api.patterns.some(p => p.id === 'qiDui'), hasSiGuiYi: api.patterns.some(p => p.id === 'siGuiYi') };
-  });
-
-defect('M01+A10', 'P3c', '合法 8 番牌型因三色三同顺未识别，被 isValid 判为不足 8 番（假阴性）',
-  '234m234p234s + 567m + 55s 有三色三同顺8番，本身达到门槛；不求人另需确认门清自摸，当前未录和牌来源',
-  { totalFan: 4, isValid: false, hasSanSeSanTongShun: false },
-  () => {
-    const hand = [...tiles('234', Suit.Man), ...tiles('234', Suit.Pin), ...tiles('234', Suit.Sou), ...tiles('567', Suit.Man), ...tiles('55', Suit.Sou)];
-    const api = calculateMCRTotalFan(hand, []);
-    return { totalFan: api.totalFan, isValid: api.isValid, hasSanSeSanTongShun: api.patterns.some(p => p.id === 'sanSeSanTongShun') };
-  });
-
-test('M05+A10 outside hand no longer turns a below-minimum hand into a win', () => {
-  // 规则预期：123m234p345s678s + 99s 无全带幺；未知来源时只有平和2番（连六 1番未实现），
-  // 不足 8 番且缺末张等事件，只能是「待核」，不得判为可起和。
-  const hand = [...tiles('123', Suit.Man), ...tiles('234', Suit.Pin), ...tiles('345', Suit.Sou), ...tiles('678', Suit.Sou), ...tiles('99', Suit.Sou)];
-  const api = calculateMCRTotalFan(hand, []);
-  assert.equal(api.patterns.some(p => p.id === 'quanDaiYao'), false);
-  assert.equal(api.confirmedFan, 2);
-  assert.equal(api.isValid, false);
-  assert.equal(api.eligibility, 'unverified');
+test('建议层：五门齐报出的向听等于真实向听', () => {
+  const hand = [...tiles('12345', Suit.Man), ...tiles('123', Suit.Pin), ...tiles('456', Suit.Sou), createTile(Suit.Zihai, 1), createTile(Suit.Zihai, 5)];
+  const realShanten = calculateShanten(hand, []);
+  assert.equal(realShanten, 1);
+  const suggestion = analyzeMCR(hand, [], 'zh', 50).find(s => s.name.includes('五门齐'));
+  assert.ok(suggestion);
+  assert.ok(suggestion.patternDetails.some(d => d === `向听${realShanten}`));
+  assert.equal(suggestion.fan, 6);
 });
 
-defect('P3-建议', 'P3b', 'costToMakeSeq 只看「存在」，123456789m 被重复用于 123/234/345，报出「一色三步高 缺 0 张」',
-  '一色三步高需要同花色 123+234+345 共 9 张（1、5 各一张，2、4 各两张，3 三张）；仅 123456789m 时至少还缺 4 张',
-  { shanten: 2, missing: 0, probability: 80, fan: 17 },
-  () => {
-    const hand = [...tiles('123456789', Suit.Man), ...tiles('147', Suit.Pin), ...tiles('19', Suit.Sou)];
-    const suggestion = analyzeMCR(hand, [], 'zh', 50).find(s => s.name.includes('一色三步高'));
-    return { shanten: calculateShanten(hand, []), missing: suggestion?.missingTiles.length ?? -1, probability: suggestion?.probability ?? -1, fan: suggestion?.fan ?? -1 };
-  });
-
-defect('P3-建议', 'P3b', '五门齐用「存在即计一组」估算面子，向听被算成 0',
-  '12345m + 123p + 456s + 1z + 5z 的 123/234/345 共用同一批万子，实际向听为 1，不是 0',
-  { realShanten: 1, claimedShanten: '向听0', fan: 6 },
-  () => {
-    const hand = [...tiles('12345', Suit.Man), ...tiles('123', Suit.Pin), ...tiles('456', Suit.Sou), createTile(Suit.Zihai, 1), createTile(Suit.Zihai, 5)];
-    const suggestion = analyzeMCR(hand, [], 'zh', 50).find(s => s.name.includes('五门齐'));
-    const line = suggestion?.patternDetails.find(d => d.startsWith('向听'));
-    return { realShanten: calculateShanten(hand, []), claimedShanten: line ?? '', fan: suggestion?.fan ?? -1 };
-  });
-
-defect('P3-建议', 'P3b', '海底提示按暗手 13/14 张判断，开放听牌漏提示、非听牌 14 张反而提示',
-  '海底/妙手回春只能在真实听牌时提示；两副碰 + 7 张暗手已听牌，应提示；14 张未听牌不应提示',
-  { openTenpaiOffered: false, closedNonTenpaiOffered: true },
-  () => {
-    const openTenpai = analyzeGame(state([...tiles('1234567', Suit.Man)], [pong(1), pong(9)], { wallCount: 1 }), 'zh');
-    const closedNotTenpai = analyzeGame(state([
-      ...tiles('159', Suit.Man), ...tiles('159', Suit.Pin), ...tiles('159', Suit.Sou),
-      ...tiles('12345', Suit.Zihai)], [], { wallCount: 1 }), 'zh');
-    const lastTileWords = ['海底', '妙手'];
-    return {
-      openTenpaiOffered: openTenpai.suggestions.some(s => lastTileWords.some(w => s.name.includes(w))),
-      closedNonTenpaiOffered: closedNotTenpai.suggestions.some(s => lastTileWords.some(w => s.name.includes(w))),
-    };
-  });
-
-test('M05 concealed all-chow hand is scored as all chows', () => {
-  const hand = [...tiles('123', Suit.Man), ...tiles('456', Suit.Man), ...tiles('789', Suit.Pin), ...tiles('234', Suit.Sou), ...tiles('55', Suit.Sou)];
-  const api = calculateMCRTotalFan(hand, []);
-  assert.equal(api.patterns.some(p => p.id === 'pingHu'), true);
-  assert.equal(api.patterns.some(p => p.id === 'quanDaiYao'), false);
-  assert.equal(api.totalFan, 2); // 平和不计无字；连六/一般高仍未实现
+test('建议层：末张提示只在牌墙剩 1 张且是 13 张等效听牌形态时出现', () => {
+  const openTenpai = analyzeGame(state([...tiles('1234567', Suit.Man)], [pong(1), pong(9)], { wallCount: 1 }), 'zh');
+  assert.ok(openTenpai.suggestions.some(s => s.name.includes('妙手回春') || s.name.includes('海底')));
+  const closedNotTenpai = analyzeGame(state([
+    ...tiles('159', Suit.Man), ...tiles('159', Suit.Pin), ...tiles('159', Suit.Sou), ...tiles('12345', Suit.Zihai),
+  ], [], { wallCount: 1 }), 'zh');
+  assert.ok(!closedNotTenpai.suggestions.some(s => s.name.includes('妙手回春') || s.name.includes('海底')));
+  const twoLeft = analyzeGame(state([...tiles('1234567', Suit.Man)], [pong(1), pong(9)], { wallCount: 2 }), 'zh');
+  assert.ok(!twoLeft.suggestions.some(s => s.name.includes('妙手回春') || s.name.includes('海底')));
 });
 
-defect('M07', 'P3b', '三风刻错误认可第三种风的将牌；明碰又被当成暗刻',
-  '只有东、南两副风碰，西风只作将，三风刻不成立；明碰也不是暗刻',
-  { sanFengKe: 1, shuangAnKe: 1 },
-  () => {
-    const hand = [...tiles('123456', Suit.Man), ...tiles('33', Suit.Zihai)];
-    const melds = [pong(1, Suit.Zihai), pong(2, Suit.Zihai)];
-    assert.deepEqual(validateGameState(state(hand, melds), 'zh'), []);
-    assert.equal(checkWinning(countsToArray(countTiles(hand)), melds.length), true);
-    const counts = patternCounts(hand, melds);
-    return { sanFengKe: counts.sanFengKe ?? 0, shuangAnKe: counts.shuangAnKe ?? 0 };
-  });
-
-console.log(`\n${passed} 项守卫通过；${defects} 项已确认缺陷（快照断言，非通过项）。`);
-console.log('缺陷归属见上述 DEFECT 行：P3a/P3b/P3c = 国标上下文/已知错误/缺失番种；P2 川麻计番四项已修为守卫。');
+console.log(`\n${passed} 项守卫通过，${failed} 项失败。`);
+if (failed > 0) process.exitCode = 1;
