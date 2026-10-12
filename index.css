@@ -1,0 +1,51 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 字体只用本机可用的族，离线启动不再请求 Google Fonts。 */
+body {
+  font-family: 'Nunito', 'Segoe UI', system-ui, -apple-system, 'Microsoft YaHei', sans-serif;
+}
+.font-mono {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Consolas, 'Courier New', monospace;
+}
+.font-serif-cn {
+  font-family: 'Noto Serif SC', 'Songti SC', 'SimSun', serif;
+}
+
+/* Hide scrollbar for clean UI but keep functionality */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Hide number input spinners */
+.no-spinner::-webkit-inner-spin-button,
+.no-spinner::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.no-spinner {
+  -moz-appearance: textfield;
+}
+
+/* Neubrutalism Shadow Utility */
+.shadow-neu {
+  box-shadow: 4px 4px 0px 0px #000000;
+}
+.shadow-neu-sm {
+  box-shadow: 2px 2px 0px 0px #000000;
+}
+
+/* Animation classes */
+@keyframes pop {
+  0% { transform: scale(0.9); }
+  50% { transform: scale(1.1); }
+  100% { transform: scale(1); }
+}
+.animate-pop {
+  animation: pop 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}

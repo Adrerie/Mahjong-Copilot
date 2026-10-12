@@ -30,6 +30,23 @@ export const TEXT = {
     winUnknown: 'Unknown',
     winSelfDraw: 'Self-draw',
     winClaim: 'Claim',
+    winContext: 'Win context',
+    winningTile: 'Winning tile',
+    notRecorded: 'Not recorded',
+    pick: 'Pick',
+    clear: 'Clear',
+    seatWind: 'Seat wind',
+    roundWind: 'Round wind',
+    lastTile: 'Last wall tile',
+    afterKong: 'After a kong',
+    kongDrawWin: 'Kong draw',
+    robKongWin: 'Robbing kong',
+    yes: 'Yes',
+    no: 'No',
+    kongKind: 'Kong',
+    kongExposed: 'Melded',
+    kongConcealed: 'Concealed',
+    kongAdded: 'Added',
     hand: 'Hand',
     melds: 'Melds',
     discards: 'River',
@@ -168,6 +185,23 @@ export const TEXT = {
     winUnknown: '未知',
     winSelfDraw: '自摸',
     winClaim: '点和',
+    winContext: '和牌上下文',
+    winningTile: '和牌张',
+    notRecorded: '未记录',
+    pick: '选择',
+    clear: '清除',
+    seatWind: '门风',
+    roundWind: '圈风',
+    lastTile: '末张',
+    afterKong: '杠后和牌',
+    kongDrawWin: '杠上开花',
+    robKongWin: '抢杠和',
+    yes: '是',
+    no: '否',
+    kongKind: '杠种',
+    kongExposed: '明杠',
+    kongConcealed: '暗杠',
+    kongAdded: '补杠',
     hand: '手牌',
     melds: '副露',
     discards: '牌河',
@@ -312,6 +346,12 @@ export const SUIT_LABELS: Record<Language, Record<Suit, string>> = {
   }
 };
 
+/** 门风/圈风按 Wind（1 东 2 南 3 西 4 北）取值。 */
+export const WIND_LABELS: Record<Language, string[]> = {
+  en: ['E', 'S', 'W', 'N'],
+  zh: ['东', '南', '西', '北'],
+};
+
 // ============================================================
 // 国标麻将 MCR (Chinese Official) - 81 番种定义
 // 参考: https://zh.wikipedia.org/wiki/国标麻将番种列表
@@ -333,7 +373,7 @@ export const MCR_88_FAN: MCRPattern[] = [
   { id: 'daSanYuan', nameZh: '大三元', nameEn: 'Big Three Dragons', fan: 88, description: '和牌时3副箭刻(杠)', excludes: ['xiaoSanYuan', 'jianKe', 'shuangJianKe'], includes: ['quanDaiYao', 'ziYiSe'] },
   { id: 'lvYiSe', nameZh: '绿一色', nameEn: 'All Green', fan: 88, description: '由23468条及发财组成的和牌', excludes: ['hunYiSe', 'qingYiSe'], includes: ['siGuiYi', 'jianKe', 'qingYiSe', 'yiSeSanJieGao', 'pengPengHu', 'duanYao'] },
   { id: 'jiuLianBaoDeng', nameZh: '九莲宝灯', nameEn: 'Nine Gates', fan: 88, description: '门前清时特定牌型1112345678999+任意同花色牌', excludes: ['qingYiSe', 'menQianQing', 'buQiuRen', 'yaoJiuKe'], includes: ['siGuiYi', 'qingLong', 'shuangAnKe', 'lianLiu'] },
-  { id: 'siGang', nameZh: '四杠', nameEn: 'Four Kongs', fan: 88, description: '和牌时4个杠', excludes: ['sanGang', 'shuangMingGang', 'shuangAnGang', 'mingGang', 'danDiaoJiang', 'pengPengHu'], includes: ['siAnKe', 'quanDa', 'sanSeSanJieGao', 'shuangTongKe', 'yaoJiuKe', 'hunYaoJiu', 'sanTongKe', 'wuMenQi', 'jianKe'] },
+  { id: 'siGang', nameZh: '四杠', nameEn: 'Four Kongs', fan: 88, description: '和牌时4个杠', excludes: ['sanGang', 'shuangMingGang', 'shuangAnGang', 'mingAnGang', 'mingGang', 'anGang', 'danDiaoJiang', 'pengPengHu'], includes: ['siAnKe', 'quanDa', 'sanSeSanJieGao', 'shuangTongKe', 'yaoJiuKe', 'hunYaoJiu', 'sanTongKe', 'wuMenQi', 'jianKe'] },
   { id: 'lianQiDui', nameZh: '连七对', nameEn: 'Seven Shifted Pairs', fan: 88, description: '由一种花色序数牌组成的7个连续对子', excludes: ['qingYiSe', 'qiDui', 'menQianQing', 'buQiuRen', 'pingHu', 'danDiaoJiang'], includes: ['duanYao'] },
   { id: 'shiSanYao', nameZh: '十三幺', nameEn: 'Thirteen Orphans', fan: 88, description: '由全部幺九牌及字牌各一张组成,另有一张重复', excludes: ['wuMenQi', 'menQianQing', 'buQiuRen', 'danDiaoJiang', 'hunYaoJiu'] },
 ];
@@ -357,7 +397,7 @@ export const MCR_48_FAN: MCRPattern[] = [
 // 32番
 export const MCR_32_FAN: MCRPattern[] = [
   { id: 'yiSeSiBuGao', nameZh: '一色四步高', nameEn: 'Four Shifted Chows', fan: 32, description: '一种花色4组依次递增1或2的顺子', excludes: ['yiSeSanBuGao', 'lianLiu'], includes: ['hunYiSe', 'pingHu'] },
-  { id: 'sanGang', nameZh: '三杠', nameEn: 'Three Kongs', fan: 32, description: '3个杠', excludes: ['shuangMingGang', 'shuangAnGang', 'mingGang'], includes: ['xiaoYuWu', 'sanSeSanJieGao'] },
+  { id: 'sanGang', nameZh: '三杠', nameEn: 'Three Kongs', fan: 32, description: '3个杠', excludes: ['shuangMingGang', 'shuangAnGang', 'mingAnGang', 'mingGang', 'anGang'], includes: ['xiaoYuWu', 'sanSeSanJieGao'] },
   { id: 'hunYaoJiu', nameZh: '混幺九', nameEn: 'All Terminals and Honors', fan: 32, description: '由幺九牌和字牌组成的和牌', excludes: ['pengPengHu', 'quanDaiYao', 'yaoJiuKe'], includes: ['sanTongKe', 'jianKe', 'wuMenQi', 'qiDui', 'siGuiYi', 'queYiMen'] },
 ];
 
@@ -399,7 +439,6 @@ export const MCR_8_FAN: MCRPattern[] = [
   { id: 'tuiBuDao', nameZh: '推不倒', nameEn: 'Reversible Tiles', fan: 8, description: '由1234589筒、245689条、白板组成的和牌', excludes: ['queYiMen'], includes: ['shuangTongKe', 'wuZi', 'yaoJiuKe', 'qingYiSe', 'qiDui'] },
   { id: 'sanSeSanTongShun', nameZh: '三色三同顺', nameEn: 'Mixed Triple Chow', fan: 8, description: '3种花色相同序数的顺子', excludes: ['xiXiangFeng'], includes: ['pingHu', 'lianLiu'] },
   { id: 'sanSeSanJieGao', nameZh: '三色三节高', nameEn: 'Mixed Shifted Pungs', fan: 8, description: '3种花色依次递增1的刻子', excludes: [], includes: ['quanDa', 'pengPengHu', 'shuangTongKe', 'yaoJiuKe'] },
-  { id: 'wuFanHu', nameZh: '无番和', nameEn: 'Chicken Hand', fan: 8, description: '除门前清和自摸外无其他番种', excludes: [] },
   { id: 'miaoShouHuiChun', nameZh: '妙手回春', nameEn: 'Last Tile Draw', fan: 8, description: '自摸牌墙上最后一张牌和牌', excludes: ['ziMo'] },
   { id: 'haiDiLaoYue', nameZh: '海底捞月', nameEn: 'Last Tile Claim', fan: 8, description: '和别家打出的牌墙上最后一张牌', excludes: [] },
   { id: 'gangShangKaiHua', nameZh: '杠上开花', nameEn: 'Out with Replacement Tile', fan: 8, description: '开杠后补进的牌自摸和牌', excludes: ['ziMo'] },
@@ -415,6 +454,11 @@ export const MCR_6_FAN: MCRPattern[] = [
   { id: 'quanQiuRen', nameZh: '全求人', nameEn: 'Melded Hand', fan: 6, description: '4副全部吃碰明杠，和别家打出的牌', excludes: ['danDiaoJiang'] },
   { id: 'shuangAnGang', nameZh: '双暗杠', nameEn: 'Two Concealed Kongs', fan: 6, description: '2个暗杠', excludes: [] },
   { id: 'shuangJianKe', nameZh: '双箭刻', nameEn: 'Two Dragon Pungs', fan: 6, description: '2副箭刻(杠)', excludes: [] },
+];
+
+// 5番：明暗杠是国标唯一的 5 番番种，单独成组以便按真实番值参与择优。
+export const MCR_5_FAN: MCRPattern[] = [
+  { id: 'mingAnGang', nameZh: '明暗杠', nameEn: 'Melded and Concealed Kong', fan: 5, description: '1个明杠和1个暗杠', excludes: ['mingGang', 'anGang'] },
 ];
 
 // 4番
@@ -454,6 +498,7 @@ export const MCR_1_FAN: MCRPattern[] = [
   { id: 'danDiaoJiang', nameZh: '单钓将', nameEn: 'Single Wait', fan: 1, description: '钓单张将牌', excludes: [] },
   { id: 'ziMo', nameZh: '自摸', nameEn: 'Self-Drawn', fan: 1, description: '自己摸牌和牌', excludes: [] },
   { id: 'huaPai', nameZh: '花牌', nameEn: 'Flower Tiles', fan: 1, description: '每有一张花牌(春夏秋冬梅兰竹菊)加1番', excludes: [] },
+  { id: 'wuFanHu', nameZh: '无番和', nameEn: 'Chicken Hand', fan: 1, description: '除门前清和自摸外无其他番种', excludes: [] },
 ];
 
 // 所有国标番种汇总
@@ -467,6 +512,7 @@ export const MCR_ALL_PATTERNS = {
   12: MCR_12_FAN,
   8: MCR_8_FAN,
   6: MCR_6_FAN,
+  5: MCR_5_FAN,
   4: MCR_4_FAN,
   2: MCR_2_FAN,
   1: MCR_1_FAN,
@@ -475,7 +521,6 @@ export const MCR_ALL_PATTERNS = {
 // 国标麻将核心规则常量
 export const MCR_RULES = {
   MIN_FAN_TO_WIN: 8, // 8番起和
-  TOTAL_FAN_TYPES: 81, // 81种番型
 };
 
 // ============================================================

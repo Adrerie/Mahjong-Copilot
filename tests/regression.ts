@@ -5,16 +5,16 @@
  * 未解决问题的清单放在 docs/RESTRUCTURE_PLAN_2026-10-10.md，不再写「当前输出快照」。
  *
  * 规则口径：
- * - 国标：数值番相加、8 番起和；结构成牌与起和资格分开表达。和牌来源由 `GameState.winSource`
- *   记录（'selfDraw' / 'claim' / 'unknown'），未记录时不计 不求人 / 门前清 / 自摸；
- *   和牌张、末张、门风圈风、明暗杠仍无字段，结果里只报「仍缺哪些上下文」。
+ * - 国标：数值番相加、8 番起和；结构成牌与起和资格分开表达。和牌来源、和牌张、末张、门风/圈风、
+ *   明暗杠由 `GameState` 记录（winSource / winningTile / lastTile / seatWind / roundWind / Meld.kongKind），
+ *   未记录时不计对应番种，只在结果里报「仍缺哪些上下文」。
  * - 国标平和/不求人口径参考 https://www.mindmahjong.com/adobe/20141120CEJ.pdf。
  * - 川麻采用 Hi8 血战到底示例牌桌口径（见 utils/sichuanAnalyzer.ts 的 SICHUAN_RULE）：
  *   平胡 0、对对胡 1、清一色 2、七对 2、带幺九 2、金钩钓 2（含对对胡），每根 +1，
  *   封顶 4 指数番 = 16 倍；自摸/点炮、杠类型、海底等事件未建模，一律不加番。
  */
 import assert from 'node:assert/strict';
-import { GameMode, GameState, Meld, Suit, Tile, WinSource } from '../types';
+import { GameMode, GameState, KongKind, MCRContext, Meld, Suit, Tile, WinSource } from '../types';
 import { createTile, TEXT } from '../constants';
 import {
   analyzeGame,
@@ -44,8 +44,8 @@ import {
 const tiles = (digits: string, suit: Suit): Tile[] => [...digits].map(v => createTile(suit, Number(v)));
 const pong = (value: number, suit: Suit = Suit.Pin): Meld =>
   ({ id: `pong-${value}${suit}`, type: 'pong', tiles: tiles(`${value}${value}${value}`, suit) });
-const gang = (value: number, suit: Suit = Suit.Pin): Meld =>
-  ({ id: `gang-${value}${suit}`, type: 'gang', tiles: tiles(`${value}${value}${value}${value}`, suit) });
+const gang = (value: number, suit: Suit = Suit.Pin, kongKind?: KongKind): Meld =>
+  ({ id: `gang-${value}${suit}`, type: 'gang', tiles: tiles(`${value}${value}${value}${value}`, suit), kongKind });
 const chi = (digits: string, suit: Suit): Meld =>
   ({ id: `chi-${digits}${suit}`, type: 'chi', tiles: tiles(digits, suit) });
 const state = (hand: Tile[], melds: Meld[] = [], extra: Partial<GameState> = {}): GameState =>
@@ -56,18 +56,18 @@ const sichuan = (hand: Tile[], voidSuit: Suit | null, melds: Meld[] = [], extra:
 const effectiveTiles = (hand: Tile[], melds: Meld[]): number => hand.length + melds.length * 3;
 const keys = (list: Tile[]): string[] => list.map(t => `${t.value}${t.suit}`);
 /** 番种 id -> 叠加次数。winSource 未记录时用 'unknown'，与 UI 默认一致。 */
-const patternCounts = (hand: Tile[], melds: Meld[] = [], winSource: WinSource = 'unknown'): Record<string, number> => {
+const patternCounts = (hand: Tile[], melds: Meld[] = [], winSource: WinSource = 'unknown', ctx: MCRContext = {}): Record<string, number> => {
   const counts = new Map<string, number>();
-  for (const r of recognizeMCRPatterns(hand, melds, winSource)) {
+  for (const r of recognizeMCRPatterns(hand, melds, winSource, ctx)) {
     counts.set(r.pattern.id, (counts.get(r.pattern.id) ?? 0) + r.count);
   }
   return Object.fromEntries([...counts.entries()].sort((a, b) => a[0].localeCompare(b[0])));
 };
-const mcrFan = (hand: Tile[], melds: Meld[] = [], winSource: WinSource = 'unknown'): number =>
-  calculateTotalFan(recognizeMCRPatterns(hand, melds, winSource)).totalFan;
+const mcrFan = (hand: Tile[], melds: Meld[] = [], winSource: WinSource = 'unknown', ctx: MCRContext = {}): number =>
+  calculateTotalFan(recognizeMCRPatterns(hand, melds, winSource, ctx)).totalFan;
 /** 国标起和结果：番种 id 列表（已按不计规则过滤）。 */
-const mcrPatternIds = (hand: Tile[], melds: Meld[] = [], winSource: WinSource = 'unknown'): string[] =>
-  calculateMCRTotalFan(hand, melds, winSource).patterns.map(p => p.id);
+const mcrPatternIds = (hand: Tile[], melds: Meld[] = [], winSource: WinSource = 'unknown', ctx: MCRContext = {}): string[] =>
+  calculateMCRTotalFan(hand, melds, winSource, ctx).patterns.map(p => p.id);
 
 // ---------- 运行器 ----------
 
@@ -314,6 +314,28 @@ test('局面恢复：按玩法往返，含墙数/定缺/和牌方式；损坏数
   assert.equal(decodeEntryState(wrap({ ...saved, melds: [
     { ...pong(1), id: 'meld-same' }, { ...pong(2), id: 'meld-same' },
   ] }), GameMode.MCR), null);
+
+  // 和牌上下文一并往返；和牌张必须真的在暗手里，否则只丢和牌张，其余局面保留
+  const context = state([...tiles('123456789', Suit.Man), ...tiles('456', Suit.Pin), ...tiles('55', Suit.Sou)], [], {
+    discards: tiles('9', Suit.Sou), winSource: 'selfDraw', seatWind: 1, roundWind: 4, lastTile: true,
+  });
+  const winning = context.hand[context.hand.length - 1];
+  assert.ok(winning);
+  const contextRestored = decodeEntryState(encodeEntryState({ ...context, winningTile: winning }), GameMode.MCR);
+  assert.equal(contextRestored?.winningTile?.value, winning.value);
+  assert.equal(contextRestored?.seatWind, 1);
+  assert.equal(contextRestored?.roundWind, 4);
+  assert.equal(contextRestored?.lastTile, true);
+  const stale = decodeEntryState(encodeEntryState({ ...context, winningTile: createTile(Suit.Sou, 9) }), GameMode.MCR);
+  assert.equal(stale?.winningTile, null, '和牌张不在暗手里时按未记录处理');
+  assert.equal(stale?.hand.length, 14);
+  for (const bad of [{ seatWind: 9 }, { roundWind: 0 }, { lastTile: 'yes' }, { winningTile: { id: 'x', suit: Suit.Man, value: 10 } }]) {
+    assert.equal(decodeEntryState(wrap({ ...context, ...bad }), GameMode.MCR), null, `${JSON.stringify(bad)} 必须整局丢弃`);
+  }
+  // 杠类型只接受明/暗/补三种
+  assert.equal(decodeEntryState(wrap({ ...saved, melds: [{ ...gang(1), kongKind: 'exposed' }] }), GameMode.MCR)?.melds[0].kongKind, 'exposed');
+  assert.equal(decodeEntryState(wrap({ ...saved, melds: [{ ...gang(1), kongKind: 'mixed' }] }), GameMode.MCR), null);
+  assert.equal(decodeEntryState(wrap({ ...saved, melds: [{ ...pong(1), kongKind: 'exposed' }] }), GameMode.MCR), null);
 });
 
 // ============================================================
@@ -554,13 +576,20 @@ test('国标：事件上下文缺失时只报「仍缺什么」，可确认番�
   assert.equal(unknown.confirmedFan, 1);
   assert.equal(unknown.maxPossibleFan, 5);
   assert.equal(unknown.eligibility, 'unverified');
-  assert.deepEqual(unknown.missingContext, ['winSource', 'winningTile', 'seatWind', 'kongType']);
+  assert.deepEqual(unknown.missingContext, ['winSource', 'winningTile', 'lastTile', 'seatWind']);
   const result = analyzeGame(state(hand), 'zh');
   assert.equal(result.isWinning, true);
   const details = result.suggestions[0]?.patternDetails.join('\n') ?? '';
   assert.ok(details.includes('8 番起和待核'));
-  assert.ok(details.includes('和牌张与末张'));
+  assert.ok(details.includes('和牌张'));
   assert.ok(result.warnings.some(w => w.includes('和牌来源未知')));
+
+  // 记录全部上下文后不再有「待核」，不足 8 番才敢判 unmet
+  const full = calculateMCRTotalFan(hand, [], 'selfDraw', {
+    winningTile: hand[hand.length - 1], seatWind: 1, roundWind: 1, lastTile: false,
+  });
+  assert.deepEqual(full.missingContext, []);
+  assert.equal(full.eligibility, 'unmet');
 });
 
 // ============================================================
@@ -702,17 +731,27 @@ test('明碰不当暗刻：碰碰和与暗刻番只看暗手', () => {
   assert.equal(mcrFan(winds, windMelds), 9); // 混一色6 + 幺九刻2 + 连六1
 });
 
-test('杠：不明暗杠类型、不把杠算成四归一；七对保留四张同牌', () => {
+test('杠：记录杠类型后才计明暗杠；不把杠算成四归一；七对保留四张同牌', () => {
   // 123456m + 55s + 杠1p + 杠2p：不推断明杠/暗杠/双杠，杠也不算四归一
   const hand = [...tiles('123456', Suit.Man), ...tiles('55', Suit.Sou)];
   const melds = [gang(1), gang(2)];
   assert.deepEqual(validateGameState(state(hand, melds), 'zh'), []);
   const counts = patternCounts(hand, melds);
-  for (const id of ['mingGang', 'anGang', 'shuangMingGang', 'shuangAnGang', 'siGuiYi', 'pengPengHu', 'shuangAnKe']) {
+  for (const id of ['mingGang', 'anGang', 'shuangMingGang', 'shuangAnGang', 'mingAnGang', 'siGuiYi', 'pengPengHu', 'shuangAnKe']) {
     assert.equal(counts[id] ?? 0, 0, `${id} 不得由未记录的杠类型推出`);
   }
   assert.equal(counts.yaoJiuKe, 1);
   assert.equal(mcrFan(hand, melds), 3); // 幺九刻1 + 连六1 + 无字1
+
+  // 记录后按真实类型计：双明杠4 / 明暗杠5 / 双暗杠6，且不重复算单杠
+  assert.equal(mcrFan(hand, [gang(1, Suit.Pin, 'exposed'), gang(2, Suit.Pin, 'exposed')]), 7);
+  assert.equal(patternCounts(hand, [gang(1, Suit.Pin, 'exposed'), gang(2, Suit.Pin, 'exposed')]).shuangMingGang, 1);
+  assert.equal(mcrFan(hand, [gang(1, Suit.Pin, 'concealed'), gang(2, Suit.Pin, 'added')]), 8);
+  assert.equal(patternCounts(hand, [gang(1, Suit.Pin, 'concealed'), gang(2, Suit.Pin, 'added')]).mingAnGang, 1);
+  assert.equal(mcrFan(hand, [gang(1, Suit.Pin, 'concealed'), gang(2, Suit.Pin, 'concealed')]), 9);
+  // 只记录了一半时，未记录的那副不算单杠人数
+  assert.equal(patternCounts(hand, [gang(1, Suit.Pin, 'exposed'), gang(2)]).mingGang, 1);
+  assert.equal(patternCounts(hand, [gang(1, Suit.Pin, 'exposed'), gang(2)]).shuangMingGang, undefined);
 
   // 七对：四张同牌分作两对，仍计四归一（不属于杠）
   const qiDui = [...tiles('1111223344', Suit.Man), ...tiles('5566', Suit.Pin)];
@@ -755,7 +794,7 @@ test('高价值番种：大三元与三色三同顺都要识别且不重复计�
   assert.ok(mcrPatternIds(shiftedPungs).includes('sanSeSanJieGao'));
 });
 
-test('七对/连七对择优，九莲宝灯缺和牌张时不确认', () => {
+test('七对/连七对择优，九莲宝灯要核对和牌前的 13 张', () => {
   const qiDui = [...tiles('1111223344', Suit.Man), ...tiles('5566', Suit.Pin)];
   assert.equal(checkWinning(countsToArray(countTiles(qiDui)), 0), true);
   assert.equal(mcrPatternIds(qiDui).includes('qiDui'), true);
@@ -766,7 +805,8 @@ test('七对/连七对择优，九莲宝灯缺和牌张时不确认', () => {
   assert.ok(lianApi.patterns.some(p => p.id === 'lianQiDui'));
   assert.ok(!lianApi.patterns.some(p => p.id === 'qiDui'));
   assert.ok(!lianApi.patterns.some(p => p.id === 'qingYiSe'));
-  assert.equal(lianApi.totalFan, 88);
+  // 连七对88 + 无字1：连七对不计清一色后，清一色声明的无字不计不再连锁生效
+  assert.equal(lianApi.totalFan, 89);
 
   const jiuLian = [...tiles('1112345678999', Suit.Man), createTile(Suit.Man, 5)];
   assert.equal(checkWinning(countsToArray(countTiles(jiuLian)), 0), true);
@@ -774,6 +814,68 @@ test('七对/连七对择优，九莲宝灯缺和牌张时不确认', () => {
   assert.ok(!jiuApi.patterns.some(p => p.id === 'jiuLianBaoDeng'));
   assert.ok(jiuApi.patterns.some(p => p.id === 'qingYiSe'));
   assert.ok(jiuApi.missingContext.includes('winningTile'));
+
+  // 记录和牌张后才确认九莲宝灯：和牌前 13 张正好是 1112345678999
+  const jiuWin = calculateMCRTotalFan(jiuLian, [], 'selfDraw', { winningTile: createTile(Suit.Man, 5) });
+  assert.ok(jiuWin.patterns.some(p => p.id === 'jiuLianBaoDeng'));
+  assert.ok(!jiuWin.patterns.some(p => p.id === 'qingYiSe'));
+  // 九莲宝灯88 + 双暗刻2 + 无字1 + 单钓将1 + 自摸1；清一色不计后不再连锁排除无字
+  assert.equal(jiuWin.totalFan, 93);
+  // 去掉和牌张后不是 1112345678999 时不得确认（123m×3 + 789m + 99m 是另一种清一色和牌）
+  const notNine = tiles('12312312378999', Suit.Man);
+  assert.equal(checkWinning(countsToArray(countTiles(notNine)), 0), true);
+  const notNineIds = mcrPatternIds(notNine, [], 'selfDraw', { winningTile: createTile(Suit.Man, 9) });
+  assert.ok(!notNineIds.includes('jiuLianBaoDeng'));
+  assert.ok(notNineIds.includes('qingYiSe'));
+});
+
+test('国标和牌上下文：门风/圈风刻、和牌张听型、末张与绝张都要按记录计', () => {
+  /** 已按不计规则过滤的番种（事件番种之间的排除关系只在过滤后可见）。 */
+  const validated = (hand: Tile[], melds: Meld[], winSource: WinSource, ctx: MCRContext): string[] =>
+    calculateMCRTotalFan(hand, melds, winSource, ctx).patterns.map(p => p.id);
+
+  // 门风/圈风刻：同一副风刻可以同时是门风和圈风（各 2 番）
+  const windHand = [...tiles('123456', Suit.Man), ...tiles('55', Suit.Sou)];
+  const windMelds = [pong(1, Suit.Zihai), pong(2, Suit.Zihai)];
+  assert.deepEqual(validateGameState(state(windHand, windMelds), 'zh'), []);
+  assert.equal(patternCounts(windHand, windMelds, 'unknown', { seatWind: 1, roundWind: 2 }).menFengKe, 1);
+  assert.equal(patternCounts(windHand, windMelds, 'unknown', { seatWind: 2, roundWind: 2 }).quanFengKe, 1);
+  assert.equal(patternCounts(windHand, windMelds, 'unknown', { seatWind: 1, roundWind: 1 }).quanFengKe, 1);
+  assert.equal(patternCounts(windHand, windMelds, 'unknown', { seatWind: 3, roundWind: 3 }).menFengKe, undefined);
+  assert.equal(patternCounts(windHand, windMelds).menFengKe, undefined);
+
+  // 和牌张听型：单钓将 / 坎张 / 边张各 1 番，两面听不计
+  const pairWait = [...tiles('123456789', Suit.Man), ...tiles('456', Suit.Pin), ...tiles('55', Suit.Sou)];
+  assert.ok(validated(pairWait, [], 'unknown', { winningTile: createTile(Suit.Sou, 5) }).includes('danDiaoJiang'));
+  assert.ok(validated(pairWait, [], 'unknown', { winningTile: createTile(Suit.Man, 5) }).includes('kanZhang'));
+  assert.ok(!validated(pairWait, [], 'unknown', { winningTile: createTile(Suit.Man, 1) }).includes('bianZhang'));
+  const edgeWait = [...tiles('123456789', Suit.Man), ...tiles('345', Suit.Pin), ...tiles('99', Suit.Sou)];
+  assert.ok(validated(edgeWait, [], 'unknown', { winningTile: createTile(Suit.Man, 3) }).includes('bianZhang'));
+  assert.ok(validated(edgeWait, [], 'unknown', { winningTile: createTile(Suit.Man, 2) }).includes('kanZhang'));
+  assert.ok(!validated(edgeWait, [], 'unknown', {}).includes('bianZhang'));
+
+  // 末张：自摸记妙手回春（不计自摸）、点和记海底捞月，都只在记录末张时成立
+  const draw = validated(pairWait, [], 'selfDraw', { lastTile: true });
+  assert.ok(draw.includes('miaoShouHuiChun'));
+  assert.ok(!draw.includes('ziMo'));
+  assert.ok(validated(pairWait, [], 'claim', { lastTile: true }).includes('haiDiLaoYue'));
+  assert.ok(!validated(pairWait, [], 'selfDraw', { lastTile: false }).includes('miaoShouHuiChun'));
+  assert.ok(!validated(pairWait, [], 'selfDraw', {}).includes('miaoShouHuiChun'));
+
+  // 和绝张：和牌张在牌河/副露里已见三张才成立
+  const winners = createTile(Suit.Sou, 5);
+  const river = [...tiles('555', Suit.Sou)];
+  assert.ok(validated(pairWait, [], 'claim', { winningTile: winners, discards: river }).includes('heJueZhang'));
+  assert.ok(!validated(pairWait, [], 'claim', { winningTile: winners, discards: river.slice(0, 2) }).includes('heJueZhang'));
+  assert.ok(!validated(pairWait, [], 'claim', { discards: river }).includes('heJueZhang'));
+
+  // 杠后和牌：自摸补张=杠上开花（不计自摸），点和加杠的牌=抢杠和（不计和绝张）
+  const kongDraw = validated(pairWait, [], 'selfDraw', { afterKong: true });
+  assert.ok(kongDraw.includes('gangShangKaiHua'));
+  assert.ok(!kongDraw.includes('ziMo'));
+  assert.ok(validated(pairWait, [], 'claim', { afterKong: true }).includes('qiangGangHu'));
+  assert.ok(!validated(pairWait, [], 'unknown', { afterKong: true }).some(id => id === 'gangShangKaiHua' || id === 'qiangGangHu'));
+  assert.ok(!validated(pairWait, [], 'selfDraw', {}).includes('gangShangKaiHua'));
 });
 
 test('顺子小番不重复套算，全带五不得由字牌索引碰巧成立', () => {

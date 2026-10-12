@@ -1,7 +1,7 @@
-import { GameMode, GameState, Meld, Suit, Tile, WinSource } from '../types';
+import { GameMode, GameState, KongKind, Meld, Suit, Tile, WinSource, Wind } from '../types';
 import { MAX_TILES_IN_HAND, SUIT_LABELS, createTile, getTileKey } from '../constants';
 import { countTiles } from './tileHelpers';
-import { isTile, validateGameState } from './inputValidation';
+import { isTile, validateGameState, winningTileInHand } from './inputValidation';
 
 /**
  * 录入层的纯函数，供 InputScreen 与 npm test 共用：
@@ -27,9 +27,11 @@ export type ParseTileTextResult =
   | { outcome: 'rejected'; message: EntryMessage };
 
 export interface TileAddRequest {
-  zone: 'hand' | 'melds' | 'discards';
+  zone: 'hand' | 'melds' | 'discards' | 'winningTile';
   meldType: Meld['type'];
   tile: Tile;
+  /** 仅加杠时使用；缺省表示未记录杠类型。 */
+  kongKind?: KongKind;
 }
 
 const reject = (message: EntryMessage): ParseTileTextResult => ({ outcome: 'rejected', message });
@@ -55,11 +57,19 @@ const tileName = (tile: Tile): EntryMessage => ({
   en: `${tile.value} ${SUIT_LABELS.en[tile.suit]}`,
 });
 
+/** 和牌张必须真的在暗手里；手牌变化后自动失效，避免记下无法核对的上下文。 */
+export const withConsistentContext = (state: GameState): GameState => {
+  const winning = winningTileInHand(state);
+  if (winning === (state.winningTile ?? null)) return state;
+  return { ...state, winningTile: winning };
+};
+
 /** 用已存在的校验器产生候选局面的拒绝原因，保证文案与手动录入完全一致。 */
 const acceptCandidate = (candidate: GameState): EntryPlan => {
-  const errors = validateGameState(candidate, 'zh', false);
-  if (errors.length === 0) return { outcome: 'applied', state: candidate };
-  const en = validateGameState(candidate, 'en', false);
+  const consistent = withConsistentContext(candidate);
+  const errors = validateGameState(consistent, 'zh', false);
+  if (errors.length === 0) return { outcome: 'applied', state: consistent };
+  const en = validateGameState(consistent, 'en', false);
   return refuse({ zh: errors[0], en: en[0] ?? errors[0] });
 };
 
@@ -147,7 +157,20 @@ export const planTextHand = (state: GameState, text: string): EntryPlan => {
 
 /** 一次录入请求（点牌或加一副面子）：先算出全部牌张，再整体校验后提交。 */
 export const planTileAdd = (state: GameState, request: TileAddRequest): EntryPlan => {
-  const { zone, meldType, tile } = request;
+  const { zone, meldType, tile, kongKind } = request;
+
+  // 和牌张是「第 14 张」，不占手牌张数；必须与暗手里已有的同种牌对应。
+  if (zone === 'winningTile') {
+    const held = countTiles(state.hand).get(getTileKey(tile.suit, tile.value)) ?? 0;
+    if (held === 0) {
+      const name = tileName(tile);
+      return refuse({
+        zh: `${name.zh} 不在暗手里，和牌张只能从暗手中选择`,
+        en: `${name.en} is not in the concealed hand; the winning tile must come from it`,
+      });
+    }
+    return acceptCandidate({ ...state, winningTile: tile });
+  }
 
   if (zone === 'hand' && state.hand.length + state.melds.length * 3 >= MAX_TILES_IN_HAND) {
     return refuse({
@@ -202,7 +225,7 @@ export const planTileAdd = (state: GameState, request: TileAddRequest): EntryPla
   }
 
   if (zone === 'melds') {
-    const meld: Meld = { id: nextId('meld'), type: meldType, tiles: tilesToAdd };
+    const meld: Meld = { id: nextId('meld'), type: meldType, tiles: tilesToAdd, ...(meldType === 'gang' && kongKind ? { kongKind } : {}) };
     return acceptCandidate({ ...state, melds: [...state.melds, meld] });
   }
   if (zone === 'hand') return acceptCandidate({ ...state, hand: [...state.hand, tile] });
@@ -233,6 +256,10 @@ const isMeld = (value: unknown): value is Meld => {
   if (!('id' in value) || typeof value.id !== 'string') return false;
   if (!('type' in value) || (value.type !== 'chi' && value.type !== 'pong' && value.type !== 'gang')) return false;
   if (!('tiles' in value)) return false;
+  if ('kongKind' in value && value.kongKind !== undefined) {
+    const kinds: KongKind[] = ['exposed', 'concealed', 'added'];
+    if (!kinds.some(kind => kind === value.kongKind)) return false;
+  }
   return tileArray(value.tiles) !== null;
 };
 
@@ -245,6 +272,8 @@ const meldArray = (value: unknown): Meld[] | null => {
   }
   return melds;
 };
+
+const isWindValue = (value: unknown): value is Wind => value === 1 || value === 2 || value === 3 || value === 4;
 
 /**
  * 读取本地局面。旧版本、结构损坏、牌值非法或玩法不符一律返回 null，
@@ -293,6 +322,36 @@ export const decodeEntryState = (raw: string | null, mode: GameMode): GameState 
     winSource = found;
   }
 
-  const candidate: GameState = { mode, wallCount: state.wallCount, voidSuit, hand, melds, discards, winSource };
+  // 和牌上下文：非法值整局丢弃；和牌张不在暗手里时按未记录处理，保留其余局面。
+  let seatWind: Wind | null = null;
+  if ('seatWind' in state && state.seatWind !== undefined && state.seatWind !== null) {
+    if (!isWindValue(state.seatWind)) return null;
+    seatWind = state.seatWind;
+  }
+  let roundWind: Wind | null = null;
+  if ('roundWind' in state && state.roundWind !== undefined && state.roundWind !== null) {
+    if (!isWindValue(state.roundWind)) return null;
+    roundWind = state.roundWind;
+  }
+  let lastTile: boolean | null = null;
+  if ('lastTile' in state && state.lastTile !== undefined && state.lastTile !== null) {
+    if (typeof state.lastTile !== 'boolean') return null;
+    lastTile = state.lastTile;
+  }
+  let afterKong: boolean | null = null;
+  if ('afterKong' in state && state.afterKong !== undefined && state.afterKong !== null) {
+    if (typeof state.afterKong !== 'boolean') return null;
+    afterKong = state.afterKong;
+  }
+  let winningTile: Tile | null = null;
+  if ('winningTile' in state && state.winningTile !== undefined && state.winningTile !== null) {
+    if (!isTile(state.winningTile)) return null;
+    winningTile = state.winningTile;
+  }
+
+  const candidate = withConsistentContext({
+    mode, wallCount: state.wallCount, voidSuit, hand, melds, discards, winSource,
+    seatWind, roundWind, lastTile, afterKong, winningTile,
+  });
   return validateGameState(candidate, 'zh', false).length === 0 ? candidate : null;
 };

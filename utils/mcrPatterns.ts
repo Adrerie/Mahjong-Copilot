@@ -5,11 +5,11 @@
  * - 未记录的事实（明暗杠、和牌张、圈门风、末张、花牌）一律不推断
  */
 
-import { Tile, Meld, Suit, WinSource, GameMode } from '../types';
+import { Tile, Meld, Suit, WinSource, GameMode, KongKind, MCRContext } from '../types';
 import {
   getTileKey,
   MCR_88_FAN, MCR_64_FAN, MCR_48_FAN, MCR_32_FAN, MCR_24_FAN, MCR_16_FAN,
-  MCR_12_FAN, MCR_8_FAN, MCR_6_FAN, MCR_4_FAN, MCR_2_FAN, MCR_1_FAN,
+  MCR_12_FAN, MCR_8_FAN, MCR_6_FAN, MCR_5_FAN, MCR_4_FAN, MCR_2_FAN, MCR_1_FAN,
   MCRPattern
 } from '../constants';
 import { countTiles, countsToArray, indexToTile, tileKeyToIndex, tileToIndex } from './tileHelpers';
@@ -28,7 +28,7 @@ export interface RecognizedPattern {
 export const getAllPatterns = (): MCRPattern[] => [
   ...MCR_88_FAN, ...MCR_64_FAN, ...MCR_48_FAN, ...MCR_32_FAN,
   ...MCR_24_FAN, ...MCR_16_FAN, ...MCR_12_FAN, ...MCR_8_FAN,
-  ...MCR_6_FAN, ...MCR_4_FAN, ...MCR_2_FAN, ...MCR_1_FAN
+  ...MCR_6_FAN, ...MCR_5_FAN, ...MCR_4_FAN, ...MCR_2_FAN, ...MCR_1_FAN
 ];
 
 // 根据ID获取番种
@@ -71,34 +71,29 @@ export const calculateTotalFan = (patterns: RecognizedPattern[]): {
   // 按番数从高到低排序
   const sorted = [...patterns].sort((a, b) => b.pattern.fan - a.pattern.fan);
 
-  // 收集所有需要排除的番种ID
-  const excludedIds = new Set<string>();
+  // 不计规则只由「真正计入的番种」产生：被排除掉的番种不再连锁排除别人
+  // （例如九莲宝灯不计清一色后，清一色声明不计的无字仍然成立）。
+  const counted: RecognizedPattern[] = [];
+  const dropped: RecognizedPattern[] = [];
   for (const rp of sorted) {
-    if (rp.pattern.excludes) {
-      for (const excId of rp.pattern.excludes) {
-        excludedIds.add(excId);
-      }
-    }
+    if (counted.some(kept => kept.pattern.excludes?.includes(rp.pattern.id))) dropped.push(rp);
+    else counted.push(rp);
   }
-
-  // 过滤掉被排除的番种
-  const validPatterns = sorted.filter(rp => !excludedIds.has(rp.pattern.id));
 
   // 被排除的番种只有在「更高番的番种声明其另计」时才加回来（例如清一色另计清龙）；
   // 低番种不能取消高番种的不计规则（例如混一色不能把大三元不计的箭刻加回来）。
   const additionalPatterns: RecognizedPattern[] = [];
-  for (const rp of sorted) {
-    if (!excludedIds.has(rp.pattern.id)) continue;
-    const excluderFan = Math.max(0, ...sorted
+  for (const rp of dropped) {
+    const excluderFan = Math.max(0, ...counted
       .filter(x => x.pattern.excludes?.includes(rp.pattern.id))
       .map(x => x.pattern.fan));
-    const reincluderFan = Math.max(0, ...validPatterns
+    const reincluderFan = Math.max(0, ...counted
       .filter(x => x.pattern.includes?.includes(rp.pattern.id))
       .map(x => x.pattern.fan));
     if (reincluderFan > excluderFan) additionalPatterns.push(rp);
   }
 
-  const finalPatterns = [...validPatterns, ...additionalPatterns];
+  const finalPatterns = [...counted, ...additionalPatterns];
 
   let totalFan = 0;
   const details: string[] = [];
@@ -117,10 +112,11 @@ export const calculateTotalFan = (patterns: RecognizedPattern[]): {
 
 // ========== 同一拆分内计番：面子视图 ==========
 
-/** 锁定副露转成的面子；杠的明暗类型未记录，只计入杠数，不判明杠/暗杠/双明杠/双暗杠。 */
+/** 锁定副露转成的面子；杠的明暗类型按已记录的 kongKind 判定。 */
 interface LockedShape {
   shape: SetShape;
   kong: boolean;
+  kongKind?: KongKind;
 }
 
 /** 一套拆分里的面子视图：indices 为该面子涉及的牌值索引。 */
@@ -129,6 +125,7 @@ interface ShapeView {
   indices: number[];
   concealed: boolean;   // 暗手拆出：刻子记暗刻，顺子无明暗
   kong: boolean;
+  kongKind?: KongKind;
 }
 
 const isHonorIndex = (index: number): boolean => index >= 27;
@@ -145,8 +142,28 @@ const shapeIndices = (shape: SetShape): number[] =>
 
 const pongTileOf = (shape: SetShape): number | null => (shape.kind === 'pong' ? shape.tile : null);
 
-const viewOfShape = (shape: SetShape, concealed: boolean, kong: boolean): ShapeView =>
-  ({ kind: shape.kind, indices: shapeIndices(shape), concealed, kong });
+const viewOfShape = (shape: SetShape, concealed: boolean, kong: boolean, kongKind?: KongKind): ShapeView =>
+  ({ kind: shape.kind, indices: shapeIndices(shape), concealed, kong, kongKind });
+
+/**
+ * 按当前拆分判定和牌张的听牌形状：单钓将 / 边张 / 坎张。
+ * 两面听、双碰听或和牌张不在该拆分内时返回 null，不猜。
+ */
+const waitPatternId = (decomposition: HandDecomposition, winningTile: Tile): string | null => {
+  const index = tileToIndex(winningTile);
+  if (index < 0) return null;
+  if (decomposition.pair === index) return 'danDiaoJiang';
+  for (const shape of decomposition.shapes) {
+    if (shape.kind !== 'chow') continue;
+    const offset = shape.start % 9;
+    const start = shape.start;
+    if (index === start + 1) return 'kanZhang';
+    if (index === start + 2 && offset === 0) return 'bianZhang';       // 12 听 3
+    if (index === start && offset === 6) return 'bianZhang';           // 89 听 7
+    if (index === start || index === start + 2) return null;           // 两面听
+  }
+  return null;
+};
 
 /** 把已锁定的副露转成面子（吃=顺子，碰/杠=刻子）。 */
 const lockedMeldShapes = (melds: Meld[]): LockedShape[] => melds.map(meld => {
@@ -155,6 +172,7 @@ const lockedMeldShapes = (melds: Meld[]): LockedShape[] => melds.map(meld => {
   return {
     shape: meld.type === 'chi' ? { kind: 'chow', start: index } : { kind: 'pong', tile: index },
     kong: meld.type === 'gang',
+    kongKind: meld.type === 'gang' ? meld.kongKind : undefined,
   };
 });
 
@@ -172,7 +190,7 @@ const hasShiftedTriple = (lookup: (suit: number, offset: number) => boolean, ste
 
 /**
  * 一套合法拆分内的面子相关番种。
- * 明暗杠类型、和牌张、圈门风未记录，因此不判明杠/暗杠/双明杠/双暗杠、门风刻/圈风刻、边张/坎张/单钓将。
+ * 明暗杠类型、和牌张、圈门风、末张未记录时对应番种一律不计（缺事实不推测）。
  */
 const recognizeSetPatterns = (
   decomposition: HandDecomposition,
@@ -180,6 +198,7 @@ const recognizeSetPatterns = (
   melds: Meld[],
   winSource: WinSource,
   allCounts: number[],
+  ctx: MCRContext,
 ): RecognizedPattern[] => {
   const out: RecognizedPattern[] = [];
   const add = (id: string, count = 1) => {
@@ -188,7 +207,7 @@ const recognizeSetPatterns = (
   };
 
   const views = [
-    ...locked.map(item => viewOfShape(item.shape, false, item.kong)),
+    ...locked.map(item => viewOfShape(item.shape, false, item.kong, item.kongKind)),
     ...decomposition.shapes.map(shape => viewOfShape(shape, true, false)),
   ];
   if (views.length !== 4) return out;
@@ -217,6 +236,20 @@ const recognizeSetPatterns = (
   else if (concealedPongs >= 2) add('shuangAnKe');
   if (kongCount >= 4) add('siGang');
   else if (kongCount === 3) add('sanGang');
+  // 明杠/暗杠族只在记录过 kongKind 的杠上成立；补杠按明杠计。
+  const knownKongs = views.filter(view => view.kong && view.kongKind !== undefined);
+  const exposedKongs = knownKongs.filter(view => view.kongKind !== 'concealed').length;
+  const concealedKongs = knownKongs.length - exposedKongs;
+  if (kongCount < 3 && knownKongs.length >= 1) {
+    if (knownKongs.length === 2) {
+      if (concealedKongs === 2) add('shuangAnGang');
+      else if (exposedKongs === 2) add('shuangMingGang');
+      else add('mingAnGang');
+    } else {
+      if (exposedKongs > 0) add('mingGang', exposedKongs);
+      if (concealedKongs > 0) add('anGang', concealedKongs);
+    }
+  }
 
   // 幺九刻 / 箭刻族 / 风刻族
   const yaoJiuPongs = pongIndices.filter(isTerminalOrHonorIndex).length;
@@ -232,6 +265,16 @@ const recognizeSetPatterns = (
   if (windPongs >= 4) add('daSiXi');
   else if (windPongs === 3 && isWindIndex(pair)) add('xiaoSiXi');
   else if (windPongs === 3) add('sanFengKe');
+
+  // 门风刻 / 圈风刻：同一副风刻可以同时是门风和圈风，两番各自成立。
+  const seatWindIndex = ctx.seatWind ? 26 + ctx.seatWind : null;
+  const roundWindIndex = ctx.roundWind ? 26 + ctx.roundWind : null;
+  if (seatWindIndex !== null && pongIndices.includes(seatWindIndex)) add('menFengKe');
+  if (roundWindIndex !== null && pongIndices.includes(roundWindIndex)) add('quanFengKe');
+
+  // 边张 / 坎张 / 单钓将：只在记录和牌张时按当前拆分的听牌形状判定。
+  const waitShape = ctx.winningTile ? waitPatternId(decomposition, ctx.winningTile) : null;
+  if (waitShape) add(waitShape);
 
   // 同刻：三同刻已含双同刻，故双同刻只计恰好两花色
   const suitsByValue = new Map<number, Set<number>>();
@@ -456,12 +499,57 @@ const sourcePatterns = (
 /** 与面子拆分互斥的特殊结构：七对 / 连七对。 */
 const EXCLUSIVE_STRUCTURE_IDS = new Set(['qiDui', 'lianQiDui']);
 
-/** 特殊结构番种：七对、连七对、七星不靠、全不靠、组合龙。 */
+/**
+ * 末张与绝张事件番种：只在记录了对应事实时成立。
+ * 妙手回春=自摸最后一张；海底捞月=和最后一张打出的牌；和绝张=和牌张是已见三张后的第四张。
+ */
+const recognizeEventPatterns = (
+  winSource: WinSource,
+  melds: Meld[],
+  ctx: MCRContext,
+): RecognizedPattern[] => {
+  const out: RecognizedPattern[] = [];
+  const add = (id: string) => {
+    const pattern = getPatternById(id);
+    if (pattern) out.push({ pattern, count: 1 });
+  };
+  if (ctx.lastTile === true) {
+    if (winSource === 'selfDraw') add('miaoShouHuiChun');
+    else if (winSource === 'claim') add('haiDiLaoYue');
+  }
+  // 杠后和牌：自摸补张记杠上开花，点和别家加杠的牌记抢杠和；和牌方式未知时不确认
+  if (ctx.afterKong === true) {
+    if (winSource === 'selfDraw') add('gangShangKaiHua');
+    else if (winSource === 'claim') add('qiangGangHu');
+  }
+  if (ctx.winningTile && ctx.discards && ctx.discards.length > 0) {
+    const key = getTileKey(ctx.winningTile.suit, ctx.winningTile.value);
+    const visible = [...ctx.discards, ...melds.flatMap(meld => meld.tiles)]
+      .filter(tile => getTileKey(tile.suit, tile.value) === key).length;
+    if (visible === 3) add('heJueZhang');
+  }
+  return out;
+};
+
+/** 九莲宝灯的和牌前 13 张必须是同花色 1112345678999。 */
+const isNineGatesThirteen = (counts: number[], suit: number): boolean => {
+  const required = [3, 1, 1, 1, 1, 1, 1, 1, 3];
+  for (let value = 1; value <= 9; value++) {
+    if (counts[suit * 9 + value - 1] !== required[value - 1]) return false;
+  }
+  return counts.every((count, index) => index >= suit * 9 && index < suit * 9 + 9 ? true : count === 0);
+};
+
+/**
+ * 特殊结构番种：七对、连七对、九莲宝灯、七星不靠、全不靠、组合龙。
+ * 九莲宝灯只在记录了和牌张、且去掉和牌张后正好是 1112345678999 时成立。
+ */
 const recognizeStructurePatterns = (
   allTiles: Tile[],
   melds: Meld[],
   counts: Map<string, number>,
   concealedCounts: number[],
+  ctx: MCRContext,
 ): RecognizedPattern[] => {
   const out: RecognizedPattern[] = [];
   const add = (id: string) => {
@@ -475,6 +563,8 @@ const recognizeStructurePatterns = (
   const allEven = [...counts.values()].every(count => count % 2 === 0);
   if (melds.length === 0 && allTiles.length === 14 && pairUnits === 7 && allEven) {
     add('qiDui');
+    // 七对的每一听都是单钓将，和牌张已记录时成立（和绝张由事件番种另行判定）
+    if (ctx.winningTile) add('danDiaoJiang');
     const hogs = countArray.filter(count => count === 4).length;
     if (hogs > 0) {
       const pattern = getPatternById('siGuiYi');
@@ -488,8 +578,15 @@ const recognizeStructurePatterns = (
     }
   }
 
-  // 九莲宝灯须核对和牌前的13张为1112345678999；当前未记录和牌张，
-  // 无法从最终14张倒推这个事实，因此暂不确认88番，仍按普通拆分计番。
+  // 九莲宝灯：门前清 + 去掉和牌张后正好 1112345678999
+  if (melds.length === 0 && allTiles.length === 14 && ctx.winningTile) {
+    const winIndex = tileToIndex(ctx.winningTile);
+    const withoutWin = [...countArray];
+    if (winIndex >= 0 && winIndex < 27 && withoutWin[winIndex] > 0) {
+      withoutWin[winIndex] -= 1;
+      if (isNineGatesThirteen(withoutWin, Math.floor(winIndex / 9))) add('jiuLianBaoDeng');
+    }
+  }
 
   // 七星不靠 / 全不靠
   const knitted = melds.length === 0 ? classifyKnittedHand(countArray) : 'none';
@@ -506,16 +603,17 @@ const recognizeStructurePatterns = (
 /**
  * 识别手牌中的番种：枚举合法拆分 → 同一拆分内计番 → 总番择优（就高）。
  * @param winSource 已记录的和牌来源；'unknown' 时不识别不求人、门前清、自摸。
+ * @param ctx 已记录的和牌上下文（和牌张、门风、圈风、末张、河牌）；缺省字段对应番种一律不计。
  */
 export const recognizeMCRPatterns = (
-  hand: Tile[], melds: Meld[], winSource: WinSource = 'unknown',
+  hand: Tile[], melds: Meld[], winSource: WinSource = 'unknown', ctx: MCRContext = {},
 ): RecognizedPattern[] => {
   const allTiles = [...hand, ...melds.flatMap(m => m.tiles)];
   const counts = countTiles(allTiles);
   const allCounts = countsToArray(counts);
   const tilePatterns = recognizeTilePatterns(allTiles, counts);
   const concealedCounts = countsToArray(countTiles(hand));
-  const structures = recognizeStructurePatterns(allTiles, melds, counts, concealedCounts);
+  const structures = recognizeStructurePatterns(allTiles, melds, counts, concealedCounts, ctx);
   const exclusive = structures.filter(r => EXCLUSIVE_STRUCTURE_IDS.has(r.pattern.id));
   const shared = structures.filter(r => !EXCLUSIVE_STRUCTURE_IDS.has(r.pattern.id) && r.pattern.id !== 'siGuiYi');
 
@@ -524,13 +622,17 @@ export const recognizeMCRPatterns = (
   const candidates: RecognizedPattern[][] = decompositions.map(decomposition => [
     ...tilePatterns,
     ...shared,
-    ...recognizeSetPatterns(decomposition, locked, melds, winSource, allCounts),
+    ...recognizeSetPatterns(decomposition, locked, melds, winSource, allCounts, ctx),
   ]);
   exclusive.forEach(structure => candidates.push([
     ...tilePatterns, ...shared, structure,
     ...(structure.pattern.id === 'qiDui' ? structures.filter(r => r.pattern.id === 'siGuiYi') : []),
   ]));
-  if (candidates.length === 0) return [...tilePatterns, ...structures, ...sourcePatterns([...tilePatterns, ...structures], melds, winSource)];
+  const events = recognizeEventPatterns(winSource, melds, ctx);
+  if (candidates.length === 0) {
+    const fallback = [...tilePatterns, ...structures];
+    return [...fallback, ...events, ...sourcePatterns(fallback, melds, winSource)];
+  }
 
   let best = candidates[0];
   let bestFan = -1;
@@ -541,7 +643,7 @@ export const recognizeMCRPatterns = (
       best = candidate;
     }
   }
-  return [...best, ...sourcePatterns(best, melds, winSource)];
+  return [...best, ...events, ...sourcePatterns(best, melds, winSource)];
 };
 
 /**

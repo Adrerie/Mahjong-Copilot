@@ -9,37 +9,35 @@
 [![Vite](https://img.shields.io/badge/Vite-6.2-646CFF?logo=vite)](https://vitejs.dev/)
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
-[English](README.md) | [中文](README.md)
-
 </div>
 
 ---
 
 ## 📖 项目简介
 
-Mahjong Copilot 是一款专业的麻将辅助分析工具，帮助玩家分析手牌、计算向听数、推荐最优打法。
+Mahjong Copilot 是一款麻将辅助分析工具：录入手牌、副露与牌河，得到向听数、听牌张、番种建议与番数。
 
 ### ✨ 功能特性
 
-- 🎯 **双模式支持**：国标麻将（81番）& 四川血战（成都玩法）
-- 📊 **智能分析**：实时计算向听数，推荐最优弃牌
-- 🏆 **番种建议**：从大番到小番优先推荐，最大化收益
-- 🔢 **番数计算**：自动识别番型，计算最终番数/倍数
-- 🌏 **双语界面**：支持中文/English切换
+- 🎯 **双模式支持**：国标麻将（81 番）& 四川血战（成都玩法）
+- 📊 **智能分析**：向听数与听牌列表，按实体牌计算缺张
+- 🏆 **番种建议**：在同一合法拆分内识别番种，按番值择优
+- 🔢 **番数计算**：国标 8 番起和判定，四川指数番与封顶
+- 🧮 **可核对上下文**：国标可记录自摸/点和、和牌张、末张、门风/圈风、明杠/暗杠/补杠；未记录的上下文一律不计番，只提示仍缺哪些信息
+- 🌏 **双语界面**：支持中文/English 切换
 - 📱 **响应式设计**：适配电脑、平板、手机
+- 📴 **离线可用**：样式本地构建，无 CDN 与外部字体请求
 
-### 🀄 四川麻将番种体系
+### 🀄 四川麻将口径
 
-| 番数 | 番种 |
+| 指数番 | 番型 |
 |:---:|:---|
-| 8番 | 清金钩钓、清七对/清龙七对 |
-| 6番 | 清对（清一色+对对胡） |
-| 4番 | 清一色、金钩钓、七对/龙七对、将对、带幺九 |
-| 2番 | 门前清(自摸)、断幺九、对对胡 |
-| 1番 | 基本和（平胡/鸡和） |
-| +N番 | 根（每4张相同牌+1番） |
+| 0 | 平胡 |
+| 1 | 对对胡 |
+| 2 | 清一色、七对、带幺九、金钩钓 |
+| +1/根 | 每 4 张相同牌算一根 |
 
-> 📌 四川麻将计算规则：番数相加，倍数 = 2^番数
+> 📌 番数相加，倍数 = 2^番数，封顶 4 指数番（16 倍）。自摸/点炮、杠类型等事件未建模，不加番。
 
 ---
 
@@ -49,16 +47,21 @@ Mahjong Copilot 是一款专业的麻将辅助分析工具，帮助玩家分析�
 Mahjong-Copilot/
 ├── App.tsx                 # 主应用组件
 ├── index.tsx               # 入口文件
+├── index.css               # Tailwind 入口与自定义工具类（本地构建）
+├── tailwind.config.js      # Tailwind 配置
+├── postcss.config.js       # PostCSS 配置
 ├── constants.ts            # 番种定义、文本字典
-├── types.ts                # TypeScript类型定义
+├── types.ts                # TypeScript 类型定义
 ├── components/
-│   ├── InputScreen.tsx     # 手牌输入界面
+│   ├── InputScreen.tsx     # 手牌与和牌上下文输入
 │   ├── TileSelector.tsx    # 牌选择器键盘
-│   ├── TileUI.tsx          # 麻将牌UI组件
+│   ├── TileUI.tsx          # 麻将牌 UI 组件
 │   ├── ModeSelection.tsx   # 模式选择（国标/四川）
 │   └── AnalysisResultModal.tsx  # 分析结果弹窗
 ├── utils/
 │   ├── mahjongLogic.ts     # 核心分析逻辑
+│   ├── entryEditing.ts     # 录入编辑与本地局面存取
+│   ├── inputValidation.ts  # 局面校验
 │   ├── sichuanAnalyzer.ts  # 四川麻将分析模块
 │   ├── mcrAnalyzer.ts      # 国标麻将分析模块
 │   ├── mcrPatterns.ts      # 国标番型检测
@@ -66,9 +69,8 @@ Mahjong-Copilot/
 │   ├── winningChecker.ts   # 和牌检测
 │   ├── discardAnalyzer.ts  # 弃牌推荐
 │   └── tileHelpers.ts      # 牌操作工具函数
-├── package.json
-├── vite.config.ts
-└── tsconfig.json
+├── tests/regression.ts     # 关键回归守卫（npm test）
+└── scripts/test.mjs        # 测试运行器
 ```
 
 ---
@@ -78,7 +80,7 @@ Mahjong-Copilot/
 ### 环境要求
 
 - **Node.js** >= 18.0
-- **npm** >= 9.0 或 **pnpm** >= 8.0
+- **npm** >= 9.0
 
 ### 安装步骤
 
@@ -94,133 +96,33 @@ npm install
 npm run dev
 ```
 
-打开浏览器访问 `http://localhost:5173`
+打开浏览器访问 `http://localhost:3000`。
 
-### 生产构建
+### 校验与生产构建
 
 ```bash
-# 构建生产版本
-npm run build
-
-# 预览构建结果
-npm run preview
+npm test          # 回归守卫
+npm run typecheck # 类型检查
+npm run build     # 构建到 dist/
+npm run preview   # 本地预览构建产物
 ```
 
-构建产物在 `dist/` 目录下，可直接部署到任何静态托管服务。
+构建产物在 `dist/` 目录下，无外部运行时依赖，可直接部署到任意静态托管或打包进 App。
 
 ---
 
-## 📦 打包成桌面APP
-
-使用 [Electron](https://www.electronjs.org/) 或 [Tauri](https://tauri.app/) 将 Web 应用打包成桌面应用。
-
-### 方案一：Electron（推荐新手）
+## 📱 Android（Capacitor）
 
 ```bash
-# 1. 安装 Electron 相关依赖
-npm install electron electron-builder --save-dev
-
-# 2. 创建 electron/main.js
-```
-
-创建 `electron/main.js`：
-```javascript
-const { app, BrowserWindow } = require('electron');
-const path = require('path');
-
-function createWindow() {
-  const win = new BrowserWindow({
-    width: 1200,
-    height: 800,
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true
-    }
-  });
-  
-  // 加载构建后的文件
-  win.loadFile(path.join(__dirname, '../dist/index.html'));
-}
-
-app.whenReady().then(createWindow);
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
-});
-```
-
-在 `package.json` 添加：
-```json
-{
-  "main": "electron/main.js",
-  "scripts": {
-    "electron": "npm run build && electron .",
-    "pack": "electron-builder --dir",
-    "dist": "electron-builder"
-  },
-  "build": {
-    "appId": "com.karislin.mahjong",
-    "productName": "Mahjong Copilot",
-    "directories": { "output": "release" },
-    "win": { "target": "nsis" },
-    "mac": { "target": "dmg" }
-  }
-}
-```
-
-```bash
-# 运行桌面应用
-npm run electron
-
-# 打包安装程序
-npm run dist
-```
-
-### 方案二：Tauri（更轻量，推荐）
-
-Tauri 打包体积更小（约 5-10MB vs Electron 150MB+）
-
-```bash
-# 1. 安装 Tauri CLI
-npm install @tauri-apps/cli --save-dev
-
-# 2. 初始化 Tauri
-npx tauri init
-
-# 3. 开发模式
-npx tauri dev
-
-# 4. 构建安装包
-npx tauri build
-```
-
----
-
-## 📱 打包成手机APP
-
-### 方案一：PWA（推荐）
-
-项目已支持 PWA，可直接"添加到主屏幕"使用。
-
-### 方案二：Capacitor
-
-```bash
-# 1. 安装 Capacitor
-npm install @capacitor/core @capacitor/cli
-npx cap init "Mahjong Copilot" "com.karislin.mahjong"
-
-# 2. 添加平台
-npm install @capacitor/android @capacitor/ios
-npx cap add android
-npx cap add ios
-
-# 3. 构建并同步
+# 构建并同步到原生工程
 npm run build
-npx cap sync
+npm run capacitor:sync
 
-# 4. 打开原生项目
-npx cap open android  # 用 Android Studio 打开
-npx cap open ios      # 用 Xcode 打开
+# 生成 Debug APK（仅供测试安装）
+npm run android:assembleDebug
 ```
+
+`android/` 工程已随仓库提交，`capacitor.config.json` 的 `webDir` 指向 `dist`。Debug APK 不是正式签名发行包。
 
 ---
 
@@ -228,10 +130,11 @@ npx cap open ios      # 用 Xcode 打开
 
 | 技术 | 用途 |
 |:---|:---|
-| React 19 | UI框架 |
+| React 19 | UI 框架 |
 | TypeScript 5.8 | 类型安全 |
 | Vite 6 | 构建工具 |
-| TailwindCSS | 样式方案（内联） |
+| TailwindCSS 3 + PostCSS | 样式方案（本地构建，无 CDN） |
+| Capacitor 8 | Android 打包 |
 
 ---
 

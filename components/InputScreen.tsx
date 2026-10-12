@@ -1,12 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { AnalysisResult, GameMode, GameState, Language, Meld, Suit, Tile, WinSource } from '../types';
+import { AnalysisResult, GameMode, GameState, KongKind, Language, Meld, Suit, Tile, WinSource, Wind } from '../types';
 import {
   INITIAL_WALL_MCR, INITIAL_WALL_SICHUAN, MAX_WALL_MCR, MAX_WALL_SICHUAN,
-  SUIT_LABELS, TEXT, THEME,
+  SUIT_LABELS, TEXT, THEME, WIND_LABELS,
 } from '../constants';
 import { analyzeGame, sortTiles } from '../utils/mahjongLogic';
 import {
   EntryMessage, decodeEntryState, encodeEntryState, entryStorageKey, planTextHand, planTileAdd,
+  withConsistentContext,
 } from '../utils/entryEditing';
 import TileSelector from './TileSelector';
 import TileUI from './TileUI';
@@ -34,6 +35,26 @@ const emptyEntry = (mode: GameMode): GameState => ({
   winSource: 'unknown',
 });
 
+/** 录入目标区域：国标多一个「和牌张」区域，点牌即选中手上已有的那张。 */
+type EntryZone = 'hand' | 'melds' | 'discards' | 'winningTile';
+
+const WINDS: Wind[] = [1, 2, 3, 4];
+
+/** 杠类型三选：未记录时不计明杠/暗杠/双明杠/双暗杠。 */
+const KONG_KINDS: { value: KongKind; labelKey: 'kongExposed' | 'kongConcealed' | 'kongAdded' }[] = [
+  { value: 'exposed', labelKey: 'kongExposed' },
+  { value: 'concealed', labelKey: 'kongConcealed' },
+  { value: 'added', labelKey: 'kongAdded' },
+];
+
+/** 副露角标：吃/碰用首字母，杠再标出已记录的明/暗/补。 */
+const meldBadge = (meld: Meld, lang: Language): string => {
+  if (meld.type !== 'gang') return meld.type.charAt(0).toUpperCase();
+  const kind = KONG_KINDS.find(item => item.value === meld.kongKind);
+  const labels = TEXT[lang];
+  return kind ? `${TEXT.en.kongKind.charAt(0)}·${labels[kind.labelKey]}` : TEXT.en.kongKind.charAt(0);
+};
+
 /** 国标和牌方式的三个可选值：未记录时按「未知」处理，不计自摸/不求人/门前清。 */
 const WIN_SOURCES: { value: WinSource; labelKey: 'winUnknown' | 'winSelfDraw' | 'winClaim' }[] = [
   { value: 'unknown', labelKey: 'winUnknown' },
@@ -56,7 +77,8 @@ const InputScreen: React.FC<Props> = ({ mode, lang, setLang, onBack }) => {
   const [entryError, setEntryError] = useState<EntryMessage | null>(null);
   const [textInput, setTextInput] = useState('');
   const [meldType, setMeldType] = useState<Meld['type']>('pong');
-  const [activeZone, setActiveZone] = useState<'hand' | 'melds' | 'discards'>('hand');
+  const [meldKongKind, setMeldKongKind] = useState<KongKind>('exposed');
+  const [activeZone, setActiveZone] = useState<EntryZone>('hand');
   const [showKeyboard, setShowKeyboard] = useState(false);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
 
@@ -68,6 +90,7 @@ const InputScreen: React.FC<Props> = ({ mode, lang, setLang, onBack }) => {
   const meldsZoneRef = useRef<HTMLDivElement>(null);
   const handZoneRef = useRef<HTMLDivElement>(null);
   const discardsRef = useRef<HTMLDivElement>(null);
+  const contextRef = useRef<HTMLDivElement>(null);
 
   const sortedHand = useMemo(() => sortTiles(hand), [hand]);
   const sortedDiscards = useMemo(() => sortTiles(discards), [discards]);
@@ -87,15 +110,19 @@ const InputScreen: React.FC<Props> = ({ mode, lang, setLang, onBack }) => {
   /** 唯一写入口：保留最近一次有效局面的一个快照，供一步撤销。 */
   const commit = (next: GameState) => {
     setUndoEntry(entry);
-    setEntry(next);
+    // 和牌张随暗手失效；其余上下文保持不变
+    setEntry(withConsistentContext(next));
     setEntryError(null);
   };
 
-  const activateZone = (zone: 'hand' | 'melds' | 'discards') => {
+  const activateZone = (zone: EntryZone) => {
     setActiveZone(zone);
     setShowKeyboard(true);
     // 键盘是固定浮层，布局上不占空间；把当前区域滚到键盘上方，避免被挡住
-    const target = zone === 'melds' ? meldsZoneRef.current : zone === 'hand' ? handZoneRef.current : discardsRef.current;
+    const target = zone === 'melds' ? meldsZoneRef.current
+      : zone === 'hand' ? handZoneRef.current
+      : zone === 'discards' ? discardsRef.current
+      : contextRef.current;
     const canvas = canvasRef.current;
     if (!target || !canvas) return;
     requestAnimationFrame(() => {
@@ -107,7 +134,12 @@ const InputScreen: React.FC<Props> = ({ mode, lang, setLang, onBack }) => {
   };
 
   const addTile = (tile: Tile) => {
-    const plan = planTileAdd(entry, { zone: activeZone, meldType, tile });
+    const plan = planTileAdd(entry, {
+      zone: activeZone,
+      meldType,
+      tile,
+      kongKind: meldType === 'gang' ? meldKongKind : undefined,
+    });
     if (plan.outcome === 'rejected') {
       setEntryError(plan.message);
       return;
@@ -277,6 +309,88 @@ const InputScreen: React.FC<Props> = ({ mode, lang, setLang, onBack }) => {
             </div>
         </div>
 
+        {/* === MCR WIN CONTEXT === */}
+        {mode === GameMode.MCR && (
+            <div
+                ref={contextRef}
+                onClick={() => activateZone('winningTile')}
+                className={`bg-white rounded-2xl border-2 shadow-sm p-3 transition-colors ${activeZone === 'winningTile' && showKeyboard ? 'border-[#1A237E]' : 'border-blue-100'}`}
+            >
+                <div className="flex items-center gap-2 mb-2">
+                    <span className="w-2 h-2 rounded-full bg-[#FF006E] border border-black"></span>
+                    <span className="text-xs font-black text-gray-500 uppercase tracking-wider">{t.winContext}</span>
+                    <span className="text-[10px] text-gray-300 font-bold">{t.removeHint}</span>
+                </div>
+
+                {/* 和牌张：点本卡片后从下方键盘选一张已在暗手里的牌 */}
+                <div className="flex items-center gap-2 mb-2" onClick={(e) => e.stopPropagation()}>
+                    <span className="w-12 shrink-0 text-[10px] text-gray-500 font-bold uppercase tracking-wider">{t.winningTile}</span>
+                    {entry.winningTile ? (
+                        <div className="w-9 sm:w-10"><TileUI tile={entry.winningTile} size="responsive" /></div>
+                    ) : (
+                        <span className="text-[10px] text-gray-300 font-bold italic">{t.notRecorded}</span>
+                    )}
+                    <button
+                        type="button"
+                        onClick={() => activateZone('winningTile')}
+                        aria-pressed={activeZone === 'winningTile' && showKeyboard}
+                        aria-label={`${t.winningTile} ${t.pick}`}
+                        className={`px-2 h-7 rounded-lg font-bold text-xs border-2 ${activeZone === 'winningTile' && showKeyboard ? 'bg-[#1A237E] border-[#1A237E] text-white shadow-neu-sm' : 'bg-white border-gray-200 text-gray-400'}`}
+                    >{t.pick}</button>
+                    <button
+                        type="button"
+                        onClick={() => commit({ ...entry, winningTile: null })}
+                        disabled={!entry.winningTile}
+                        aria-label={`${t.winningTile} ${t.clear}`}
+                        className="px-2 h-7 rounded-lg font-bold text-xs border-2 bg-white border-gray-200 text-gray-400 disabled:opacity-40"
+                    >{t.clear}</button>
+                </div>
+
+                {/* 门风 / 圈风 */}
+                {([
+                    { labelKey: 'seatWind' as const, value: entry.seatWind ?? null, apply: (wind: Wind | null) => ({ ...entry, seatWind: wind }) },
+                    { labelKey: 'roundWind' as const, value: entry.roundWind ?? null, apply: (wind: Wind | null) => ({ ...entry, roundWind: wind }) },
+                ]).map(({ labelKey, value, apply }) => (
+                    <div key={labelKey} className="flex items-center gap-2 mb-2" onClick={(e) => e.stopPropagation()}>
+                        <span className="w-12 shrink-0 text-[10px] text-gray-500 font-bold uppercase tracking-wider">{t[labelKey]}</span>
+                        <div className="flex gap-1">
+                            {WINDS.map(wind => (
+                                <button
+                                    key={wind}
+                                    type="button"
+                                    onClick={() => commit(apply(value === wind ? null : wind))}
+                                    aria-pressed={value === wind}
+                                    aria-label={`${t[labelKey]} ${WIND_LABELS[lang][wind - 1]}`}
+                                    className={`w-8 h-8 rounded-lg font-bold text-sm border-2 transition-all ${value === wind ? 'bg-[#1A237E] border-[#1A237E] text-white shadow-neu-sm' : 'bg-white border-gray-200 text-gray-400'}`}
+                                >{WIND_LABELS[lang][wind - 1]}</button>
+                            ))}
+                        </div>
+                        {!value && <span className="text-[10px] text-gray-300 font-bold italic">{t.notRecorded}</span>}
+                    </div>
+                ))}
+
+                {/* 末张：自摸最后一张记妙手回春，和最后一张点炮记海底捞月 */}
+                <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                    <span className="w-12 shrink-0 text-[10px] text-gray-500 font-bold uppercase tracking-wider">{t.lastTile}</span>
+                    <div className="flex gap-1">
+                        <button type="button" onClick={() => commit({ ...entry, lastTile: null })} aria-pressed={entry.lastTile == null} className={`px-2 h-7 rounded-lg font-bold text-xs border-2 ${entry.lastTile == null ? 'bg-[#1A237E] border-[#1A237E] text-white shadow-neu-sm' : 'bg-white border-gray-200 text-gray-400'}`}>{t.notRecorded}</button>
+                        <button type="button" onClick={() => commit({ ...entry, lastTile: true })} aria-pressed={entry.lastTile === true} className={`px-2 h-7 rounded-lg font-bold text-xs border-2 ${entry.lastTile === true ? 'bg-[#1A237E] border-[#1A237E] text-white shadow-neu-sm' : 'bg-white border-gray-200 text-gray-400'}`}>{t.yes}</button>
+                        <button type="button" onClick={() => commit({ ...entry, lastTile: false })} aria-pressed={entry.lastTile === false} className={`px-2 h-7 rounded-lg font-bold text-xs border-2 ${entry.lastTile === false ? 'bg-[#1A237E] border-[#1A237E] text-white shadow-neu-sm' : 'bg-white border-gray-200 text-gray-400'}`}>{t.no}</button>
+                    </div>
+                </div>
+
+                {/* 杠后和牌：自摸补张记杠上开花，点和加杠的牌记抢杠和，同时带上和牌方式 */}
+                <div className="flex items-center gap-2 mt-2" onClick={(e) => e.stopPropagation()}>
+                    <span className="w-12 shrink-0 text-[10px] text-gray-500 font-bold uppercase tracking-wider">{t.afterKong}</span>
+                    <div className="flex gap-1">
+                        <button type="button" onClick={() => commit({ ...entry, afterKong: null })} aria-pressed={!entry.afterKong} className={`px-2 h-7 rounded-lg font-bold text-xs border-2 ${!entry.afterKong ? 'bg-[#1A237E] border-[#1A237E] text-white shadow-neu-sm' : 'bg-white border-gray-200 text-gray-400'}`}>{t.notRecorded}</button>
+                        <button type="button" onClick={() => commit({ ...entry, afterKong: true, winSource: 'selfDraw' })} aria-pressed={entry.afterKong === true && entry.winSource === 'selfDraw'} className={`px-2 h-7 rounded-lg font-bold text-xs border-2 ${entry.afterKong === true && entry.winSource === 'selfDraw' ? 'bg-[#1A237E] border-[#1A237E] text-white shadow-neu-sm' : 'bg-white border-gray-200 text-gray-400'}`}>{t.kongDrawWin}</button>
+                        <button type="button" onClick={() => commit({ ...entry, afterKong: true, winSource: 'claim' })} aria-pressed={entry.afterKong === true && entry.winSource === 'claim'} className={`px-2 h-7 rounded-lg font-bold text-xs border-2 ${entry.afterKong === true && entry.winSource === 'claim' ? 'bg-[#1A237E] border-[#1A237E] text-white shadow-neu-sm' : 'bg-white border-gray-200 text-gray-400'}`}>{t.robKongWin}</button>
+                    </div>
+                </div>
+            </div>
+        )}
+
         {/* === COMBINED PLAYER AREA === */}
         <div className="bg-white rounded-3xl border-2 border-blue-100 shadow-sm transition-all duration-300 overflow-hidden">
 
@@ -327,7 +441,7 @@ const InputScreen: React.FC<Props> = ({ mode, lang, setLang, onBack }) => {
                                         <TileUI tile={tile} size="responsive" />
                                     </div>
                                 ))}
-                                <span className="absolute bottom-0 right-0 bg-white/90 text-[7px] font-bold px-1 rounded-tl text-[#1A237E] uppercase shadow-sm">{m.type.charAt(0)}</span>
+                                <span className="absolute bottom-0 right-0 bg-white/90 text-[7px] font-bold px-1 rounded-tl text-[#1A237E] uppercase shadow-sm">{meldBadge(m, lang)}</span>
                                 <button
                                     type="button"
                                     onClick={(e) => { e.stopPropagation(); removeMeld(m.id); }}
@@ -424,10 +538,25 @@ const InputScreen: React.FC<Props> = ({ mode, lang, setLang, onBack }) => {
                  {activeZone === 'melds' && (
                     <div className="flex gap-1 ml-2 bg-gray-100 p-0.5 rounded-lg">
                         {mode === GameMode.MCR && (
-                            <button onClick={() => setMeldType('chi')} aria-pressed={meldType === 'chi'} className={`px-2 py-0.5 rounded text-xs font-bold ${meldType === 'chi' ? 'bg-white shadow text-[#1A237E]' : 'text-gray-400'}`}>Chi</button>
+                            <button onClick={() => setMeldType('chi')} aria-pressed={meldType === 'chi'} className={`px-2.5 py-1 rounded text-xs font-bold ${meldType === 'chi' ? 'bg-white shadow text-[#1A237E]' : 'text-gray-400'}`}>Chi</button>
                         )}
-                        <button onClick={() => setMeldType('pong')} aria-pressed={meldType === 'pong'} className={`px-2 py-0.5 rounded text-xs font-bold ${meldType === 'pong' ? 'bg-white shadow text-[#1A237E]' : 'text-gray-400'}`}>Pong</button>
-                        <button onClick={() => setMeldType('gang')} aria-pressed={meldType === 'gang'} className={`px-2 py-0.5 rounded text-xs font-bold ${meldType === 'gang' ? 'bg-white shadow text-[#1A237E]' : 'text-gray-400'}`}>Gang</button>
+                        <button onClick={() => setMeldType('pong')} aria-pressed={meldType === 'pong'} className={`px-2.5 py-1 rounded text-xs font-bold ${meldType === 'pong' ? 'bg-white shadow text-[#1A237E]' : 'text-gray-400'}`}>Pong</button>
+                        <button onClick={() => setMeldType('gang')} aria-pressed={meldType === 'gang'} className={`px-2.5 py-1 rounded text-xs font-bold ${meldType === 'gang' ? 'bg-white shadow text-[#1A237E]' : 'text-gray-400'}`}>Gang</button>
+                    </div>
+                 )}
+
+                 {/* 杠类型：记录过的明杠/暗杠/补杠才计对应番种 */}
+                 {activeZone === 'melds' && mode === GameMode.MCR && meldType === 'gang' && (
+                    <div className="flex gap-1 ml-2 bg-gray-100 p-0.5 rounded-lg">
+                        {KONG_KINDS.map(({ value, labelKey }) => (
+                            <button
+                                key={value}
+                                onClick={() => setMeldKongKind(value)}
+                                aria-pressed={meldKongKind === value}
+                                aria-label={`${t.kongKind} ${t[labelKey]}`}
+                                className={`px-2.5 py-1 rounded text-xs font-bold ${meldKongKind === value ? 'bg-white shadow text-[#1A237E]' : 'text-gray-400'}`}
+                            >{t[labelKey]}</button>
+                        ))}
                     </div>
                  )}
              </div>

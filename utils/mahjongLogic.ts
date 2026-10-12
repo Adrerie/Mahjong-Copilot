@@ -16,7 +16,7 @@ import { validateGameState } from './inputValidation';
  * - mcrAnalyzer.ts: 国标麻将分析建议
  */
 
-import { GameMode, GameState, Suit, Tile, AnalysisResult, FanSuggestion, Language, Meld, WinSource } from '../types';
+import { GameMode, GameState, Suit, Tile, AnalysisResult, FanSuggestion, Language, Meld, WinSource, MCRContext } from '../types';
 import { createTile, getTileKey, TEXT, MCR_RULES } from '../constants';
 
 // 导入子模块
@@ -99,7 +99,14 @@ export const analyzeGame = (state: GameState, lang: Language = 'en'): AnalysisRe
       patternDetails: score.details, scoreText: score.scoreText,
     }];
   } else if (isWinning) {
-    const result = calculateMCRTotalFan(hand, melds, state.winSource);
+    const result = calculateMCRTotalFan(hand, melds, state.winSource, {
+      winningTile: state.winningTile,
+      seatWind: state.seatWind,
+      roundWind: state.roundWind,
+      lastTile: state.lastTile,
+      afterKong: state.afterKong,
+      discards: state.discards,
+    });
     const eligibilityText = result.eligibility === 'met'
       ? (zh ? `已达 8 番起和线（可确认 ${result.confirmedFan} 番）` : `Meets the 8-fan minimum (${result.confirmedFan} confirmed)`)
       : result.eligibility === 'unverified'
@@ -132,18 +139,22 @@ export const analyzeGame = (state: GameState, lang: Language = 'en'): AnalysisRe
 // ============================================================
 // 公开API：计算国标麻将总番
 // 用法示例：
-//   const result = calculateMCRTotalFan(hand, melds, state.winSource);
+//   const result = calculateMCRTotalFan(hand, melds, state.winSource, {
+//     winningTile: state.winningTile, seatWind: state.seatWind, roundWind: state.roundWind,
+//     lastTile: state.lastTile, discards: state.discards,
+//   });
 //   console.log(`可确认番: ${result.confirmedFan}`);
 //   console.log(`起和: ${result.eligibility}`);   // met | unmet | unverified
 //   console.log(`仍缺上下文: ${result.missingContext.join(', ')}`);
 // ============================================================
 
-/** 计番所需、但当前数据流未记录的事件事实；缺失时不得自动计对应番种。 */
-export type MCRContextGap = 'winSource' | 'winningTile' | 'seatWind' | 'kongType';
+/** 计番所需、但当前局面可能未记录的事件事实；缺失时不得自动计对应番种。 */
+export type MCRContextGap = 'winSource' | 'winningTile' | 'lastTile' | 'seatWind' | 'kongType';
 
 const MCR_CONTEXT_LABELS: Record<MCRContextGap, { zh: string; en: string }> = {
   winSource: { zh: '和牌来源（自摸/点和）', en: 'win source (self-draw or claim)' },
-  winningTile: { zh: '和牌张与末张/绝张', en: 'winning tile and last-tile facts' },
+  winningTile: { zh: '和牌张（边张/坎张/单钓将、和绝张、九莲宝灯）', en: 'winning tile (wait shape, last tile, nine gates)' },
+  lastTile: { zh: '末张（妙手回春/海底捞月）', en: 'last tile of the wall' },
   seatWind: { zh: '门风/圈风', en: 'seat and round wind' },
   kongType: { zh: '明杠/暗杠/补杠', en: 'kong types' },
 };
@@ -153,7 +164,12 @@ const MCR_CONTEXT_LABELS: Record<MCRContextGap, { zh: string; en: string }> = {
  * 结构可和（structuralWin）、8 番起和资格（eligibility）、仍缺哪些事件上下文（missingContext）。
  * 来源未知时，不求人/门前清/自摸不计；资格只在「补齐未记录事件后仍不足 8 番」时才敢判 unmet。
  */
-export const calculateMCRTotalFan = (hand: Tile[], melds: Meld[], winSource: WinSource = 'unknown'): {
+export const calculateMCRTotalFan = (
+  hand: Tile[],
+  melds: Meld[],
+  winSource: WinSource = 'unknown',
+  ctx: MCRContext = {},
+): {
   structuralWin: boolean;   // 结构上是否成牌
   confirmedFan: number;     // 当前可确认的番（不含依赖未记录事件的番）
   maxPossibleFan: number;   // 仅比较自摸/点和的参考番，不是补齐全部事件后的番数上限
@@ -165,8 +181,12 @@ export const calculateMCRTotalFan = (hand: Tile[], melds: Meld[], winSource: Win
   missingContext: MCRContextGap[];
 } => {
   const state: GameState = { mode: GameMode.MCR, hand, melds, discards: [], wallCount: 0, voidSuit: null };
-  const gapped: MCRContextGap[] = ['winningTile', 'seatWind', 'kongType'];
-  if (winSource === 'unknown') gapped.unshift('winSource');
+  const gapped: MCRContextGap[] = [];
+  if (winSource === 'unknown') gapped.push('winSource');
+  if (!ctx.winningTile) gapped.push('winningTile');
+  if (ctx.lastTile !== true && ctx.lastTile !== false) gapped.push('lastTile');
+  if (!ctx.seatWind || !ctx.roundWind) gapped.push('seatWind');
+  if (melds.some(meld => meld.type === 'gang' && !meld.kongKind)) gapped.push('kongType');
   const structuralWin = validateGameState(state, 'en').length === 0 &&
     checkWinning(countsToArray(countTiles(hand)), melds.length, GameMode.MCR);
   if (!structuralWin) {
@@ -174,7 +194,7 @@ export const calculateMCRTotalFan = (hand: Tile[], melds: Meld[], winSource: Win
       totalFan: 0, details: [], isValid: false, patterns: [], missingContext: [] };
   }
 
-  const score = (source: WinSource) => calculateTotalFan(recognizeMCRPatterns(hand, melds, source));
+  const score = (source: WinSource) => calculateTotalFan(recognizeMCRPatterns(hand, melds, source, ctx));
   const confirmed = score(winSource);
   const possible = winSource === 'unknown' ? [score('selfDraw'), score('claim')] : [];
   const maxPossibleFan = possible.reduce((best, alt) => Math.max(best, alt.totalFan), confirmed.totalFan);

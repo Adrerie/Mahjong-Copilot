@@ -1,5 +1,5 @@
-import { GameMode, GameState, Language, Suit, Tile } from '../types';
-import { MAX_WALL_MCR, MAX_WALL_SICHUAN } from '../constants';
+import { GameMode, GameState, KongKind, Language, Suit, Tile, Wind } from '../types';
+import { MAX_WALL_MCR, MAX_WALL_SICHUAN, getTileKey } from '../constants';
 import { countTiles } from './tileHelpers';
 
 export const isTile = (value: unknown): value is Tile => {
@@ -7,6 +7,18 @@ export const isTile = (value: unknown): value is Tile => {
   if (!('id' in value) || typeof value.id !== 'string' || !('suit' in value) || !('value' in value)) return false;
   return Object.values(Suit).some(s => s === value.suit) && typeof value.value === 'number' &&
     Number.isInteger(value.value) && value.value >= 1 && value.value <= (value.suit === Suit.Zihai ? 7 : 9);
+};
+
+const isWind = (value: unknown): value is Wind => value === 1 || value === 2 || value === 3 || value === 4;
+const isKongKind = (value: unknown): value is KongKind =>
+  value === 'exposed' || value === 'concealed' || value === 'added';
+
+/** 和牌张必须真的在暗手里；不在则视为未记录，绝不猜。 */
+export const winningTileInHand = (state: GameState): Tile | null => {
+  const winning = state.winningTile;
+  if (!winning || !isTile(winning)) return null;
+  const hand = countTiles(state.hand);
+  return (hand.get(getTileKey(winning.suit, winning.value)) ?? 0) > 0 ? winning : null;
 };
 
 export const validateGameState = (state: GameState, lang: Language, requireComplete = true): string[] => {
@@ -24,6 +36,23 @@ export const validateGameState = (state: GameState, lang: Language, requireCompl
       ? sorted.length === 3 && sorted[0].suit !== Suit.Zihai && sorted.every((t, i) => t.value === sorted[0].value + i)
       : (meld.type === 'pong' || meld.type === 'gang') && sorted.length === (meld.type === 'gang' ? 4 : 3) && sorted.every(t => t.value === sorted[0].value));
     if (!valid) errors.push(error('副露组合不合法', 'Invalid meld'));
+    if (meld.kongKind !== undefined && (meld.type !== 'gang' || !isKongKind(meld.kongKind))) {
+      errors.push(error('只有杠才能记录明杠/暗杠/补杠', 'Only a kong can record melded, concealed or added'));
+    }
+  }
+  // 和牌上下文：记录了就必须合法；和牌张不在暗手时按未记录处理，不报错也不计番。
+  if (state.mode === GameMode.MCR) {
+    if (state.seatWind != null && !isWind(state.seatWind)) errors.push(error('门风只能是东南西北', 'Seat wind must be E, S, W or N'));
+    if (state.roundWind != null && !isWind(state.roundWind)) errors.push(error('圈风只能是东南西北', 'Round wind must be E, S, W or N'));
+    if (state.lastTile !== undefined && state.lastTile !== null && typeof state.lastTile !== 'boolean') {
+      errors.push(error('末张标记只能是是或否', 'Last-tile flag must be true or false'));
+    }
+    if (state.afterKong !== undefined && state.afterKong !== null && typeof state.afterKong !== 'boolean') {
+      errors.push(error('杠后和牌标记只能是是或否', 'After-kong flag must be true or false'));
+    }
+  } else if (state.seatWind != null || state.roundWind != null || state.lastTile != null ||
+      state.afterKong != null || state.winningTile != null) {
+    errors.push(error('川麻不使用国标和牌上下文', 'Sichuan does not use MCR win context'));
   }
   const total = state.hand.length + state.melds.length * 3;
   if (requireComplete && total !== 13 && total !== 14) errors.push(error('请录入13或14张等效牌（杠按3张计算）', 'Enter 13 or 14 effective tiles (a kong counts as three)'));
