@@ -1,4 +1,4 @@
-﻿/**
+/**
  * 国标麻将番种识别模块
  * - 识别已成牌型中的番种
  * - 计算总番数和不计/另计规则
@@ -11,8 +11,11 @@ import {
   MCR_12_FAN, MCR_8_FAN, MCR_6_FAN, MCR_4_FAN, MCR_2_FAN, MCR_1_FAN,
   MCRPattern
 } from '../constants';
-import { countTiles, countsToArray } from './tileHelpers';
-import { checkWinning, classifyKnittedHand, knittedRemainders } from './winningChecker';
+import { countTiles, countsToArray, tileToIndex } from './tileHelpers';
+import {
+  checkWinning, classifyKnittedHand, decomposeHand, knittedRemainders,
+  HandDecomposition, SetShape,
+} from './winningChecker';
 
 // 识别到的番种
 export interface RecognizedPattern {
@@ -54,6 +57,52 @@ const isReversible = (t: Tile): boolean => {
   if (t.suit === Suit.Sou && [2, 4, 5, 6, 8, 9].includes(t.value)) return true;
   if (t.suit === Suit.Zihai && t.value === 5) return true; // 白
   return false;
+};
+
+// ========== 同一拆分内计番 ==========
+
+/** 面子相关番种在同一套拆分下的成立情况；fan 用于在多套合法拆分间择优。 */
+interface SetPatternFlags {
+  quanDaiYao: boolean;   // 4番：每副牌及将牌都含幺九或字牌
+  pingHu: boolean;       // 2番：4副顺子 + 序数牌作将
+  qingLong: boolean;     // 16番：同花色 123、456、789
+  fan: number;
+}
+
+/** 牌值索引是否为幺九或字牌。 */
+const indexIsTerminalOrHonor = (index: number): boolean =>
+  index >= 27 || index % 9 === 0 || index % 9 === 8;
+
+/** 一副面子里是否含幺九或字牌。 */
+const shapeHasTerminalOrHonor = (shape: SetShape): boolean => {
+  const indices = shape.kind === 'pong'
+    ? [shape.tile]
+    : [shape.start, shape.start + 1, shape.start + 2];
+  return indices.some(indexIsTerminalOrHonor);
+};
+
+/** 把已锁定的副露转成面子形状（吃=顺子，碰/杠=刻子）。 */
+const lockedMeldShapes = (melds: Meld[]): SetShape[] => melds.map(meld => {
+  const lowest = [...meld.tiles].sort((a, b) => a.value - b.value)[0];
+  const index = tileToIndex(lowest);
+  return meld.type === 'chi' ? { kind: 'chow', start: index } : { kind: 'pong', tile: index };
+});
+
+/** 在一套拆分内评估面子相关番种。番数取值同 constants.ts，用于择优比较。 */
+const scoreSetPatterns = (decomposition: HandDecomposition, locked: SetShape[]): SetPatternFlags => {
+  const shapes = [...locked, ...decomposition.shapes];
+  const chowStarts = shapes
+    .filter((shape): shape is { kind: 'chow'; start: number } => shape.kind === 'chow')
+    .map(shape => shape.start);
+  const quanDaiYao = shapes.every(shapeHasTerminalOrHonor) && indexIsTerminalOrHonor(decomposition.pair);
+  const pingHu = shapes.every(shape => shape.kind === 'chow') && decomposition.pair < 27;
+  const qingLong = [0, 9, 18].some(offset => [0, 3, 6].every(step => chowStarts.includes(offset + step)));
+  return {
+    quanDaiYao,
+    pingHu,
+    qingLong,
+    fan: (quanDaiYao ? 4 : 0) + (pingHu ? 2 : 0) + (qingLong ? 16 : 0),
+  };
 };
 
 /**
@@ -143,7 +192,6 @@ export const recognizeMCRPatterns = (
   
   // 统计刻子/杠数量
   const pongMelds = melds.filter(m => m.type === 'pong' || m.type === 'gang');
-  const chiMelds = melds.filter(m => m.type === 'chi');
   const gangMelds = melds.filter(m => m.type === 'gang');
   
   // 统计暗刻（手牌中3张以上相同的）
@@ -152,17 +200,21 @@ export const recognizeMCRPatterns = (
     if (count >= 3) anKeCount++;
   });
   
-  // 统计对子
-  let pairCount = 0;
-  counts.forEach((count) => {
-    if (count >= 2) pairCount++;
-  });
-  
   // 统计四归一
   let siGuiYiCount = 0;
   counts.forEach((count) => {
     if (count === 4) siGuiYiCount++;
   });
+  
+  // 同一拆分内计番：暗手按实际张数拆解，已有副露锁定，多套拆分按面子相关番种分值择优
+  const concealedCounts = countsToArray(countTiles(hand));
+  const lockedShapes = lockedMeldShapes(melds);
+  const decompositions = melds.length <= 4 ? decomposeHand(concealedCounts, 4 - melds.length) : [];
+  let setPatterns: SetPatternFlags | null = null;
+  for (const decomposition of decompositions) {
+    const flags = scoreSetPatterns(decomposition, lockedShapes);
+    if (!setPatterns || flags.fan > setPatterns.fan) setPatterns = flags;
+  }
   
   // ===== 88番 =====
   
@@ -221,8 +273,10 @@ export const recognizeMCRPatterns = (
   
   // ===== 24番 =====
   
-  // 七对
-  if (pairCount >= 7 && melds.length === 0) {
+  // 七对 (24)：暗手 14 张全为对子；四张相同牌记两对（国标七对定义）
+  const pairUnits = [...counts.values()].reduce((sum, count) => sum + Math.floor(count / 2), 0);
+  if (melds.length === 0 && allTiles.length === 14 && pairUnits === 7 &&
+    [...counts.values()].every(count => count % 2 === 0)) {
     const p = getPatternById('qiDui');
     if (p) recognized.push({ pattern: p, count: 1 });
   }
@@ -269,6 +323,12 @@ export const recognizeMCRPatterns = (
   
   // ===== 16番 =====
   
+  // 清龙 (16)：同一花色的 123、456、789 三副顺子（须在同一套拆分内）
+  if (setPatterns?.qingLong) {
+    const p = getPatternById('qingLong');
+    if (p) recognized.push({ pattern: p, count: 1 });
+  }
+  
   // 三暗刻
   if (anKeCount >= 3) {
     const p = getPatternById('sanAnKe');
@@ -290,7 +350,6 @@ export const recognizeMCRPatterns = (
   }
   
   // 组合龙 (12)：147/258/369 三组龙齐全，且整手牌是合法和牌结构
-  const concealedCounts = countsToArray(countTiles(hand));
   if (knittedRemainders(concealedCounts).length > 0 && checkWinning(concealedCounts, melds.length, GameMode.MCR)) {
     const p = getPatternById('zuHeLong');
     if (p) recognized.push({ pattern: p, count: 1 });
@@ -352,10 +411,8 @@ export const recognizeMCRPatterns = (
   
   // ===== 4番 =====
   
-  // 全带幺
-  // 每组都带幺九或字牌（简化检测）
-  const hasTerminalInEachGroup = melds.every(m => m.tiles.some(isTerminalOrHonor));
-  if (hasTerminalInEachGroup && allTiles.some(isTerminalOrHonor)) {
+  // 全带幺 (4)：同一套拆分里每副面子及将牌都含幺九或字牌
+  if (setPatterns?.quanDaiYao) {
     const p = getPatternById('quanDaiYao');
     if (p) recognized.push({ pattern: p, count: 1 });
   }
@@ -390,8 +447,8 @@ export const recognizeMCRPatterns = (
     if (p) recognized.push({ pattern: p, count: 1 });
   }
   
-  // 平和（4顺子+序数将）
-  if (chiMelds.length >= 4 || (chiMelds.length >= 3 && melds.length === chiMelds.length)) {
+  // 平和 (2)：同一套拆分里 4 副顺子 + 序数牌作将（不计无字见 excludes）
+  if (setPatterns?.pingHu) {
     const p = getPatternById('pingHu');
     if (p) recognized.push({ pattern: p, count: 1 });
   }

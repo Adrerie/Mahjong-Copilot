@@ -1,4 +1,4 @@
-﻿/**
+/**
  * 和牌判断模块
  * - 标准型和牌检查
  * - 七对检查
@@ -53,6 +53,76 @@ export const knittedRemainders = (tiles: number[]): number[][] => {
     remainders.push(rest);
   }
   return remainders;
+};
+
+/** 暗手拆出的一副面子：刻子（含杠的张数不影响形状）或顺子。 */
+export type SetShape =
+  | { kind: 'pong'; tile: number }
+  | { kind: 'chow'; start: number };
+
+/** 一种合法拆分：暗手面子 + 将牌。已有副露由调用方单独锁定，不在此列。 */
+export interface HandDecomposition {
+  shapes: SetShape[];
+  pair: number;
+}
+
+/** 拆分去重用的规范键，避免同一形状集合被不同递归顺序重复计入。 */
+const decompositionKey = (decomposition: HandDecomposition): string => {
+  const shapes = decomposition.shapes
+    .map(shape => (shape.kind === 'pong' ? `p${shape.tile}` : `c${shape.start}`))
+    .sort();
+  return `${shapes.join(',')}|${decomposition.pair}`;
+};
+
+/**
+ * 枚举暗手的全部合法拆分（needMelds 副面子 + 1 将）。
+ * 用于「同一拆分内计番」：面子相关番种只在同一套拆分里成立，多套拆分按分值择优。
+ */
+export const decomposeHand = (tiles: number[], needMelds: number): HandDecomposition[] => {
+  if (tiles.length !== 34 || !Number.isInteger(needMelds) || needMelds < 0) return [];
+  const total = tiles.reduce((sum, count) => sum + count, 0);
+  if (total !== needMelds * 3 + 2) return [];
+  const found = new Map<string, HandDecomposition>();
+  for (let pair = 0; pair < 34; pair++) {
+    if (tiles[pair] < 2) continue;
+    const rest = [...tiles];
+    rest[pair] -= 2;
+    for (const shapes of formMeldShapes(rest, needMelds)) {
+      const decomposition: HandDecomposition = { shapes, pair };
+      found.set(decompositionKey(decomposition), decomposition);
+    }
+  }
+  return [...found.values()];
+};
+
+/** 递归拆出 need 副面子；每次都从最小的有牌张展开，保证不重复枚举同一形状集合。 */
+const formMeldShapes = (tiles: number[], need: number): SetShape[][] => {
+  if (need === 0) return tiles.every(count => count === 0) ? [[]] : [];
+  let first = -1;
+  for (let index = 0; index < tiles.length; index++) {
+    if (tiles[index] > 0) { first = index; break; }
+  }
+  if (first === -1) return [];
+  const results: SetShape[][] = [];
+  if (tiles[first] >= 3) {
+    tiles[first] -= 3;
+    for (const rest of formMeldShapes(tiles, need - 1)) {
+      results.push([{ kind: 'pong', tile: first }, ...rest]);
+    }
+    tiles[first] += 3;
+  }
+  if (first < 27 && first % 9 <= 6 && tiles[first + 1] > 0 && tiles[first + 2] > 0) {
+    tiles[first]--;
+    tiles[first + 1]--;
+    tiles[first + 2]--;
+    for (const rest of formMeldShapes(tiles, need - 1)) {
+      results.push([{ kind: 'chow', start: first }, ...rest]);
+    }
+    tiles[first]++;
+    tiles[first + 1]++;
+    tiles[first + 2]++;
+  }
+  return results;
 };
 
 export const checkWinning = (inputTiles: number[], existingMelds: number, mode: GameMode = GameMode.MCR): boolean => {
