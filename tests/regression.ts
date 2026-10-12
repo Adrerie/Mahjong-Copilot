@@ -713,13 +713,13 @@ test('杠：不明暗杠类型、不把杠算成四归一；七对保留四张�
   assert.equal(counts.yaoJiuKe, 1);
   assert.equal(mcrFan(hand, melds), 3); // 幺九刻1 + 连六1 + 无字1
 
-  // 七对：四张同牌已在对子里，不再计四归一
+  // 七对：四张同牌分作两对，仍计四归一（不属于杠）
   const qiDui = [...tiles('1111223344', Suit.Man), ...tiles('5566', Suit.Pin)];
   assert.equal(checkWinning(countsToArray(countTiles(qiDui)), 0), true);
   const qiDuiApi = calculateMCRTotalFan(qiDui, []);
   assert.ok(qiDuiApi.patterns.some(p => p.id === 'qiDui'));
-  assert.ok(!qiDuiApi.patterns.some(p => p.id === 'siGuiYi'));
-  assert.equal(qiDuiApi.totalFan, 26); // 七对24 + 无字1 + 缺一门1
+  assert.equal(qiDuiApi.patterns.find(p => p.id === 'siGuiYi')?.count, 1);
+  assert.equal(qiDuiApi.totalFan, 28); // 七对24 + 四归一2 + 无字1 + 缺一门1
 });
 
 test('高价值番种：大三元与三色三同顺都要识别且不重复计低番', () => {
@@ -740,7 +740,7 @@ test('高价值番种：大三元与三色三同顺都要识别且不重复计�
   assert.equal(tripleApi.isValid, true);
 });
 
-test('七对/连七对/九莲宝灯取番数最高的那个拆分', () => {
+test('七对/连七对择优，九莲宝灯缺和牌张时不确认', () => {
   const qiDui = [...tiles('1111223344', Suit.Man), ...tiles('5566', Suit.Pin)];
   assert.equal(checkWinning(countsToArray(countTiles(qiDui)), 0), true);
   assert.equal(mcrPatternIds(qiDui).includes('qiDui'), true);
@@ -756,10 +756,20 @@ test('七对/连七对/九莲宝灯取番数最高的那个拆分', () => {
   const jiuLian = [...tiles('1112345678999', Suit.Man), createTile(Suit.Man, 5)];
   assert.equal(checkWinning(countsToArray(countTiles(jiuLian)), 0), true);
   const jiuApi = calculateMCRTotalFan(jiuLian, []);
-  assert.ok(jiuApi.patterns.some(p => p.id === 'jiuLianBaoDeng'));
-  assert.ok(!jiuApi.patterns.some(p => p.id === 'qingYiSe'));
-  assert.ok(!jiuApi.patterns.some(p => p.id === 'wuZi'));
-  assert.equal(jiuApi.totalFan, 88);
+  assert.ok(!jiuApi.patterns.some(p => p.id === 'jiuLianBaoDeng'));
+  assert.ok(jiuApi.patterns.some(p => p.id === 'qingYiSe'));
+  assert.ok(jiuApi.missingContext.includes('winningTile'));
+});
+
+test('顺子小番不重复套算，全带五不得由字牌索引碰巧成立', () => {
+  const low = calculateMCRTotalFan([...tiles('234567', Suit.Man), ...tiles('234567', Suit.Pin), ...tiles('99', Suit.Sou)], []);
+  assert.equal(low.totalFan, 5); // 平和2 + 喜相逢2 + 连六1，不能再套算第二个连六
+  const high = calculateMCRTotalFan([...tiles('123456', Suit.Man), ...tiles('456', Suit.Pin), ...tiles('78955', Suit.Sou)], []);
+  assert.equal(high.patterns.filter(p => ['yiBanGao', 'xiXiangFeng', 'lianLiu', 'laoShaoFu'].includes(p.id)).reduce((n, p) => n + p.count, 0), 1);
+  const falseFive = [...tiles('555', Suit.Zihai), ...tiles('555', Suit.Man), ...tiles('34555', Suit.Pin), ...tiles('456', Suit.Sou)];
+  assert.ok(!mcrPatternIds(falseFive).includes('quanDaiWu'));
+  const realFive = [...tiles('555', Suit.Man), ...tiles('34555', Suit.Pin), ...tiles('345456', Suit.Sou)];
+  assert.ok(mcrPatternIds(realFive).includes('quanDaiWu'));
 });
 
 // ============================================================

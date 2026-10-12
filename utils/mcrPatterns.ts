@@ -198,7 +198,7 @@ const recognizeSetPatterns = (
   // 平和 / 全带幺 / 全带五
   if (chows.length === 4 && isNumberIndex(pair)) add('pingHu');
   if (views.every(view => view.indices.some(isTerminalOrHonorIndex)) && isTerminalOrHonorIndex(pair)) add('quanDaiYao');
-  if (views.every(view => view.indices.some(index => numberValueOfIndex(index) === 5)) &&
+  if (views.every(view => view.indices.every(isNumberIndex) && view.indices.some(index => numberValueOfIndex(index) === 5)) &&
     isNumberIndex(pair) && numberValueOfIndex(pair) === 5) add('quanDaiWu');
 
   // 碰碰和 / 暗刻族 / 杠数
@@ -361,7 +361,22 @@ const recognizeSetPatterns = (
   // 全求人：4 副全为吃/碰（含杠时无法确认明暗）+ 和别家打出的牌
   if (melds.length === 4 && melds.every(meld => meld.type !== 'gang') && winSource === 'claim') add('quanQiuRen');
 
-  return out;
+  // 两副顺子组成的小番必须遵守套算一次；三副顺子的高番成立时，
+  // 第四副最多再贡献一个小番，不能将所有两两关系直接相加。
+  const lowChowIds = ['yiBanGao', 'xiXiangFeng', 'lianLiu', 'laoShaoFu'];
+  const fourChowIds = ['yiSeSiTongShun', 'yiSeSiBuGao', 'yiSeShuangLongHui', 'sanSeShuangLongHui'];
+  const threeChowIds = ['qingLong', 'huaLong', 'sanSeSanTongShun', 'yiSeSanTongShun', 'yiSeSanBuGao', 'sanSeSanBuGao'];
+  const scored = calculateTotalFan(out).validPatterns;
+  let allowance = scored.some(r => fourChowIds.includes(r.pattern.id)) ? 0
+    : scored.some(r => threeChowIds.includes(r.pattern.id)) ? 1 : Math.max(0, chows.length - 1);
+  for (const id of lowChowIds) {
+    const hit = out.find(r => r.pattern.id === id);
+    if (!hit || !scored.includes(hit)) continue;
+    hit.count = Math.min(hit.count, allowance);
+    allowance -= hit.count;
+  }
+
+  return out.filter(r => r.count > 0);
 };
 
 // ========== 与拆分无关的番种 ==========
@@ -430,10 +445,10 @@ const sourcePatterns = (
   return out;
 };
 
-/** 与面子拆分互斥的特殊结构：七对 / 连七对 / 九莲宝灯。 */
-const EXCLUSIVE_STRUCTURE_IDS = new Set(['qiDui', 'lianQiDui', 'jiuLianBaoDeng']);
+/** 与面子拆分互斥的特殊结构：七对 / 连七对。 */
+const EXCLUSIVE_STRUCTURE_IDS = new Set(['qiDui', 'lianQiDui']);
 
-/** 特殊结构番种：七对、连七对、九莲宝灯、七星不靠、全不靠、组合龙。 */
+/** 特殊结构番种：七对、连七对、七星不靠、全不靠、组合龙。 */
 const recognizeStructurePatterns = (
   allTiles: Tile[],
   melds: Meld[],
@@ -452,6 +467,11 @@ const recognizeStructurePatterns = (
   const allEven = [...counts.values()].every(count => count % 2 === 0);
   if (melds.length === 0 && allTiles.length === 14 && pairUnits === 7 && allEven) {
     add('qiDui');
+    const hogs = countArray.filter(count => count === 4).length;
+    if (hogs > 0) {
+      const pattern = getPatternById('siGuiYi');
+      if (pattern) out.push({ pattern, count: hogs });
+    }
     // 连七对：同一花色 7 个连续对子
     const sameSuit = new Set(allTiles.map(t => t.suit)).size === 1 && !allTiles.some(isHonors);
     if (sameSuit) {
@@ -460,15 +480,8 @@ const recognizeStructurePatterns = (
     }
   }
 
-  // 九莲宝灯：门前清同花色 1112345678999 + 该花色任意一张
-  if (melds.length === 0 && allTiles.length === 14 && !allTiles.some(isHonors)) {
-    const suits = new Set(allTiles.map(t => t.suit));
-    if (suits.size === 1) {
-      const start = Math.floor(tileToIndex(allTiles[0]) / 9) * 9;
-      const need = [3, 1, 1, 1, 1, 1, 1, 1, 3];
-      if (need.every((required, offset) => countArray[start + offset] >= required)) add('jiuLianBaoDeng');
-    }
-  }
+  // 九莲宝灯须核对和牌前的13张为1112345678999；当前未记录和牌张，
+  // 无法从最终14张倒推这个事实，因此暂不确认88番，仍按普通拆分计番。
 
   // 七星不靠 / 全不靠
   const knitted = melds.length === 0 ? classifyKnittedHand(countArray) : 'none';
@@ -496,7 +509,7 @@ export const recognizeMCRPatterns = (
   const concealedCounts = countsToArray(countTiles(hand));
   const structures = recognizeStructurePatterns(allTiles, melds, counts, concealedCounts);
   const exclusive = structures.filter(r => EXCLUSIVE_STRUCTURE_IDS.has(r.pattern.id));
-  const shared = structures.filter(r => !EXCLUSIVE_STRUCTURE_IDS.has(r.pattern.id));
+  const shared = structures.filter(r => !EXCLUSIVE_STRUCTURE_IDS.has(r.pattern.id) && r.pattern.id !== 'siGuiYi');
 
   const locked = lockedMeldShapes(melds);
   const decompositions = melds.length <= 4 ? decomposeHand(concealedCounts, 4 - melds.length) : [];
@@ -505,7 +518,10 @@ export const recognizeMCRPatterns = (
     ...shared,
     ...recognizeSetPatterns(decomposition, locked, melds, winSource, allCounts),
   ]);
-  exclusive.forEach(structure => candidates.push([...tilePatterns, ...shared, structure]));
+  exclusive.forEach(structure => candidates.push([
+    ...tilePatterns, ...shared, structure,
+    ...(structure.pattern.id === 'qiDui' ? structures.filter(r => r.pattern.id === 'siGuiYi') : []),
+  ]));
   if (candidates.length === 0) return [...tilePatterns, ...structures, ...sourcePatterns([...tilePatterns, ...structures], melds, winSource)];
 
   let best = candidates[0];
