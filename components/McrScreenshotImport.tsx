@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Tile, Language } from '../types';
-import { createTile, getTileKey } from '../constants';
+import { createTile } from '../constants';
 import { compareHandSnapshots } from '../utils/gameSnapshot';
 import {
   recognizeMcrScreenshot, ScreenshotTile, TILE_OPTIONS,
@@ -28,7 +28,7 @@ const McrScreenshotImport: React.FC<Props> = ({ lang, onApply, currentHand, canC
   }, [slots]);
   const ready = (slots.length === 13 || slots.length === 14) && known === slots.length && duplicates.length === 0;
   const delta = useMemo(() => ready && canContinue && [13, 14].includes(currentHand.length)
-    ? compareHandSnapshots(currentHand.map(t => getTileKey(t.suit, t.value)), slots.map(s => s.key!))
+    ? compareHandSnapshots(currentHand.map(t => `${t.suit}${t.value}`), slots.map(s => s.key!))
     : null, [ready, canContinue, currentHand, slots]);
 
   const readFile = async (file?: File) => {
