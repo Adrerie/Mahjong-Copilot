@@ -76,7 +76,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-signed_release:
+  signed_release:
     name: Build and verify signed release APK
     # Never expose signing credentials to pull requests or feature branches.
     # Main pushes produce a verifiable artifact; version tags additionally publish it.
