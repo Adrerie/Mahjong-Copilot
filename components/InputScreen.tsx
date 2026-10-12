@@ -13,6 +13,8 @@ import {
 import TileSelector from './TileSelector';
 import TileUI from './TileUI';
 import AnalysisResultModal from './AnalysisResultModal';
+import McrScreenshotImport from './McrScreenshotImport';
+import { validateGameState } from '../utils/inputValidation';
 
 interface Props {
   mode: GameMode;
@@ -192,6 +194,21 @@ const InputScreen: React.FC<Props> = ({ mode, lang, setLang, onBack }) => {
     setTextInput('');
   };
 
+  const handleScreenshotHand = (hand: Tile[]) => {
+    // A screenshot is a NEW round observation, not an addition to stale melds/river.
+    // The wall count is left as-is: a single screenshot does not prove its meaning.
+    const candidate: GameState = { ...emptyEntry(GameMode.MCR), wallCount: entry.wallCount, hand };
+    const errors = validateGameState(candidate, lang);
+    if (errors.length) {
+      setEntryError({ zh: validateGameState(candidate, 'zh')[0], en: validateGameState(candidate, 'en')[0] });
+      return;
+    }
+    commit(candidate);
+    setTextInput('');
+    setShowKeyboard(false);
+    setAnalysis(analyzeGame(candidate, lang));
+  };
+
   const handleAnalyze = () => {
     setAnalysis(analyzeGame(entry, lang));
     setShowKeyboard(false);
@@ -330,6 +347,10 @@ const InputScreen: React.FC<Props> = ({ mode, lang, setLang, onBack }) => {
                 </button>
             </div>
         </div>
+
+        {mode === GameMode.MCR && (
+          <McrScreenshotImport lang={lang} onApply={handleScreenshotHand} />
+        )}
 
         {/* === SICHUAN WIN CONTEXT === */}
         {mode === GameMode.Sichuan && (
