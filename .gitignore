@@ -33,6 +33,6 @@ android/app/release/
 *.pfx
 
 # Local real-table samples, detector outputs and Python bytecode
-real-table-eval/
+real-table-eval*/
 **/__pycache__/
 *.pyc
