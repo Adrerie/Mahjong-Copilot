@@ -32,6 +32,7 @@ import {
 } from '../utils/mahjongLogic';
 import { validateGameState } from '../utils/inputValidation';
 import { recognizeSichuanPatterns } from '../utils/sichuanAnalyzer';
+import { classifyGlyph, HAND_CENTERS, isScreenshotRatio, REFERENCE_GLYPHS, TILE_OPTIONS } from '../utils/mcrScreenshot';
 import {
   decodeEntryState,
   encodeEntryState,
@@ -85,6 +86,32 @@ const test = (name: string, run: () => void) => {
     console.log(`FAIL ${name}: ${String((error as Error).message).split('\n')[0]}`);
   }
 };
+
+test('国标截图导入：固定13+摸入位、有限模板可信匹配及未知拒识', () => {
+  assert.equal(HAND_CENTERS.length, 14);
+  assert.equal(TILE_OPTIONS.length, 34);
+  assert.equal(isScreenshotRatio(2048, 1280), true);
+  assert.equal(isScreenshotRatio(1536, 960), true);
+  assert.equal(isScreenshotRatio(1920, 1080), false);
+  for (const [key, descriptors] of Object.entries(REFERENCE_GLYPHS)) {
+    for (const descriptor of descriptors) {
+      assert.equal(descriptor.length, 192);
+      assert.equal(classifyGlyph(descriptor).key, key);
+    }
+  }
+  assert.equal(classifyGlyph('0'.repeat(192)).key, null);
+  assert.equal(classifyGlyph('bad').key, null);
+  // 一份示例中的13张+右侧单独摸入牌：不会以13张误触发弃牌建议。
+  const screenHand: Tile[] = [
+    ...tiles('1358898', Suit.Man), ...tiles('2', Suit.Sou),
+    ...tiles('1146', Suit.Pin), createTile(Suit.Zihai, 1), createTile(Suit.Zihai, 4),
+  ];
+  assert.equal(screenHand.length, 14);
+  const input = state(screenHand);
+  assert.deepEqual(validateGameState(input, 'zh'), []);
+  assert.ok(analyzeGame(input, 'zh').status !== 'invalid');
+  assert.equal(analyzeGame({ ...input, hand: screenHand.slice(0, 13) }, 'zh').bestDiscard, undefined);
+});
 
 // ============================================================
 // 一、输入校验与牌张边界
