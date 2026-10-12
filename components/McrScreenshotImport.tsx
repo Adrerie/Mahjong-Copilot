@@ -3,14 +3,14 @@ import { Tile, Language } from '../types';
 import { createTile } from '../constants';
 import { compareHandSnapshots } from '../utils/gameSnapshot';
 import {
-  recognizeMcrScreenshot, ScreenshotTile, TILE_OPTIONS,
+  recognizeMcrScreenshot, ScreenshotTile, TILE_OPTIONS, storeVerifiedGlyphs,
 } from '../utils/mcrScreenshot';
 
 interface Props {
   lang: Language;
   currentHand: Tile[];
   canContinue: boolean;
-  onApply: (hand: Tile[], mode: 'replace' | 'continue', confirmedDiscard?: string) => void;
+  onApply: (hand: Tile[], mode: 'replace' | 'continue', confirmedDiscard?: string) => boolean;
 }
 
 /** Preview and repair a single 13+drawn screenshot. Never alter the game state before confirmation. */
@@ -55,8 +55,9 @@ const McrScreenshotImport: React.FC<Props> = ({ lang, onApply, currentHand, canC
       const info = TILE_OPTIONS.find(option => option.key === slot.key)!;
       return createTile(info.suit, info.value);
     });
-    onApply(tiles, mode, mode === 'continue' && recordDiscard && delta?.kind === 'discard'
+    const committed = onApply(tiles, mode, mode === 'continue' && recordDiscard && delta?.kind === 'discard'
       ? delta.removed[0] : undefined);
+    if (committed) storeVerifiedGlyphs(slots);
   };
 
   return (
@@ -66,7 +67,7 @@ const McrScreenshotImport: React.FC<Props> = ({ lang, onApply, currentHand, canC
       </summary>
       <p className="text-xs text-gray-500 mt-2 mb-3">
         {zh
-          ? '仅适配所提供的 16:10 横屏布局：底部13张及右侧单独摸入牌。现有样本只覆盖11种牌面；不认识的牌必须逐张修正。截图仅在本机处理，导入后可撤销。'
+          ? '仅适配所提供的 16:10 横屏布局：底部13张及右侧单独摸入牌。现有样本只覆盖11种牌面；不认识的牌必须逐张修正。截图仅在本机处理；确认后的牌面可作为少量本地识别样本（非训练），导入可撤销。'
           : 'For the supplied 16:10 landscape layout only: 13 hand tiles and optional separate draw. Reference samples cover only 11 faces; correct unknown tiles manually. Images stay on-device.'}
       </p>
       <label className="inline-flex cursor-pointer rounded-lg bg-[#1A237E] text-white font-bold text-sm px-4 py-2">
