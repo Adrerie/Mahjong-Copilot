@@ -525,8 +525,13 @@ test('川麻：边界读法与封顶，未建模事件不加番', () => {
   assert.deepEqual(validateGameState(eventState, 'zh'), []);
   assert.equal(decodeEntryState(encodeEntryState(eventState), GameMode.Sichuan)?.sichuanWinEvent, 'robbingKong');
   assert.equal(analyzeGame(eventState, 'zh').suggestions[0]?.scoreText, '2 指数番 · 4 倍');
-  // 单次和牌参考只列出结算所需信息，不推断对手状态。
-  assert.ok(analyzeGame(eventState, 'zh').suggestions[0]?.patternDetails.some(d => d.includes('各家是否已胡')));
+  // 番型明细不泄露缺失上下文或结算诊断；内部限制仍保留。
+  for (const lang of ['zh', 'en'] as const) {
+    const details = analyzeGame(eventState, lang).suggestions[0]?.patternDetails ?? [];
+    assert.ok(details.includes(lang === 'zh' ? '点炮' : 'Claim'));
+    assert.ok(!details.some(d => /未记录|未结算|还需要|unknown|excluded|would need/i.test(d)));
+    assert.ok(recognizeSichuanPatterns(pongHand, [], lang, { winSource: 'claim', winEvent: 'robbingKong' }).pendingContext);
+  }
   assert.ok(validateGameState({ ...eventState, winSource: 'selfDraw' }, 'zh').length > 0);
   assert.ok(validateGameState({ ...eventState, sichuanWinEvent: 'kongBloom' }, 'zh').length > 0);
   // 国标路径不受影响：仍按番数显示，不出现指数番文本

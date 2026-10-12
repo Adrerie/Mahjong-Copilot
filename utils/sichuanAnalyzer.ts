@@ -270,8 +270,8 @@ export const recognizeSichuanPatterns = (
     lastDraw: { zh: '海底捞月', en: 'Last tile draw' },
     lastDiscard: { zh: '海底炮', en: 'Last tile discard' },
   };
-  if (context.winSource === 'selfDraw') details.push(lang === 'zh' ? '自摸：其余未胡玩家付款（人数未记录）' : 'Self-draw: active opponents pay (count unknown)');
-  else if (context.winSource === 'claim') details.push(lang === 'zh' ? '点炮：由放炮者付款（未记录具体玩家）' : 'Claim: discarder pays (player unknown)');
+  if (context.winSource === 'selfDraw') details.push(lang === 'zh' ? '自摸' : 'Self-draw');
+  else if (context.winSource === 'claim') details.push(lang === 'zh' ? '点炮' : 'Claim');
   if (validEvent && context.winEvent && context.winEvent !== 'ordinary')
     details.push(`${eventLabels[context.winEvent][lang]} (+1 ${t.exponentUnit})`);
   if (lastTileBlocked) {
@@ -283,16 +283,12 @@ export const recognizeSichuanPatterns = (
     ? `${t.exponentUnit} ${uncappedExponent} → ${lang === 'zh' ? '封顶' : 'capped at'} ${SICHUAN_RULE.capExponent} = ${multiplier} ${t.timesUnit}`
     : `${t.exponentUnit} ${uncappedExponent} = ${multiplier} ${t.timesUnit}`);
   const sourceRecorded = context.winSource && context.winSource !== 'unknown';
-  // 整局结算缺少四人牌局事实：这里只列出需要哪些信息，绝不按单人录牌推断对手状态。
-  const settlementNeeds = lang === 'zh'
-    ? '整局结算还需要：各家是否已胡、杠的归属与类型、是否流局、放炮者是哪家；当前没有这些数据，不推断。'
-    : 'Settlement would need each seat\'s win state, kong ownership and type, whether the hand was drawn, and who discarded; none of that is recorded, so nothing is inferred.';
   const pendingContext = sourceRecorded && context.winEvent
     ? (lang === 'zh' ? '仅为单次和牌倍率；杠分与多人支付未结算' : 'Single-win multiplier only; kong payments and multi-player settlement excluded')
     : sourceRecorded
       ? (lang === 'zh' ? '特殊和牌事件未记录，暂不加事件番；杠分与多人支付未结算' : 'Special win event unrecorded; no event bonus; kong payments excluded')
       : t.pendingEvents;
-  details.push(pendingContext, settlementNeeds);
+  // 缺失上下文与结算限制保留在内部字段，不混入面向用户的番型明细。
 
   return {
     ruleId: SICHUAN_RULE.id,
