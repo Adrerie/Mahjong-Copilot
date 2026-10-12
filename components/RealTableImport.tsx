@@ -13,6 +13,11 @@ interface DetectorBridge {
 }
 const detector = registerPlugin<DetectorBridge>('RealTableDetector');
 const optionFor = (key: string | null) => TILE_OPTIONS.find(t => t.key === key);
+const modelLabelToKey = (label: string): string | null => {
+  const match = /^([1-9])([mpsz])$/.exec(label);
+  const key = match ? `${match[2]}${match[1]}` : label;
+  return optionFor(key)?.key ?? null;
+};
 const overlaps = (a: RawBox, b: RawBox): boolean => {
   const w = Math.max(0, Math.min(a.x2, b.x2) - Math.max(a.x1, b.x1));
   const h = Math.max(0, Math.min(a.y2, b.y2) - Math.max(a.y1, b.y1));
@@ -55,7 +60,7 @@ const RealTableImport: React.FC<Props> = ({ lang, onApply }) => {
   const selected = boxes.filter(b => b.region === 'hand' || b.region === 'river');
   const hand = boxes.filter(b => b.region === 'hand').sort((a, b) => a.x1 - b.x1);
   const river = boxes.filter(b => b.region === 'river');
-  const handKeys = [...hand.map(b => b.key), ...missing.filter(Boolean)];
+  const handKeys = [...hand.map(b => b.key), ...missing];
   const counts = useMemo(() => {
     const result = new Map<string, number>();
     for (const key of [...selected.map(b => b.key), ...missing]) if (key) {
@@ -65,7 +70,7 @@ const RealTableImport: React.FC<Props> = ({ lang, onApply }) => {
   }, [boxes, missing]);
   const conflicts = selected.some((a, i) => selected.slice(i + 1).some(b => overlaps(a, b)));
   const ready = [13, 14].includes(handKeys.length) && handKeys.every(Boolean) &&
-    river.every(b => !!b.key) && !counts && !conflicts;
+    river.every(b => !!b.key) && missing.every(Boolean) && !counts && !conflicts;
 
   const read = async (file?: File) => {
     if (!file || availability !== 'ready') return;
@@ -86,7 +91,7 @@ const RealTableImport: React.FC<Props> = ({ lang, onApply }) => {
       setDuration(result.elapsedMs);
       setBoxes(result.detections.map((b, id) => ({
         ...b, id, region: 'unassigned',
-        key: optionFor(b.label)?.key ?? null,
+        key: modelLabelToKey(b.label),
       })));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
