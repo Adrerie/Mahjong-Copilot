@@ -1,4 +1,4 @@
-import { GameMode, GameState, KongKind, Language, Suit, Tile, Wind } from '../types';
+import { GameMode, GameState, KongKind, Language, SichuanWinEvent, Suit, Tile, Wind } from '../types';
 import { MAX_WALL_MCR, MAX_WALL_SICHUAN, getTileKey } from '../constants';
 import { countTiles } from './tileHelpers';
 
@@ -12,6 +12,12 @@ export const isTile = (value: unknown): value is Tile => {
 const isWind = (value: unknown): value is Wind => value === 1 || value === 2 || value === 3 || value === 4;
 const isKongKind = (value: unknown): value is KongKind =>
   value === 'exposed' || value === 'concealed' || value === 'added';
+export const isSichuanWinEvent = (value: unknown): value is SichuanWinEvent =>
+  value === 'ordinary' || value === 'kongBloom' || value === 'kongDiscard' ||
+  value === 'robbingKong' || value === 'lastDraw' || value === 'lastDiscard';
+export const sichuanEventSource = (event: SichuanWinEvent): 'selfDraw' | 'claim' | null =>
+  event === 'kongBloom' || event === 'lastDraw' ? 'selfDraw' :
+  event === 'kongDiscard' || event === 'robbingKong' || event === 'lastDiscard' ? 'claim' : null;
 
 /** 和牌张必须真的在暗手里；不在则视为未记录，绝不猜。 */
 export const winningTileInHand = (state: GameState): Tile | null => {
@@ -38,6 +44,19 @@ export const validateGameState = (state: GameState, lang: Language, requireCompl
     if (!valid) errors.push(error('副露组合不合法', 'Invalid meld'));
     if (meld.kongKind !== undefined && (meld.type !== 'gang' || !isKongKind(meld.kongKind))) {
       errors.push(error('只有杠才能记录明杠/暗杠/补杠', 'Only a kong can record melded, concealed or added'));
+    }
+  }
+  // 四川特殊事件不复用国标的末张/杠后标记：两者的含义和结算不同。
+  if (state.winSource !== undefined && !['selfDraw', 'claim', 'unknown'].includes(state.winSource)) {
+    errors.push(error('和牌方式不合法', 'Invalid win source'));
+  }
+  if (state.sichuanWinEvent != null && (state.mode !== GameMode.Sichuan || !isSichuanWinEvent(state.sichuanWinEvent))) {
+    errors.push(error('四川和牌事件不合法', 'Invalid Sichuan win event'));
+  } else if (state.mode === GameMode.Sichuan && state.sichuanWinEvent) {
+    const expected = sichuanEventSource(state.sichuanWinEvent);
+    if (expected && state.winSource !== expected) errors.push(error('特殊事件与自摸/点炮不一致', 'Win event conflicts with win source'));
+    if (state.sichuanWinEvent === 'kongBloom' && !state.melds.some(m => m.type === 'gang')) {
+      errors.push(error('杠上开花须记录自己的杠', 'Kong bloom requires a recorded own kong'));
     }
   }
   // 和牌上下文：记录了就必须合法；和牌张不在暗手时按未记录处理，不报错也不计番。
