@@ -198,7 +198,10 @@ test('国标和四川：13张提示进张、14张推荐打哪张，维持模式�
   assert.equal(s14.improvingDraws, undefined);
 
   const needsVoid = analyzeGame(sichuan([...tiles('123456789', Suit.Man), ...tiles('1235', Suit.Pin)], Suit.Man), 'zh');
-  assert.deepEqual(needsVoid.improvingDraws, [], '仍有定缺牌时不可误报正常进张路线');
+  // 定缺牌仍在手：只给非定缺进张方向，并标注是去除定缺后的计算口径，不冒充可和牌路线。
+  assert.ok(needsVoid.improvingDraws?.every(x => x.tile.suit !== Suit.Man), '定缺花色绝不作为进张方向');
+  assert.ok(needsVoid.improvingDraws?.some(x => x.tile.suit === Suit.Pin), '仍有定缺牌时也给出非定缺进张方向');
+  assert.ok(needsVoid.improvingDrawsNote?.includes('定缺'), '需说明进张按去除定缺后的牌形计算');
 });
 
 test('国标：结构已和但8番待核时显示续打备选，不代替8番核验', () => {

@@ -1,33 +1,36 @@
 # Mahjong Copilot · 单一 TODO
 
-稳定版 `main`；本批 [PR #3](https://github.com/Adrerie/Mahjong-Copilot/pull/3)。当前版本 `1.1.0-beta.1`，验收后才递增。原则见 [AGENTS.md](../AGENTS.md)；不单独建阶段计划，不自训任何模型。
+稳定版 `main`；本批 [PR #3](https://github.com/Adrerie/Mahjong-Copilot/pull/3)（分支 `feat/mcr-screenshot-import-20261012`）。当前版本 `1.1.0-beta.1`，验收后才递增。原则见 [AGENTS.md](../AGENTS.md)；不单独建阶段计划，不自训任何模型。
 
-## 本批已改（待平板复核）
+## 本批已改
 
-- [x] 固定16:10国标游戏截图：底部13张和可选第14张、仅11种已有指纹的保守识别、纠错和撤销；并非完整34类识别。
+- [x] 固定16:10国标游戏截图导入：底部13张和可选第14张、仅11种已有指纹的保守识别、纠错和撤销；并非完整34类识别。
 - [x] **恢复国标及四川的出牌辅助**：13张显示有助于降低向听的候选进张（未见张数并非摸牌概率），14张未成牌时推荐弃牌；国标14张虽结构成牌但8番资格待核/不足时，提示“先核验起和、否则续打备选”；已确认能合法和时不劝弃牌。现有 `calculateBestDiscard` 继续作为默认策略。
-- [x] 真实牌桌批量检测评估脚本：一次输入3张照片，输出每图检测框、JSON、总览和人工复核CSV；尚未在真实照片上完成评估，也未装进 Android。
+- [x] **四川13张且手上仍有定缺牌**：进张方向改按去除定缺后的可用牌形计算，只列非定缺进张，弹窗标注计算口径；这不是可和牌路线，定缺警告照常。
+- [x] `scripts/evaluate_real_table.py` 已在3张真实牌桌照片上跑通；默认口径 `imgsz=640 conf=0.22 iou=0.7`（依据见下）。
 
-## 先做三张真实照片验证
+## 三张真实照片评估（2026-10-12，本机，Nano 权重）
 
-- [ ] 在开发机执行 `python scripts/evaluate_real_table.py --image-dir "<3张照片目录>" --weights "<本地Nano.pt>" --out real-table-eval`；核查实际类别映射和许可。[Mahjong-YOLO](https://github.com/nikmomo/Mahjong-YOLO) 为待测候选，不预断准确率。
-- [ ] 对3图逐图校正漏框、误框、牌面类别、手牌/牌池/副露/他家/未知归属；三张图只评估可用性，不报告泛化准确率。仅当检测框确实不够用时考虑 OBB/实例分割。
-- [ ] 平板安装本分支 APK，分别测试国标13张进张、14张弃牌、四川13/14张、截图导入/手动纠错/撤销/离线。
-- [ ] 识牌候选效果可接受后，一次集成 Android ONNX本地模型、相册全图标框、牌面和区域校正、漏检补框、已确认可见牌统计。绝不把全部散牌直接写进 `discards`。
+- [x] 本地执行 `python scripts/evaluate_real_table.py --image-dir "<3张照片目录>" --weights "<本地Nano.pt>" --out real-table-eval`。权重为 [Mahjong-YOLO](https://github.com/nikmomo/Mahjong-YOLO) `models/nano/mahjong-yolon-best.pt`（5,475,354 字节，本地评估用，不入库）。
+- [x] 类别映射实测：该权重是 **37 类**（`1m 1p 1s 1z … 9m 9p 9s 0m 0p 0s`），无 UNKNOWN、无花牌/背面类；本牌组无红五，出现 `0m/0p/0s` 一律按误检处理。脚本按 `model.names` 取标签，不硬编码索引。
+- [x] 尺度与阈值实测：`imgsz=1280` 在同一张牌上产生重复框且类别漂移更多；`640` 手牌行更准。`iou=0.45` 会把相邻牌的高置信框一起抑制（照片2手牌行由 5/7 正确降到 3/7），故保留默认 `0.7`，重复框交给人工复核。
+- [x] 逐图人工复核写入 `real-table-eval/review.csv`（同目录含每图标注图与 JSON；该目录在 gitignore 内，照片与输出都不入库）：照片1 手牌13张约5张类别正确；照片2 手牌行 5/7 正确；照片3 萬子段 7/9 正确。主要错误是筒/索/萬互串、红五误检、同一张牌并列多框；远处小牌与他人手牌召回低，牌墙偶有误检。只评估可用性，不写成泛化准确率。
+- [ ] 检测框不可直接进规则引擎：集成 Android 侧 ONNX、相册全图标框、牌面与区域校正、漏检补框、已确认可见牌统计之前必须人工核对；绝不把桌面散牌、他人手牌、背面牌写进 `discards`。
 
 ## 现成策略权重的最小对照（不用自训）
 
-- [ ] 国标寻找**明确允许使用/再分发的现成专用策略权重**，可评估 [Botzone 国标 Agent](https://github.com/Mars-Dingdang/Botzone-Chinese-Standard-Mahjong) 的已有权重，但其仓库当前无明确许可证，未解决授权前不打包；有明确授权再进行 Android 接入。找不到合适权重就保持当前计算器，不自行训练。
-- [ ] 不依赖当前人工评分监督模型。对现成模型使用规则合法动作 mask、8番起和核验和可观测信息约束；只比较同牌局建议与真实合法性，不事先加入复杂自定收益函数。
-- [ ] 国标在 [Botzone](https://www.botzone.org.cn/) 做许可范围内的完整对局对比（合法率、得分、和牌、放铳）；在 Android 比较动作一致性、单次推理延迟/内存。网站成绩与平板表现分别记录。
-- [ ] 四川暂无经验证的适配血战规则的现成权重：继续现有推荐 + 定缺硬约束，后续再筛候选。Qwen Q4/RAG仅在确有增益时尝试，不自行训练、微调、蒸馏或搭建自博弈环境。日麻暂缓。
+- [x] 许可核查：[Mars-Dingdang/Botzone-Chinese-Standard-Mahjong](https://github.com/Mars-Dingdang/Botzone-Chinese-Standard-Mahjong) **无任何许可证**（API `license:null`，仓库树内无 LICENSE），虽带 `artifacts/*.pt`，授权未解决前不打包、不接入。
+- [x] 唯一同时具备明确许可证与已发布权重的国标候选：[flowwalker/ZZmahjongBot](https://github.com/flowwalker/ZZmahjongBot)（MIT，3 个约 39.7 MiB checkpoint；输入 `(B,160,4,9)` + 动作 mask `(B,235)`）。两个未决项：仓库没有 ONNX 导出脚本；训练所用 Botzone SL 语料未声明许可。两项解决前只做本地对照，不进 APK。
+- [ ] 国标对照下一步：自行导出 ONNX → 在同一局面上与 `calculateBestDiscard` 比较（合法动作 mask、8番起和核验由本项目提供）；再在 Android 上比较动作一致性、单次推理延迟与内存。
+- [x] 四川：**没有**匹配血战规则的现成权重（[lauyikfung/SichuaMahjongAI](https://github.com/lauyikfung/SichuaMahjongAI) 是 RLCard 简化麻将 DQN，无定缺、无番/倍数、无血战续打，且仓库根目录无许可证）。继续现有推荐 + 定缺硬约束。Qwen Q4/RAG 仅在确有增益时再做，不搭建自博弈/蒸馏/微调环境；日麻暂缓。
+- [ ] Android 端侧推理运行时可选 `onnxruntime-android`（MIT，Android AAR）或 `@cantoo/capacitor-onnx`（MIT，需 minSdk≥24/compileSdk≥34/JDK≥17）；AGPL/GPL 权重（如日麻 Mortal）不可打包。
 
 ## 保留限制（暂不扩张）
 
-- [ ] Android主动授权的MediaProjection悬浮窗、多帧出牌/碰杠历史，待单图闭环完成后合并实施。
+- [ ] Android 主动授权的 MediaProjection 悬浮窗、多帧出牌/碰杠历史，待单图闭环完成后合并实施。
 - [ ] 四川海底时序、完整四人结算及地区变体；国标逐张8番起和与完整81番排除关系。
 - [ ] 正式签名 APK 覆盖安装、存档保留、真机设备验收。
 
 ## 最少校验
 
-`npm test && npm run typecheck && npm run build`，核对 Actions；3张实拍每张保留人工审核结果；不把未实测的检测准确率、策略胜率或 Android 性能写成已达成。
+`npm test && npm run typecheck && npm run build`，Android `assembleDebug`，核对 Actions；3张实拍每张保留标注图、JSON、人工复核。真机只标记实际测过的项（本批实测：国标13张显示进张方向且不劝弃牌、国标14张确认和牌不劝弃牌）；不把未实测的检测准确率、策略胜率或 Android 端侧性能写成已达成。

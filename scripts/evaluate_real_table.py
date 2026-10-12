@@ -24,7 +24,9 @@ def run() -> None:
     parser.add_argument("--weights", type=Path, required=True, help="Local YOLO .pt weights")
     parser.add_argument("--out", type=Path, default=Path("real-table-eval"))
     parser.add_argument("--conf", type=float, default=0.22)
-    parser.add_argument("--imgsz", type=int, default=1280)
+    parser.add_argument("--imgsz", type=int, default=640)
+    # ultralytics 默认 iou=0.7 会在同一张牌上留下多个重叠框；收紧到 0.45 减少重复框。
+    parser.add_argument("--iou", type=float, default=0.45)
     args = parser.parse_args()
 
     if not args.weights.is_file():
@@ -61,7 +63,7 @@ def run() -> None:
         target.mkdir(parents=True, exist_ok=True)
 
         result = model.predict(source=str(image), imgsz=args.imgsz,
-                               conf=args.conf, verbose=False, device="cpu")[0]
+                               conf=args.conf, iou=args.iou, verbose=False, device="cpu")[0]
         candidates = []
         for tile_index, box in enumerate(result.boxes or []):
             class_id = int(box.cls.item())

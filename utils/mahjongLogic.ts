@@ -87,16 +87,29 @@ export const analyzeGame = (state: GameState, lang: Language = 'en'): AnalysisRe
   if (discard) waitingTiles = describeWaits(discard.waitingTiles);
 
   const improvingDraws: NonNullable<AnalysisResult['improvingDraws']> = [];
-  if (hand.length + melds.length * 3 === 13 && !hasVoid) {
-    const baseShanten = shanten;
+  let improvingDrawsNote: string | undefined;
+  const effectiveTiles = hand.length + melds.length * 3;
+  // 四川手上仍有定缺牌（摸牌前的常态）：进张方向按去除定缺后的可用牌形计算，
+  // 只列非定缺牌；这不是可和牌路线，定缺警告仍照常提示。
+  const voidInHand = mode === GameMode.Sichuan && !!voidSuit && hand.some(t => t.suit === voidSuit);
+  if (effectiveTiles === 13 && (!hasVoid || voidInHand)) {
+    const focus = voidInHand ? hand.filter(t => t.suit !== voidSuit) : hand;
+    const baseShanten = voidInHand ? calculateShanten(focus, melds, mode) : shanten;
+    if (voidInHand) {
+      improvingDrawsNote = zh
+        ? '定缺牌仍在手：以下进张按去除定缺后的牌形计算，摸到定缺花色仍应直接打出。'
+        : 'Void tiles remain: draws are scored on the de-voided shape; drawn void tiles should still be discarded.';
+    }
     for (let i = 0; i < (mode === GameMode.Sichuan ? 27 : 34); i++) {
       const incoming = indexToTile(i);
       if (mode === GameMode.Sichuan && incoming.suit === voidSuit) continue;
       const remaining = Math.max(0, 4 - (used.get(getTileKey(incoming.suit, incoming.value)) ?? 0));
       if (remaining <= 0) continue;
-      const handAfterDraw = [...hand, incoming];
-      const nextShanten = checkWinning(countsToArray(countTiles(handAfterDraw)), melds.length, mode)
-        ? -1 : Math.max(0, calculateShanten(handAfterDraw, melds, mode));
+      const handAfterDraw = [...focus, incoming];
+      const nextShanten = voidInHand
+        ? calculateShanten(handAfterDraw, melds, mode)
+        : (checkWinning(countsToArray(countTiles(handAfterDraw)), melds.length, mode)
+          ? -1 : Math.max(0, calculateShanten(handAfterDraw, melds, mode)));
       if (nextShanten < baseShanten) improvingDraws.push({ tile: incoming, remaining, shantenAfter: nextShanten });
     }
     improvingDraws.sort((a, b) => a.shantenAfter - b.shantenAfter || b.remaining - a.remaining);
@@ -167,7 +180,8 @@ export const analyzeGame = (state: GameState, lang: Language = 'en'): AnalysisRe
   return { mode, status, isReady, isWinning, shanten, waitingTiles, suggestions, scoreNote,
     bestDiscard: discard && { tile: discard.tile, reason: hasVoid ? (zh ? '优先打定缺花色' : 'Discard void suit first') : discard.reason,
       ukeire: discard.ukeire, ukeireTiles: discard.ukeireTiles },
-    improvingDraws: hand.length + melds.length * 3 === 13 ? improvingDraws.slice(0, 8) : undefined,
+    improvingDraws: effectiveTiles === 13 ? improvingDraws.slice(0, 8) : undefined,
+    improvingDrawsNote,
     scoreEstimate: isWinning ? suggestions[0]?.fan : undefined, contextPending, warnings };
 };
 

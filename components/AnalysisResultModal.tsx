@@ -92,6 +92,9 @@ const AnalysisResultModal: React.FC<Props> = ({ result, lang, onClose }) => {
                   ? '当前尚未摸入第14张，不能直接推荐弃牌。下列为可能改善结构向听的牌，数字是未见张数而非摸牌概率；实际摸牌后再推荐打哪张。'
                   : 'No 14th tile drawn: no discard decision yet. Below are shape-improving draws, with unseen copies (not draw probabilities).'}
               </p>
+              {result.improvingDrawsNote && (
+                <p className="text-xs text-amber-800 bg-amber-50 p-2 rounded-lg">{result.improvingDrawsNote}</p>
+              )}
               {result.improvingDraws.length ? (
                 <div className="flex flex-wrap gap-2">
                   {result.improvingDraws.map(({ tile, remaining, shantenAfter }, index) => (

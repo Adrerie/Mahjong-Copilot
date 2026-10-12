@@ -98,6 +98,8 @@ export interface AnalysisResult {
     remaining: number; // 当前未见张数，而不是下一摸概率
     shantenAfter: number;
   }[];
+  /** 仅四川13张且手上仍有定缺牌时出现：说明进张按去除定缺后的牌形计算，不是可和牌路线。 */
+  improvingDrawsNote?: string;
   suggestions: FanSuggestion[];
   scoreEstimate?: number; // Fan
   /** 成牌但仍有未记录的事件事实（国标）；此时番数只能标「待核」，否则标「参考计番」。 */
