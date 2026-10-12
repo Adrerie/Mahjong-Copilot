@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AnalysisResult, GameMode, GameState, KongKind, Language, Meld, SichuanWinEvent, Suit, Tile, WinSource, Wind } from '../types';
 import {
   INITIAL_WALL_MCR, INITIAL_WALL_SICHUAN, MAX_WALL_MCR, MAX_WALL_SICHUAN,
-  SUIT_LABELS, TEXT, THEME, WIND_LABELS, getTileKey,
+  SUIT_LABELS, TEXT, THEME, WIND_LABELS,
 } from '../constants';
 import { analyzeGame, sortTiles } from '../utils/mahjongLogic';
 import { sichuanEventSource } from '../utils/inputValidation';
@@ -198,7 +198,7 @@ const InputScreen: React.FC<Props> = ({ mode, lang, setLang, onBack }) => {
   const handleScreenshotHand = (hand: Tile[], importMode: 'replace' | 'continue', confirmedDiscard?: string) => {
     // Only verified snapshots update state; a single frame cannot supply a play timeline.
     const oldDiscard = confirmedDiscard && importMode === 'continue'
-      ? entry.hand.find(t => getTileKey(t.suit, t.value) === confirmedDiscard)
+      ? entry.hand.find(t => `${t.suit}${t.value}` === confirmedDiscard)
       : undefined;
     const candidate: GameState = importMode === 'continue'
       ? { ...entry, hand, discards: oldDiscard ? [...entry.discards, oldDiscard] : entry.discards }
