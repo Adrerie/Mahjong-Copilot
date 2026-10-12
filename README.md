@@ -4,6 +4,8 @@
 
 **智能麻将分析工具** | **国标麻将** 🇨🇳 **四川血战** 🔴
 
+**当前版本：1.1.0-beta.1（Android versionCode 2，测试版）**
+
 [![React](https://img.shields.io/badge/React-19.2-61DAFB?logo=react)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?logo=typescript)](https://www.typescriptlang.org/)
 [![Vite](https://img.shields.io/badge/Vite-6.2-646CFF?logo=vite)](https://vitejs.dev/)
@@ -23,7 +25,7 @@ Mahjong Copilot 是一款麻将辅助分析工具：录入手牌、副露与牌�
 - 📊 **智能分析**：向听数与听牌列表，按实体牌计算缺张
 - 🏆 **番种建议**：在同一合法拆分内识别番种，按番值择优
 - 🔢 **番数计算**：国标 8 番起和判定，四川指数番与封顶
-- 🧮 **可核对上下文**：国标可记录自摸/点和、和牌张、末张、门风/圈风、杠后和牌（是/否/杠上开花/抢杠和）、明杠/暗杠/补杠；杠类型默认「未记录」，只有主动选择后才计对应番，未记录的事实一律不计番并提示还缺哪些信息
+- 🧮 **可核对上下文**：国标可记录自摸/点和、和牌张、末张、门风/圈风、杠后和牌与杠类型；四川可记录自摸/点炮及普通、杠上开花、杠上炮、抢杠胡、海底事件。未知事实不自动计番。国标待牌只按结构判断，不保证每张待牌满足8番起和。
 - 🌏 **双语界面**：支持中文/English 切换
 - 📱 **响应式设计**：适配电脑、平板、手机
 - 📴 **无外部运行时依赖**：Tailwind 与字体本地打包，运行时不请求 CDN；离线使用需由本地静态服务器或已安装的 App 提供页面（没有 Service Worker 缓存，浏览器端不能断网重开）
@@ -37,7 +39,7 @@ Mahjong Copilot 是一款麻将辅助分析工具：录入手牌、副露与牌�
 | 2 | 清一色、七对、带幺九、金钩钓 |
 | +1/根 | 每 4 张相同牌算一根 |
 
-> 📌 指数番相加，倍率 = 2^min(指数番, 4)（最多16倍）。已录入的杠上开花、杠上炮、抢杠胡、海底捞月、海底炮各 +1 指数番；普通自摸/点炮只记录来源，**不默认额外加番**。不同房间可能使用“自摸加底/加番”，本应用不混用；杠分、支付人数、查叫/花猪尚未做完整结算。以上采用 [Hi8 示例牌桌](https://hi8.com/g/sichuanmajiang)，非四川统一标准。
+> 📌 指数番相加，倍率 = 2^min(指数番, 4)（最多16倍）。明确录入且事实一致的杠上开花、杠上炮、抢杠胡、海底捞月、海底炮各 +1 指数番；**海底事件还要求牌墙见底**。普通自摸/点炮不默认额外加番。不同房间可能使用“自摸加底/加番”，本应用不混用；**只给单次和牌参考倍率，不计算杠费、多人支付、查叫/花猪等整局结算**。以上采用 [Hi8 示例牌桌](https://hi8.com/g/sichuanmajiang)，非四川统一标准。
 
 ---
 
@@ -89,8 +91,8 @@ Mahjong-Copilot/
 git clone https://github.com/Adrerie/Mahjong-Copilot.git
 cd Mahjong-Copilot
 
-# 2. 安装依赖
-npm install
+# 2. 按锁文件安装依赖
+npm ci
 
 # 3. 启动开发服务器
 npm run dev
@@ -121,11 +123,11 @@ npm run capacitor:sync
 # Windows：生成 Debug APK（仅供测试安装）
 npm run android:assembleDebug
 
-# macOS / Linux：使用仓库内 Gradle Wrapper
-# cd android && ./gradlew assembleDebug
+# macOS / Linux：使用仓库内 Gradle Wrapper（实际命令，不是注释）
+cd android && ./gradlew assembleDebug
 ```
 
-`android/` 工程已随仓库提交，`capacitor.config.json` 的 `webDir` 指向 `dist`。Debug APK 不是正式签名发行包。
+`android/` 工程已随仓库提交，`capacitor.config.json` 的 `webDir` 指向 `dist`。APK `applicationId` 为 `com.karislin.mahjong`，`versionName=1.1.0-beta.1`、`versionCode=2`；它们与 npm 版本一致。Debug APK 用于安装测试，**不是正式签名发行包**；更换签名证书的 APK 可能需要先卸载旧包，卸载会清除本地存储。
 
 应用在 Android 上使用 edge-to-edge 主题，界面按安全区（`env(safe-area-inset-*)`）留边；平板横屏（≥1000px）为录牌/上下文与手牌/牌河双栏，竖屏和手机保持单列，键盘在宽屏上限宽居中，不用固定宽度容器包裹整页。
 
@@ -149,6 +151,10 @@ npm run android:assembleDebug
 - [@L04-ZJ](https://github.com/L04-ZJ) — 项目审阅、测试与改进协作
 
 GitHub 自动统计的 Contributors/贡献图由实际提交作者及合并记录决定，README 列名不会代替 Git 提交归属。
+
+## 后续计划
+
+已确认但暂不解决的四项：海底事件需要完整摸打时序、四川整局支付/地方变体、国标逐张8番起和核验、最新版 APK 独立真机复测。悬浮窗、自动牌河、端侧模型与摄像头识别也已列入后续路线，**本版尚未实现**。详见 [后续 TODO](docs/RESTRUCTURE_PLAN_2026-10-10.md)。
 
 ## 自动验证与构建
 
