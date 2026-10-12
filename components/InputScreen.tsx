@@ -206,12 +206,13 @@ const InputScreen: React.FC<Props> = ({ mode, lang, setLang, onBack }) => {
     const errors = validateGameState(candidate, lang);
     if (errors.length) {
       setEntryError({ zh: validateGameState(candidate, 'zh')[0], en: validateGameState(candidate, 'en')[0] });
-      return;
+      return false;
     }
     commit(candidate);
     setTextInput('');
     setShowKeyboard(false);
     setAnalysis(analyzeGame(candidate, lang));
+    return true;
   };
 
   const handleRealTable = (hand: Tile[], visibleRiver: Tile[]) => {
