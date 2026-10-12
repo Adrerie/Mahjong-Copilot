@@ -217,6 +217,12 @@ test('13张已听牌：待牌标记 completesHand 并排最前，未听牌时不
   assert.deepEqual(ryanmen.improvingDraws?.map(x => `${x.tile.value}${x.tile.suit}`), ['8p', '5p']);
   assert.ok(ryanmen.improvingDraws?.every(x => x.completesHand === true));
 
+  const thirteenOrphans = analyzeGame(state([
+    ...tiles('19', Suit.Man), ...tiles('19', Suit.Pin), ...tiles('19', Suit.Sou), ...tiles('1234567', Suit.Zihai),
+  ]), 'zh');
+  assert.equal(thirteenOrphans.improvingDraws?.length, 13, '十三幺十三面待牌不能被8条展示上限截断');
+  assert.ok(thirteenOrphans.improvingDraws?.every(x => x.completesHand === true));
+
   // 未听牌：只是改善向听，不得标成待牌。
   const notReady = analyzeGame(state([...tiles('1479', Suit.Man), ...tiles('258', Suit.Pin), ...tiles('369', Suit.Sou), ...tiles('11', Suit.Pin), ...tiles('2', Suit.Sou)]), 'zh');
   assert.equal(notReady.isReady, false);

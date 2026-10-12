@@ -25,14 +25,14 @@ def run() -> None:
     parser.add_argument("--out", type=Path, default=Path("real-table-eval"))
     parser.add_argument("--conf", type=float, default=0.22)
     parser.add_argument("--imgsz", type=int, default=640)
-    # ultralytics 默认 iou=0.7 会在同一张牌上留下多个重叠框；收紧到 0.45 减少重复框。
-    parser.add_argument("--iou", type=float, default=0.45)
+    # 实拍评估中 0.45 会抑制相邻牌；使用 0.7，重复框交由人工复核。
+    parser.add_argument("--iou", type=float, default=0.7)
     args = parser.parse_args()
 
     if not args.weights.is_file():
         parser.error("--weights must be an existing local file")
-    if not 0 < args.conf <= 1 or args.imgsz < 320:
-        parser.error("--conf must be within (0,1] and --imgsz at least 320")
+    if not 0 < args.conf <= 1 or not 0 < args.iou <= 1 or args.imgsz < 320:
+        parser.error("--conf and --iou must be within (0,1] and --imgsz at least 320")
     if args.image_dir:
         if not args.image_dir.is_dir():
             parser.error("--image-dir must be an existing directory")
@@ -68,7 +68,8 @@ def run() -> None:
         for tile_index, box in enumerate(result.boxes or []):
             class_id = int(box.cls.item())
             raw = model_classes.get(class_id, f"unknown_class_{class_id}")
-            canonical = ("5" + raw[1:]) if raw in {"0m", "0p", "0s"} else raw
+            # 本牌组无红五；保留检测器原标签供核对，不把误检自动转成普通五。
+            canonical = None if raw in {"0m", "0p", "0s"} else raw
             candidates.append({
                 "id": tile_index,
                 "box_xyxy": [round(float(v), 2) for v in box.xyxy[0].tolist()],
