@@ -1,4 +1,4 @@
-﻿
+
 import { validateGameState } from './inputValidation';
 /**
  * 麻将逻辑主入口模块
@@ -88,7 +88,9 @@ export const analyzeGame = (state: GameState, lang: Language = 'en'): AnalysisRe
     ? (zh
       ? `参考口径：${SICHUAN_RULE.id}（平胡0、对对胡1、清一色2、七对2、带幺九2、金钩钓2含对对胡，每根+1，封顶${SICHUAN_RULE.capExponent}指数番=16倍），来源 ${SICHUAN_RULE.source}。未记录自摸/点炮、杠类型、海底等事件，不能作为实际结算依据。`
       : `Reference table: ${SICHUAN_RULE.id} (ping 0, all pungs 1, full flush 2, seven pairs 2, terminals 2, single wait 2 incl. all pungs, +1 per root, capped at ${SICHUAN_RULE.capExponent} exponents = 16x), source ${SICHUAN_RULE.source}. Draw/claim source, kong type and last-tile events are not recorded; do not use as a settlement.`)
-    : (zh ? '国标计番尚未覆盖全部81番与拆分规则，以下是部分识别结果，不能据此确认8番起和。' : 'MCR scoring is incomplete; these partial results cannot confirm the 8-fan minimum.');
+    : (zh
+      ? '国标按番种列表相加、8 番起和；未覆盖番种与未记录的和牌张/末张/圈门风/杠类型会影响总番，结论按「已达 / 待核 / 不足」标注。'
+      : 'MCR adds fan values towards an 8-fan minimum. Uncovered patterns and unrecorded winning tile, last-tile, seat/round wind and kong types still affect the total; the verdict says met / unverified / unmet.');
   if (isWinning && mode === GameMode.Sichuan) {
     const score = recognizeSichuanPatterns(hand, melds, lang);
     suggestions = [{

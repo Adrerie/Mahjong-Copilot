@@ -6,7 +6,7 @@
 
 import { Tile, Meld, Suit, FanSuggestion, Language } from '../types';
 import { createTile, getTileKey, TEXT } from '../constants';
-import { countTiles, countsToArray, getSuitCount } from './tileHelpers';
+import { countTiles, getSuitCount } from './tileHelpers';
 import { calculateShanten } from './shantenCalculator';
 import { recognizeMCRPatterns, calculateTotalFan, calculateMCRExtras } from './mcrPatterns';
 
