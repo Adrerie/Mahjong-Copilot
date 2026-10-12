@@ -121,6 +121,22 @@ npm run preview   # 本地预览构建产物
 
 ---
 
+## 真实牌桌照片（模型评估入口，尚未接入 App）
+
+真实照片必须同时检测**本人明面手牌和公共可见牌池**，还会出现其他人的牌、蓝色背面牌、倾斜、散落与遮挡。它不能使用前述游戏截图的14个固定裁切槽。仓库新增 `scripts/evaluate_real_table.py`：用于在本地用已有 YOLO 权重一次检测**整张照片**，输出带框照片 `detections.jpg` 和候选清单 `detections.json`，全部候选默认归属 `unassigned`（未确认），不凭单帧推断出牌顺序或将所有桌面牌视为弃牌。
+
+开发机实验（非 Android 内置功能）：
+
+```powershell
+python -m pip install ultralytics
+# 先从 https://github.com/nikmomo/Mahjong-YOLO 下载 nano .pt 权重到本机
+python scripts/evaluate_real_table.py --image "D:\\Photos\\table.jpg" --weights "D:\\models\\mahjong-yolon-best.pt" --out "real-table-eval"
+```
+
+推荐先对本机实际照片验证误检/漏检，确认可用后再将对应 Nano ONNX 权重接入 Android 的 ONNX Runtime Mobile，并提供手牌/牌池/副露/他家/未知归属校正和补框功能。所参考的模型仓库为 MIT，但其 README 与 YAML 对类别数的描述不一致（38/37），必须核对实际模型元数据；ONNX 运行期不需要在 Android 打包 Ultralytics。**目前 App 仍只支持游戏截图导入，真实照片自动检测和牌池计数尚未上线。**
+
+---
+
 ## 📱 Android（Capacitor）
 
 ```bash
