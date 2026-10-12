@@ -12,6 +12,8 @@ export interface ScreenshotTile {
   suggested: string | null;
   distance: number | null;
   preview: string;
+  /** Local quantized descriptor retained only after user explicitly verifies the imported hand. */
+  glyph: string;
 }
 
 export const REFERENCE_SIZE = { width: 2048, height: 1280 };
@@ -41,6 +43,41 @@ export const REFERENCE_GLYPHS: Record<string, string[]> = {
   z4: ['fffffefeeeeeddddddddddddcccccccccccccccccccccccccccccc97accccccccca45bcccb77bcb45bcccc837cb45857a9637c9334684344897479bb78747a84abbb8b64ab849a998645bba544334599bbba88889abbbbbbbbbbaaaaaaaaaaaa'],
 };
 
+/** Verified user corrections become a small on-device template cache, not a trained model. */
+const CACHE_KEY = 'mahjong-game-glyphs-v1';
+const validGlyph = (glyph: unknown): glyph is string =>
+  typeof glyph === 'string' && /^[0-9a-f]{192}$/.test(glyph);
+export const loadVerifiedGlyphs = (): Record<string, string[]> => {
+  try {
+    if (typeof window === 'undefined') return {};
+    const data: unknown = JSON.parse(window.localStorage.getItem(CACHE_KEY) ?? '{}');
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return {};
+    const result: Record<string, string[]> = {};
+    for (const [key, raw] of Object.entries(data)) {
+      if (!TILE_OPTIONS.some(t => t.key === key) || !Array.isArray(raw)) continue;
+      result[key] = raw.filter(validGlyph).slice(-4);
+    }
+    return result;
+  } catch {
+    return {};
+  }
+};
+
+export const storeVerifiedGlyphs = (slots: ScreenshotTile[]): void => {
+  try {
+    if (typeof window === 'undefined') return;
+    const previous = loadVerifiedGlyphs();
+    for (const slot of slots) {
+      if (!slot.key || !TILE_OPTIONS.some(t => t.key === slot.key) || !validGlyph(slot.glyph)) continue;
+      const samples = previous[slot.key] ?? [];
+      if (!samples.includes(slot.glyph)) previous[slot.key] = [...samples, slot.glyph].slice(-4);
+    }
+    window.localStorage.setItem(CACHE_KEY, JSON.stringify(previous));
+  } catch {
+    // Local storage may be disabled or full: the screenshot importer must remain usable.
+  }
+};
+
 /** Mean absolute luminance-quantization mismatch (0..15). Strictly a distance, not model confidence. */
 export const glyphDistance = (a: string, b: string): number => {
   if (a.length !== 192 || b.length !== 192) return Infinity;
@@ -49,9 +86,13 @@ export const glyphDistance = (a: string, b: string): number => {
   return total / 192;
 };
 
-export const classifyGlyph = (glyph: string): { key: string | null; distance: number | null } => {
-  const matches = Object.entries(REFERENCE_GLYPHS).map(([key, examples]) =>
-    ({ key, distance: Math.min(...examples.map(e => glyphDistance(glyph, e))) }))
+export const classifyGlyph = (glyph: string, verified: Record<string, string[]> = {}): { key: string | null; distance: number | null } => {
+  const keys = new Set([...Object.keys(REFERENCE_GLYPHS), ...Object.keys(verified)]);
+  const matches = [...keys].map(key => ({
+    key,
+    distance: Math.min(...[...(REFERENCE_GLYPHS[key] ?? []), ...(verified[key] ?? [])]
+      .filter(validGlyph).map(e => glyphDistance(glyph, e))),
+  }))
     .sort((a, b) => a.distance - b.distance);
   const best = matches[0], second = matches[1];
   // Reject unseen designs / incomplete tiles; no guesses on out-of-distribution images.
@@ -103,6 +144,7 @@ export const recognizeMcrScreenshot = async (file: File): Promise<ScreenshotTile
     const tctx = thumb.getContext('2d');
     if (!tctx) throw new Error('无法创建预览');
     const results: ScreenshotTile[] = [];
+    const verified = loadVerifiedGlyphs();
     for (const [index, x] of HAND_CENTERS.entries()) {
       const top = locateFaceTop(pixels, x);
       if (top === null) {
@@ -118,11 +160,11 @@ export const recognizeMcrScreenshot = async (file: File): Promise<ScreenshotTile
         const luma = .299 * px[i] + .587 * px[i + 1] + .114 * px[i + 2];
         glyph += Math.floor(luma / 16).toString(16);
       }
-      const guess = classifyGlyph(glyph);
+      const guess = classifyGlyph(glyph, verified);
       tctx.clearRect(0, 0, thumb.width, thumb.height);
       tctx.drawImage(canvas, x - 59, top - 6, 118, 175, 0, 0, thumb.width, thumb.height);
       results.push({ index, key: guess.key, suggested: guess.key, distance: guess.distance,
-        preview: thumb.toDataURL('image/jpeg', .78) });
+        preview: thumb.toDataURL('image/jpeg', .78), glyph });
     }
     return results;
   } finally {
