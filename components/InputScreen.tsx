@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { AnalysisResult, GameMode, GameState, KongKind, Language, Meld, Suit, Tile, WinSource, Wind } from '../types';
+import { AnalysisResult, GameMode, GameState, KongKind, Language, Meld, SichuanWinEvent, Suit, Tile, WinSource, Wind } from '../types';
 import {
   INITIAL_WALL_MCR, INITIAL_WALL_SICHUAN, MAX_WALL_MCR, MAX_WALL_SICHUAN,
   SUIT_LABELS, TEXT, THEME, WIND_LABELS,
 } from '../constants';
 import { analyzeGame, sortTiles } from '../utils/mahjongLogic';
+import { sichuanEventSource } from '../utils/inputValidation';
 import {
   EntryMessage, decodeEntryState, encodeEntryState, entryStorageKey, planTextHand, planTileAdd,
   withConsistentContext,
@@ -60,6 +61,16 @@ const WIN_SOURCES: { value: WinSource; labelKey: 'winUnknown' | 'winSelfDraw' | 
   { value: 'unknown', labelKey: 'winUnknown' },
   { value: 'selfDraw', labelKey: 'winSelfDraw' },
   { value: 'claim', labelKey: 'winClaim' },
+];
+
+/** Hi8 血战事件：只记录明确的事实，不把普通自摸自动算作加番。 */
+const SICHUAN_EVENTS: { value: SichuanWinEvent; zh: string; en: string }[] = [
+  { value: 'ordinary', zh: '普通和牌', en: 'Ordinary' },
+  { value: 'kongBloom', zh: '杠上开花', en: 'Kong bloom' },
+  { value: 'kongDiscard', zh: '杠上炮', en: 'Kong discard' },
+  { value: 'robbingKong', zh: '抢杠胡', en: 'Robbing kong' },
+  { value: 'lastDraw', zh: '海底捞月', en: 'Last draw' },
+  { value: 'lastDiscard', zh: '海底炮', en: 'Last discard' },
 ];
 
 /** 读取上次局面；损坏或旧格式返回 null，绝不用半截数据覆盖空局面。 */
@@ -319,6 +330,47 @@ const InputScreen: React.FC<Props> = ({ mode, lang, setLang, onBack }) => {
                 </button>
             </div>
         </div>
+
+        {/* === SICHUAN WIN CONTEXT === */}
+        {mode === GameMode.Sichuan && (
+          <div className="bg-white rounded-2xl border-2 border-blue-100 shadow-sm p-3 space-y-3">
+            <p className="text-xs font-black text-gray-500 uppercase tracking-wider">{t.winContext} · {lang === 'zh' ? '四川血战' : 'Sichuan'}</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-gray-500 font-bold">{t.winSource}</span>
+              {WIN_SOURCES.map(({ value, labelKey }) => (
+                <button key={value} type="button" aria-pressed={(entry.winSource ?? 'unknown') === value}
+                  onClick={() => commit({ ...entry, winSource: value,
+                    sichuanWinEvent: entry.sichuanWinEvent && sichuanEventSource(entry.sichuanWinEvent) &&
+                      sichuanEventSource(entry.sichuanWinEvent) !== value ? null : entry.sichuanWinEvent })}
+                  className={`px-3 h-8 border-2 rounded-lg text-xs font-bold ${(entry.winSource ?? 'unknown') === value ? 'bg-[#1A237E] text-white border-[#1A237E]' : 'border-gray-200 text-gray-500'}`}>
+                  {t[labelKey]}
+                </button>
+              ))}
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 font-bold mb-2">{lang === 'zh' ? '和牌事件（按 Hi8 规则）' : 'Win event (Hi8 rule)'}</p>
+              <div className="flex flex-wrap gap-1.5">
+                <button type="button" aria-pressed={!entry.sichuanWinEvent}
+                  onClick={() => commit({ ...entry, sichuanWinEvent: null })}
+                  className={`px-2.5 h-8 border-2 rounded-lg text-xs font-bold ${!entry.sichuanWinEvent ? 'bg-[#1A237E] text-white border-[#1A237E]' : 'border-gray-200 text-gray-500'}`}>
+                  {t.notRecorded}
+                </button>
+                {SICHUAN_EVENTS.map(item => (
+                  <button key={item.value} type="button" aria-pressed={entry.sichuanWinEvent === item.value}
+                    disabled={item.value === 'kongBloom' && !entry.melds.some(m => m.type === 'gang')}
+                    onClick={() => commit({ ...entry, sichuanWinEvent: item.value,
+                      winSource: sichuanEventSource(item.value) ?? (entry.winSource ?? 'unknown') })}
+                    className={`px-2.5 h-8 border-2 rounded-lg text-xs font-bold disabled:opacity-35 ${entry.sichuanWinEvent === item.value ? 'bg-[#FF006E] text-white border-[#FF006E]' : 'border-gray-200 text-gray-500'}`}>
+                    {item[lang]}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <p className="text-[10px] text-gray-500">{lang === 'zh'
+              ? '特殊事件各加1指数番；普通自摸不自动加番。杠分、包赔和多人结算暂不计。'
+              : 'Special events add one exponent each; regular self-draw adds none. Kong payments and settlement excluded.'}</p>
+          </div>
+        )}
 
         {/* === MCR WIN CONTEXT === */}
         {mode === GameMode.MCR && (
