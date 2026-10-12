@@ -25,3 +25,9 @@ android/app/release/
 *.njsproj
 *.sln
 *.sw?
+
+# Private Android signing material (never commit)
+*.jks
+*.keystore
+*.p12
+*.pfx
