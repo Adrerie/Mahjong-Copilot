@@ -1,21 +1,16 @@
 /**
  * 国标麻将分析建议模块
  * - 分析当前手牌可能达成的番型
- * - 计算各番型的概率和缺牌
+ * - 缺牌按实体牌张数计算；不推断摸牌概率（probability 恒为 0）
  */
 
 import { Tile, Meld, Suit, FanSuggestion, Language } from '../types';
 import { createTile, getTileKey, TEXT } from '../constants';
-import { countTiles, getSuitCount } from './tileHelpers';
+import { countTiles, countsToArray, getSuitCount } from './tileHelpers';
+import { calculateShanten } from './shantenCalculator';
 import { recognizeMCRPatterns, calculateTotalFan, calculateMCRExtras } from './mcrPatterns';
 
 // ========== 辅助函数 ==========
-
-// 判断是否已有某顺子或其中一张牌
-const hasTileOrSeq = (hand: Tile[], melds: Meld[], suit: Suit, value: number): boolean => {
-  const allTiles = [...hand, ...melds.flatMap(m => m.tiles)];
-  return allTiles.some(t => t.suit === suit && t.value === value);
-};
 
 // 计算组成某顺子的成本（缺少的牌数）
 const costToMakeSeq = (hand: Tile[], melds: Meld[], suit: Suit, startVal: number): number => {
@@ -28,6 +23,34 @@ const costToMakeSeq = (hand: Tile[], melds: Meld[], suit: Suit, startVal: number
   }
   return cost;
 };
+
+/**
+ * 同时组成多副顺子的补牌计划：同一张实体牌只能用一次，不能重复借用。
+ * 用于一色三步高、一色四步高、清龙这类共用同一花色牌张的牌型。
+ */
+const planSequences = (
+  hand: Tile[],
+  melds: Meld[],
+  required: { suit: Suit; startVal: number }[],
+): { cost: number; missing: Tile[] } => {
+  const pool = new Map<string, number>();
+  [...hand, ...melds.flatMap(m => m.tiles)].forEach(tile => {
+    const key = getTileKey(tile.suit, tile.value);
+    pool.set(key, (pool.get(key) ?? 0) + 1);
+  });
+  const missing: Tile[] = [];
+  for (const { suit, startVal } of required) {
+    for (let value = startVal; value <= startVal + 2; value++) {
+      const key = getTileKey(suit, value);
+      const available = pool.get(key) ?? 0;
+      if (available > 0) pool.set(key, available - 1);
+      else missing.push(createTile(suit, value));
+    }
+  }
+  return { cost: missing.length, missing };
+};
+
+
 
 // 获取组成某顺子缺少的牌
 const getMissingForSeq = (hand: Tile[], suit: Suit, startVal: number): Tile[] => {
@@ -65,12 +88,12 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
       const minCount = Math.min(has1, has2, has3);
       
       if (minCount >= 4) {
-        const { score: extraScore, details: extraDetails } = calculateMCRExtras(allTiles, melds, null, t, ['yiSeSiTongShun', 'yiSeSanTongShun', 'yiBanGao', 'siGuiYi']);
+        const { score: extraScore, details: extraDetails } = calculateMCRExtras(allTiles, melds, ['yiSeSiTongShun', 'yiSeSanTongShun', 'yiBanGao', 'siGuiYi']);
         suggestions.push({
           name: t.quadrupleChow || '一色四同顺',
           baseFan: 48,
           fan: 48 + extraScore,
-          probability: 95,
+          probability: 0,
           missingTiles: [],
           patternDetails: [`${t.quadrupleChow || '一色四同顺'} (48)`, ...extraDetails]
         });
@@ -81,12 +104,12 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
         if (has2 < 4) missing.push(createTile(s, i + 1));
         if (has3 < 4) missing.push(createTile(s, i + 2));
         
-        const { score: extraScore, details: extraDetails } = calculateMCRExtras(allTiles, melds, null, t, ['yiSeSiTongShun', 'yiSeSanTongShun', 'yiBanGao', 'siGuiYi']);
+        const { score: extraScore, details: extraDetails } = calculateMCRExtras(allTiles, melds, ['yiSeSiTongShun', 'yiSeSanTongShun', 'yiBanGao', 'siGuiYi']);
         suggestions.push({
           name: t.quadrupleChow || '一色四同顺',
           baseFan: 48,
           fan: 48 + extraScore,
-          probability: 70,
+          probability: 0,
           missingTiles: missing.slice(0, 3),
           patternDetails: [`${t.quadrupleChow || '一色四同顺'} (48)`, ...extraDetails]
         });
@@ -104,12 +127,12 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
       const has4 = allTiles.filter(tile => tile.suit === s && tile.value === i + 3).length;
       
       if (has1 >= 3 && has2 >= 3 && has3 >= 3 && has4 >= 3) {
-        const { score: extraScore, details: extraDetails } = calculateMCRExtras(allTiles, melds, null, t, ['yiSeSiJieGao', 'yiSeSanJieGao', 'pengPengHu']);
+        const { score: extraScore, details: extraDetails } = calculateMCRExtras(allTiles, melds, ['yiSeSiJieGao', 'yiSeSanJieGao', 'pengPengHu']);
         suggestions.push({
           name: t.fourPureShiftedPungs || '一色四节高',
           baseFan: 48,
           fan: 48 + extraScore,
-          probability: 95,
+          probability: 0,
           missingTiles: [],
           patternDetails: [`${t.fourPureShiftedPungs || '一色四节高'} (48)`, ...extraDetails]
         });
@@ -121,12 +144,12 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
         if (has4 < 3) missing.push(createTile(s, i + 3));
         
         if (missing.length <= 4) {
-          const { score: extraScore, details: extraDetails } = calculateMCRExtras(allTiles, melds, null, t, ['yiSeSiJieGao', 'yiSeSanJieGao', 'pengPengHu']);
+          const { score: extraScore, details: extraDetails } = calculateMCRExtras(allTiles, melds, ['yiSeSiJieGao', 'yiSeSanJieGao', 'pengPengHu']);
           suggestions.push({
             name: t.fourPureShiftedPungs || '一色四节高',
             baseFan: 48,
             fan: 48 + extraScore,
-            probability: Math.max(40, 80 - missing.length * 10),
+            probability: 0,
             missingTiles: missing,
             patternDetails: [`${t.fourPureShiftedPungs || '一色四节高'} (48)`, ...extraDetails]
           });
@@ -152,12 +175,12 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
       
       // 如果已经有足够的牌组成3组相同顺子
       if (minCount >= 3) {
-        const { score: extraScore, details: extraDetails } = calculateMCRExtras(allTiles, melds, null, t, ['yiSeSanTongShun']);
+        const { score: extraScore, details: extraDetails } = calculateMCRExtras(allTiles, melds, ['yiSeSanTongShun']);
         suggestions.push({
           name: t.pureTripleChow || '一色三同顺',
           baseFan: 24,
           fan: 24 + extraScore,
-          probability: 90,
+          probability: 0,
           missingTiles: [],
           patternDetails: [`${t.pureTripleChow || '一色三同顺'} (24)`, ...extraDetails]
         });
@@ -168,12 +191,12 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
         if (has2 < 3) missing.push(createTile(s, i + 1));
         if (has3 < 3) missing.push(createTile(s, i + 2));
         
-        const { score: extraScore, details: extraDetails } = calculateMCRExtras(allTiles, melds, null, t, ['yiSeSanTongShun']);
+        const { score: extraScore, details: extraDetails } = calculateMCRExtras(allTiles, melds, ['yiSeSanTongShun']);
         suggestions.push({
           name: t.pureTripleChow || '一色三同顺',
           baseFan: 24,
           fan: 24 + extraScore,
-          probability: 70,
+          probability: 0,
           missingTiles: missing.slice(0, 3),
           patternDetails: [`${t.pureTripleChow || '一色三同顺'} (24)`, ...extraDetails]
         });
@@ -192,12 +215,12 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
       
       // 每个都需要至少3张才能成刻子
       if (has1 >= 3 && has2 >= 3 && has3 >= 3) {
-        const { score: extraScore, details: extraDetails } = calculateMCRExtras(allTiles, melds, null, t, ['yiSeSanJieGao']);
+        const { score: extraScore, details: extraDetails } = calculateMCRExtras(allTiles, melds, ['yiSeSanJieGao']);
         suggestions.push({
           name: t.pureShiftedPungs || '一色三节高',
           baseFan: 24,
           fan: 24 + extraScore,
-          probability: 90,
+          probability: 0,
           missingTiles: [],
           patternDetails: [`${t.pureShiftedPungs || '一色三节高'} (24)`, ...extraDetails]
         });
@@ -209,12 +232,12 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
         if (has3 < 3) missing.push(createTile(s, i + 2));
         
         if (missing.length <= 3) {
-          const { score: extraScore, details: extraDetails } = calculateMCRExtras(allTiles, melds, null, t, ['yiSeSanJieGao']);
+          const { score: extraScore, details: extraDetails } = calculateMCRExtras(allTiles, melds, ['yiSeSanJieGao']);
           suggestions.push({
             name: t.pureShiftedPungs || '一色三节高',
             baseFan: 24,
             fan: 24 + extraScore,
-            probability: Math.max(40, 80 - missing.length * 15),
+            probability: 0,
             missingTiles: missing,
             patternDetails: [`${t.pureShiftedPungs || '一色三节高'} (24)`, ...extraDetails]
           });
@@ -228,23 +251,17 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
   [Suit.Man, Suit.Pin, Suit.Sou].forEach(s => {
     // 递增1: 如123 234 345
     for (let i = 1; i <= 5; i++) {
-      const c1 = costToMakeSeq(hand, melds, s, i);
-      const c2 = costToMakeSeq(hand, melds, s, i + 1);
-      const c3 = costToMakeSeq(hand, melds, s, i + 2);
-      const total = c1 + c2 + c3;
-      
+      const { cost: total, missing } = planSequences(hand, melds, [
+        { suit: s, startVal: i }, { suit: s, startVal: i + 1 }, { suit: s, startVal: i + 2 },
+      ]);
+
       if (total <= 4) {
-        const missing = [
-          ...getMissingForSeq(hand, s, i),
-          ...getMissingForSeq(hand, s, i + 1),
-          ...getMissingForSeq(hand, s, i + 2)
-        ];
-        const { score: extraScore, details: extraDetails } = calculateMCRExtras(allTiles, melds, null, t, ['yiSeSanBuGao']);
+        const { score: extraScore, details: extraDetails } = calculateMCRExtras(allTiles, melds, ['yiSeSanBuGao']);
         suggestions.push({
           name: t.pureShiftedChows || '一色三步高',
           baseFan: 16,
           fan: 16 + extraScore,
-          probability: Math.max(20, 80 - total * 15),
+          probability: 0,
           missingTiles: missing.slice(0, 4),
           patternDetails: [`${t.pureShiftedChows || '一色三步高'} (16)`, ...extraDetails]
         });
@@ -252,23 +269,17 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
     }
     // 递增2: 如123 345 567
     for (let i = 1; i <= 3; i++) {
-      const c1 = costToMakeSeq(hand, melds, s, i);
-      const c2 = costToMakeSeq(hand, melds, s, i + 2);
-      const c3 = costToMakeSeq(hand, melds, s, i + 4);
-      const total = c1 + c2 + c3;
-      
+      const { cost: total, missing } = planSequences(hand, melds, [
+        { suit: s, startVal: i }, { suit: s, startVal: i + 2 }, { suit: s, startVal: i + 4 },
+      ]);
+
       if (total <= 4) {
-        const missing = [
-          ...getMissingForSeq(hand, s, i),
-          ...getMissingForSeq(hand, s, i + 2),
-          ...getMissingForSeq(hand, s, i + 4)
-        ];
-        const { score: extraScore, details: extraDetails } = calculateMCRExtras(allTiles, melds, null, t, ['yiSeSanBuGao']);
+        const { score: extraScore, details: extraDetails } = calculateMCRExtras(allTiles, melds, ['yiSeSanBuGao']);
         suggestions.push({
           name: t.pureShiftedChows || '一色三步高',
           baseFan: 16,
           fan: 16 + extraScore,
-          probability: Math.max(20, 80 - total * 15),
+          probability: 0,
           missingTiles: missing.slice(0, 4),
           patternDetails: [`${t.pureShiftedChows || '一色三步高'} (16)`, ...extraDetails]
         });
@@ -284,12 +295,12 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
     const hasSou = allTiles.filter(tile => tile.suit === Suit.Sou && tile.value === v).length;
     
     if (hasMan >= 3 && hasPin >= 3 && hasSou >= 3) {
-      const { score: extraScore, details: extraDetails } = calculateMCRExtras(allTiles, melds, null, t, ['sanTongKe']);
+      const { score: extraScore, details: extraDetails } = calculateMCRExtras(allTiles, melds, ['sanTongKe']);
       suggestions.push({
         name: t.triplePung || '三同刻',
         baseFan: 16,
         fan: 16 + extraScore,
-        probability: 90,
+        probability: 0,
         missingTiles: [],
         patternDetails: [`${t.triplePung || '三同刻'} (16)`, ...extraDetails]
       });
@@ -300,12 +311,12 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
       if (hasSou < 3) missing.push(createTile(Suit.Sou, v));
       
       if (missing.length <= 3) {
-        const { score: extraScore, details: extraDetails } = calculateMCRExtras(allTiles, melds, null, t, ['sanTongKe']);
+        const { score: extraScore, details: extraDetails } = calculateMCRExtras(allTiles, melds, ['sanTongKe']);
         suggestions.push({
           name: t.triplePung || '三同刻',
           baseFan: 16,
           fan: 16 + extraScore,
-          probability: Math.max(30, 75 - missing.length * 15),
+          probability: 0,
           missingTiles: missing,
           patternDetails: [`${t.triplePung || '三同刻'} (16)`, ...extraDetails]
         });
@@ -336,12 +347,12 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
         ...getMissingForSeq(hand, perm[1][0] as Suit, perm[1][1] as number),
         ...getMissingForSeq(hand, perm[2][0] as Suit, perm[2][1] as number)
       ];
-      const { score: extraScore, details: extraDetails } = calculateMCRExtras(allTiles, melds, null, t, ['huaLong']);
+      const { score: extraScore, details: extraDetails } = calculateMCRExtras(allTiles, melds, ['huaLong']);
       suggestions.push({
         name: t.mixedStraight || '花龙',
         baseFan: 8,
         fan: 8 + extraScore,
-        probability: Math.max(15, 75 - total * 12),
+        probability: 0,
         missingTiles: missing.slice(0, 4),
         patternDetails: [`${t.mixedStraight || '花龙'} (8)`, ...extraDetails]
       });
@@ -365,13 +376,13 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
       ];
       
       // Calculate extras (排除主番种避免重复显示)
-      const { score: extraScore, details: extraDetails } = calculateMCRExtras(allTiles, melds, null, t, ['sanSeSanTongShun']);
+      const { score: extraScore, details: extraDetails } = calculateMCRExtras(allTiles, melds, ['sanSeSanTongShun']);
       
       suggestions.push({
         name: t.mixedTripleChow,
         baseFan: 8,
         fan: 8 + extraScore,
-        probability: Math.max(10, 80 - totalMissing * 15),
+        probability: 0,
         missingTiles: missingTiles.slice(0, 4), // Limit UI clutter
         patternDetails: [`${t.mixedTripleChow} (8)`, ...extraDetails]
       });
@@ -396,12 +407,12 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
       const has3 = allTiles.filter(tile => tile.suit === s3 && tile.value === i + 2).length;
       
       if (has1 >= 3 && has2 >= 3 && has3 >= 3) {
-        const { score: extraScore, details: extraDetails } = calculateMCRExtras(allTiles, melds, null, t, ['sanSeSanJieGao']);
+        const { score: extraScore, details: extraDetails } = calculateMCRExtras(allTiles, melds, ['sanSeSanJieGao']);
         suggestions.push({
           name: t.mixedShiftedPungs || '三色三节高',
           baseFan: 8,
           fan: 8 + extraScore,
-          probability: 90,
+          probability: 0,
           missingTiles: [],
           patternDetails: [`${t.mixedShiftedPungs || '三色三节高'} (8)`, ...extraDetails]
         });
@@ -413,12 +424,12 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
         if (has3 < 3) missing.push(createTile(s3, i + 2));
         
         if (missing.length <= 3) {
-          const { score: extraScore, details: extraDetails } = calculateMCRExtras(allTiles, melds, null, t, ['sanSeSanJieGao']);
+          const { score: extraScore, details: extraDetails } = calculateMCRExtras(allTiles, melds, ['sanSeSanJieGao']);
           suggestions.push({
             name: t.mixedShiftedPungs || '三色三节高',
             baseFan: 8,
             fan: 8 + extraScore,
-            probability: Math.max(30, 70 - missing.length * 15),
+            probability: 0,
             missingTiles: missing,
             patternDetails: [`${t.mixedShiftedPungs || '三色三节高'} (8)`, ...extraDetails]
           });
@@ -451,13 +462,13 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
           ...getMissingForSeq(hand, s2, i+1),
           ...getMissingForSeq(hand, s3, i+2)
         ];
-        const { score: exScore, details: exDetails } = calculateMCRExtras(allTiles, melds, null, t, ['sanSeSanBuGao']);
+        const { score: exScore, details: exDetails } = calculateMCRExtras(allTiles, melds, ['sanSeSanBuGao']);
         
         suggestions.push({
           name: t.mixedShiftedChows,
           baseFan: 6,
           fan: 6 + exScore,
-          probability: Math.max(10, 75 - totalMissing * 15),
+          probability: 0,
           missingTiles: missingTiles.slice(0, 4),
           patternDetails: [`${t.mixedShiftedChows} (6)`, ...exDetails]
         });
@@ -476,37 +487,16 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
   let gates = 0;
   if(hasManMCR) gates++; if(hasPinMCR) gates++; if(hasSouMCR) gates++; if(hasWindMCR) gates++; if(hasDragonMCR) gates++;
   
-  // 计算基本和牌型的向听数（简化估算）
-  const existingMelds = melds.length;
-  
-  // 估算手牌中的面子和搭子
-  let estimatedMelds = existingMelds;
-  let estimatedPairs = 0;
-  const handCounts = countTiles(hand);
-  handCounts.forEach((c) => {
-    if (c >= 3) estimatedMelds++;
-    if (c >= 2) estimatedPairs++;
-  });
-  
-  // 检查顺子搭子（简化）
-  [Suit.Man, Suit.Pin, Suit.Sou].forEach(s => {
-    for (let v = 1; v <= 7; v++) {
-      const has1 = hand.some(t => t.suit === s && t.value === v);
-      const has2 = hand.some(t => t.suit === s && t.value === v + 1);
-      const has3 = hand.some(t => t.suit === s && t.value === v + 2);
-      if (has1 && has2 && has3) estimatedMelds++;
-    }
-  });
-  
-  const shantenEstimate = Math.max(0, 4 - Math.min(4, estimatedMelds));
+  // 向听数用与主分析同一套算法，避免「同一批牌被多副面子重复计入」的乐观估算
+  const shantenEstimate = Math.max(0, calculateShanten(hand, melds));
   
   if (gates === 5 && shantenEstimate <= 2) {
-    const { score: exScore, details: exDetails } = calculateMCRExtras(allTiles, melds, null, t, ['wuMenQi']);
+    const { score: exScore, details: exDetails } = calculateMCRExtras(allTiles, melds, ['wuMenQi']);
     suggestions.push({
       name: t.fiveGates,
       baseFan: 6,
       fan: 6 + exScore,
-      probability: Math.max(20, 70 - shantenEstimate * 20),
+      probability: 0,
       missingTiles: [],
       patternDetails: [`${t.fiveGates} (6)`, `向听${shantenEstimate}`, ...exDetails]
     });
@@ -518,12 +508,12 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
     if(!hasWindMCR) missing.push(createTile(Suit.Zihai, 1));
     if(!hasDragonMCR) missing.push(createTile(Suit.Zihai, 5));
     
-    const { score: exScore, details: exDetails } = calculateMCRExtras(allTiles, melds, null, t, ['wuMenQi']);
+    const { score: exScore, details: exDetails } = calculateMCRExtras(allTiles, melds, ['wuMenQi']);
     suggestions.push({
       name: t.fiveGates,
       baseFan: 6,
       fan: 6 + exScore,
-      probability: Math.max(15, 50 - shantenEstimate * 15),
+      probability: 0,
       missingTiles: missing,
       patternDetails: [`${t.fiveGates} (6)`, `缺${missing.length}门，向听${shantenEstimate}`, ...exDetails]
     });
@@ -531,22 +521,16 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
   
   // 4. Pure Straight (Qing Long) - 16 Fan
   [Suit.Man, Suit.Pin, Suit.Sou].forEach(s => {
-    const c1 = costToMakeSeq(hand, melds, s, 1);
-    const c2 = costToMakeSeq(hand, melds, s, 4);
-    const c3 = costToMakeSeq(hand, melds, s, 7);
-    const total = c1 + c2 + c3;
-    
+    const { cost: total, missing } = planSequences(hand, melds, [
+      { suit: s, startVal: 1 }, { suit: s, startVal: 4 }, { suit: s, startVal: 7 },
+    ]);
+
     if (total <= 5) {
-      const missing = [
-        ...getMissingForSeq(hand, s, 1),
-        ...getMissingForSeq(hand, s, 4),
-        ...getMissingForSeq(hand, s, 7)
-      ];
       suggestions.push({
         name: t.pureStraight,
         baseFan: 16,
         fan: 16,
-        probability: 80 - total * 10,
+        probability: 0,
         missingTiles: missing.slice(0, 4),
         patternDetails: [`${t.pureStraight} (16)`]
       });
@@ -574,7 +558,7 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
         name: t.fullFlush,
         baseFan: 24,
         fan: 24,
-        probability: 95,
+        probability: 0,
         missingTiles: [],
         patternDetails: [`${t.fullFlush} (24)`, `已达成`]
       });
@@ -583,7 +567,7 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
         name: t.fullFlush,
         baseFan: 24,
         fan: 24,
-        probability: Math.max(20, probQYS),
+        probability: 0,
         missingTiles: [],
         patternDetails: [`${t.fullFlush} (24)`, `需打掉${needToDiscard}张其他花色`]
       });
@@ -596,22 +580,22 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
     const probHYS = Math.min(85, (maxSuitCountMCR + honorCount) * 5);
     
     if (needToDiscard === 0) {
-      const { score: exScoreHYS, details: exDetailsHYS } = calculateMCRExtras(allTiles, melds, null, t, ['hunYiSe']);
+      const { score: exScoreHYS, details: exDetailsHYS } = calculateMCRExtras(allTiles, melds, ['hunYiSe']);
       suggestions.push({
         name: t.mixedOneSuit,
         baseFan: 6,
         fan: 6 + exScoreHYS,
-        probability: 90,
+        probability: 0,
         missingTiles: [],
         patternDetails: [`${t.mixedOneSuit} (6)`, `已达成`, ...exDetailsHYS]
       });
     } else {
-      const { score: exScoreHYS, details: exDetailsHYS } = calculateMCRExtras(allTiles, melds, null, t, ['hunYiSe']);
+      const { score: exScoreHYS, details: exDetailsHYS } = calculateMCRExtras(allTiles, melds, ['hunYiSe']);
       suggestions.push({
         name: t.mixedOneSuit,
         baseFan: 6,
         fan: 6 + exScoreHYS,
-        probability: Math.max(20, probHYS),
+        probability: 0,
         missingTiles: [],
         patternDetails: [`${t.mixedOneSuit} (6)`, `需打掉${needToDiscard}张其他花色`, ...exDetailsHYS]
       });
@@ -634,7 +618,7 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
           name: t.pureDoubleChow || '一般高',
           baseFan: 1,
           fan: 1,
-          probability: 95,
+          probability: 0,
           missingTiles: [],
           patternDetails: [`${t.pureDoubleChow || '一般高'} (1)`]
         });
@@ -658,7 +642,7 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
           name: t.shortStraight || '连六',
           baseFan: 1,
           fan: 1,
-          probability: 95,
+          probability: 0,
           missingTiles: [],
           patternDetails: [`${t.shortStraight || '连六'} (1)`]
         });
@@ -677,7 +661,7 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
         name: t.twoTerminalChows || '老少副',
         baseFan: 1,
         fan: 1,
-        probability: 95,
+        probability: 0,
         missingTiles: [],
         patternDetails: [`${t.twoTerminalChows || '老少副'} (1)`]
       });
@@ -695,7 +679,7 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
       name: t.allSimples || '断幺',
       baseFan: 2,
       fan: 2,
-      probability: 90,
+      probability: 0,
       missingTiles: [],
       patternDetails: [`${t.allSimples || '断幺'} (2)`, '已达成']
     });
@@ -709,7 +693,7 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
         name: t.allSimples || '断幺',
         baseFan: 2,
         fan: 2,
-        probability: Math.max(20, 70 - terminalCount * 15),
+        probability: 0,
         missingTiles: [],
         patternDetails: [`${t.allSimples || '断幺'} (2)`, `需打掉${terminalCount}张幺九字牌`]
       });
@@ -725,7 +709,7 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
       name: t.noHonors || '无字',
       baseFan: 1,
       fan: 1,
-      probability: 95,
+      probability: 0,
       missingTiles: [],
       patternDetails: [`${t.noHonors || '无字'} (1)`, '已达成']
     });
@@ -740,7 +724,7 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
       name: lang === 'zh' ? '缺一门' : 'One Voided Suit',
       baseFan: 1,
       fan: 1,
-      probability: 95,
+      probability: 0,
       missingTiles: [],
       patternDetails: [`${lang === 'zh' ? '缺一门' : 'One Voided Suit'} (1)`, '已达成']
     });
@@ -771,7 +755,7 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
       name: t.sevenPairs,
       baseFan: 24,
       fan: 24,
-      probability: adjustedProb,
+      probability: 0,
       missingTiles: missingForQiDui,
       patternDetails: [`${t.sevenPairs} (24)`, `已有${pairs}对，缺${pairsNeeded}张`]
     });
@@ -785,13 +769,13 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
     const hasMingPong = melds.some(m => m.type === 'pong');
     
     if (anKeCountForSuggestion >= 4 && !hasMingPong) {
-      const { score: exScoreSiAnKe, details: exDetailsSiAnKe } = calculateMCRExtras(allTiles, melds, null, t, ['siAnKe', 'pengPengHu', 'menQianQing', 'buQiuRen', 'sanAnKe', 'shuangAnKe']);
+      const { score: exScoreSiAnKe, details: exDetailsSiAnKe } = calculateMCRExtras(allTiles, melds, ['siAnKe', 'pengPengHu', 'menQianQing', 'buQiuRen', 'sanAnKe', 'shuangAnKe']);
       
       suggestions.push({
         name: t.fourConcealedPungs || '四暗刻',
         baseFan: 64,
         fan: 64 + exScoreSiAnKe,
-        probability: 95,
+        probability: 0,
         missingTiles: [],
         patternDetails: [`${t.fourConcealedPungs || '四暗刻'} (64)`, `已有${anKeCountForSuggestion}个暗刻`, ...exDetailsSiAnKe]
       });
@@ -807,13 +791,13 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
       });
       
       if (pairTilesForSiAnKe.length > 0) {
-        const { score: exScoreSiAnKe, details: exDetailsSiAnKe } = calculateMCRExtras(allTiles, melds, null, t, ['siAnKe', 'pengPengHu', 'menQianQing', 'buQiuRen', 'sanAnKe', 'shuangAnKe']);
+        const { score: exScoreSiAnKe, details: exDetailsSiAnKe } = calculateMCRExtras(allTiles, melds, ['siAnKe', 'pengPengHu', 'menQianQing', 'buQiuRen', 'sanAnKe', 'shuangAnKe']);
         
         suggestions.push({
           name: t.fourConcealedPungs || '四暗刻',
           baseFan: 64,
           fan: 64 + exScoreSiAnKe,
-          probability: 60,
+          probability: 0,
           missingTiles: pairTilesForSiAnKe.slice(0, 1),
           patternDetails: [`${t.fourConcealedPungs || '四暗刻'} (64)`, `已有${anKeCountForSuggestion}个暗刻，缺1张`, ...exDetailsSiAnKe]
         });
@@ -847,40 +831,34 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
     const missingForPeng = pairTilesForPeng.slice(0, Math.min(tripsNeededForPeng, 4));
     
     const baseProbPeng = totalTrips >= 3 ? 80 : totalTrips >= 2 ? 55 : 35;
-    const { score: exScorePeng, details: exDetailsPeng } = calculateMCRExtras(allTiles, melds, null, t, ['pengPengHu']);
+    const { score: exScorePeng, details: exDetailsPeng } = calculateMCRExtras(allTiles, melds, ['pengPengHu']);
     
     suggestions.push({
       name: t.allPungs,
       baseFan: 6,
       fan: 6 + exScorePeng,
-      probability: baseProbPeng,
+      probability: 0,
       missingTiles: missingForPeng,
       patternDetails: [`${t.allPungs} (6)`, `已有${totalTrips}刻，缺${tripsNeededForPeng}张`, ...exDetailsPeng]
     });
   }
 
-  // 9. 妙手回春/海底捞月 - 牌墙将尽时的特殊提示 (8 Fan)
-  if (typeof wallCount === 'number' && wallCount <= 4 && wallCount > 0) {
-    // 如果听牌状态且牌墙快空，提示可能获得海底番
-    const isNearTenpai = hand.length === 13 || hand.length === 14;
-    if (isNearTenpai) {
-      suggestions.push({
-        name: wallCount === 1 
-          ? (lang === 'zh' ? '妙手回春/海底捞月' : 'Last Tile Draw/Claim')
-          : (lang === 'zh' ? '海底机会' : 'Last Tile Chance'),
-        baseFan: 8,
-        fan: 8,
-        probability: wallCount === 1 ? 90 : Math.max(10, 60 - (wallCount - 1) * 15),
-        missingTiles: [],
-        patternDetails: [
-          `${t.lastTileDraw || '妙手回春'} / ${t.lastTileClaim || '海底捞月'} (8)`,
-          lang === 'zh' 
-            ? `牌墙仅剩${wallCount}张` 
-            : `Only ${wallCount} tile(s) left`,
-          t.lastTileHint || '牌墙将尽，可能获得海底番！'
-        ]
-      });
-    }
+  // 9. 妙手回春/海底捞月：只有「牌墙仅剩 1 张」这一已记录事实 + 13 张等效听牌形态才提示。
+  //    其余牌墙张数不能确定末张，也不推断胜率（概率固定 0）。
+  const effectiveTiles = hand.length + melds.length * 3;
+  if (wallCount === 1 && effectiveTiles === 13) {
+    suggestions.push({
+      name: lang === 'zh' ? '妙手回春/海底捞月' : 'Last Tile Draw/Claim',
+      baseFan: 8,
+      fan: 8,
+      probability: 0,
+      missingTiles: [],
+      patternDetails: [
+        `${t.lastTileDraw || '妙手回春'} / ${t.lastTileClaim || '海底捞月'} (8)`,
+        lang === 'zh' ? '牌墙仅剩 1 张' : 'Only one tile left in the wall',
+        lang === 'zh' ? '自摸/点和来源未知，需按实际和牌方式确认' : 'Win source unknown; confirm the actual last-tile event'
+      ]
+    });
   }
 
   // 互斥番种组 - 同组内只保留番数最高的
