@@ -8,15 +8,16 @@
 - [x] **恢复国标及四川的出牌辅助**：13张显示有助于降低向听的候选进张（未见张数并非摸牌概率），14张未成牌时推荐弃牌；国标14张虽结构成牌但8番资格待核/不足时，提示“先核验起和、否则续打备选”；已确认能合法和时不劝弃牌。现有 `calculateBestDiscard` 继续作为默认策略。
 - [x] **四川13张且手上仍有定缺牌**：进张方向改按去除定缺后的可用牌形计算，只列非定缺进张，弹窗标注计算口径；这不是可和牌路线，定缺警告照常。
 - [x] `scripts/evaluate_real_table.py` 已在3张真实牌桌照片上跑通；默认口径 `imgsz=640 conf=0.22 iou=0.7`（依据见下）。
-- [x] **13张已听牌时待牌优先**：每条进张带 `completesHand`，能直接成和的待牌加绿框标「待牌·摸到成和」并排在只改善向听的进张之前；未听牌时不标待牌。已用四暗刻五面听（2m/3m/4m/5m/6m）与两面听（5p/8p）锁定断言，真机复核通过。
+- [x] **13张已听牌时结构待牌优先**：进张带 `completesHand`，国标界面显示「结构待牌」并提醒8番待核，四川显示「待牌·摸到成和」；未听牌时不把改善向听标成待牌。已用四暗刻五面听（2m/3m/4m/5m/6m）与两面听（5p/8p）锁定断言，真机复核通过。
 - [x] **本轮复核修正**：实际待牌不受8条进张展示上限截断（十三幺十三面听保留13种）；实拍脚本默认 `iou=0.7`，红五误检保留原标签但不生成普通五牌面提示。本次不重跑照片或真机验收。
 
-## 三张真实照片评估（2026-10-12，本机，Nano 权重）
+## 本地实拍初测（原计划3张；记录为5张，2026-10-12）
 
-- [x] 本地执行 `python scripts/evaluate_real_table.py --image-dir "<3张照片目录>" --weights "<本地Nano.pt>" --out real-table-eval`。权重为 [Mahjong-YOLO](https://github.com/nikmomo/Mahjong-YOLO) `models/nano/mahjong-yolon-best.pt`（5,475,354 字节，本地评估用，不入库）。
+- [x] 本地执行 `python scripts/evaluate_real_table.py --image-dir "<照片目录>" --weights "<本地Nano.pt>" --out real-table-eval`。权重为 [Mahjong-YOLO](https://github.com/nikmomo/Mahjong-YOLO) `models/nano/mahjong-yolon-best.pt`（5,475,354 字节，本地评估用，不入库）。
 - [x] 类别映射实测：该权重是 **37 类**（`1m 1p 1s 1z … 9m 9p 9s 0m 0p 0s`），无 UNKNOWN、无花牌/背面类；本牌组无红五，出现 `0m/0p/0s` 一律按误检处理。脚本按 `model.names` 取标签，不硬编码索引。
 - [x] 尺度与阈值实测：`imgsz=1280` 在同一张牌上产生重复框且类别漂移更多；`640` 手牌行更准。`iou=0.45` 会把相邻牌的高置信框一起抑制（照片2手牌行由 5/7 正确降到 3/7），故保留默认 `0.7`，重复框交给人工复核。
 - [x] 逐图人工复核写入 `real-table-eval/review.csv`（同目录含每图标注图与 JSON；该目录在 gitignore 内，照片与输出都不入库）。**本家手牌排**（优先项）：整齐明牌那张 11/16 正确（高置信正确的有 8m 0.98、9m 0.88、1m 0.71、4m 0.81、1p 0.71；系统性错误是六萬→5m、三萬→2m、七萬→6m）；竖版实拍索子排置信度高（6s 0.88/0.91/0.90、7s 0.89）但真值未逐张确认；另三张分别为 5/13、5/7、萬子段 7/9。**牌池只作候选、能识多少算多少**：各图检出 14/21/20/19/14 框，散牌旋转重叠、重复框多、单张牌常并行两三个互相冲突的标签，必须人工取舍。只评估可用性，不写成泛化准确率。
+- [ ] **补齐可复核证据**：记录本次5张样本的文件名/哈希、图片与人工标注的对应关系，解释较原计划3张新增的2张样本来源，并将最终 `review.csv` 与 `summary.json` 保存为私有本地测试产物（不上传真实照片或隐私信息）。目前仓库只有文字汇总，我方不能独立复核11/16等实测数字。
 - [ ] 检测框不可直接进规则引擎：集成 Android 侧 ONNX、相册全图标框、牌面与区域校正、漏检补框、已确认可见牌统计之前必须人工核对；绝不把桌面散牌、他人手牌、背面牌写进 `discards`。
 
 ## 现成策略权重的最小对照（不用自训）
@@ -25,7 +26,7 @@
 - [x] 唯一同时具备明确许可证与已发布权重的国标候选：[flowwalker/ZZmahjongBot](https://github.com/flowwalker/ZZmahjongBot)（MIT，3 个约 39.7 MiB checkpoint；输入 `(B,160,4,9)` + 动作 mask `(B,235)`）。两个未决项：仓库没有 ONNX 导出脚本；训练所用 Botzone SL 语料未声明许可。两项解决前只做本地对照，不进 APK。
 - [ ] 国标对照下一步：自行导出 ONNX → 在同一局面上与 `calculateBestDiscard` 比较（合法动作 mask、8番起和核验由本项目提供）；再在 Android 上比较动作一致性、单次推理延迟与内存。
 - [x] 四川：**没有**匹配血战规则的现成权重（[lauyikfung/SichuaMahjongAI](https://github.com/lauyikfung/SichuaMahjongAI) 是 RLCard 简化麻将 DQN，无定缺、无番/倍数、无血战续打，且仓库根目录无许可证）。继续现有推荐 + 定缺硬约束。Qwen Q4/RAG 仅在确有增益时再做，不搭建自博弈/蒸馏/微调环境；日麻暂缓。
-- [ ] Android 端侧推理运行时可选 `onnxruntime-android`（MIT，Android AAR）或 `@cantoo/capacitor-onnx`（MIT，需 minSdk≥24/compileSdk≥34/JDK≥17）；AGPL/GPL 权重（如日麻 Mortal）不可打包。
+- [ ] Android 端侧推理运行时可候选 `onnxruntime-android` 或 Capacitor ONNX 集成，按实际 Android 版本与许可验证。GPL-3.0 项目并非不能复用所有 GPL 组件；模型权重的授权及 AGPL 等附加义务需逐项确认，不凭许可证名称一概禁止或允许打包。
 
 ## 保留限制（暂不扩张）
 
