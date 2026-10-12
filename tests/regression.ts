@@ -630,6 +630,10 @@ test('国标特殊结构：七星不靠/全不靠/组合龙都能成牌', () => 
   assert.equal(sevenStarsApi.totalFan, 24);
   assert.deepEqual(sevenStarsApi.patterns.map(p => p.id), ['qiXingBuKao']);
   assert.equal(sevenStarsApi.isValid, true);
+  // 特殊结构已听牌时必须报0向听，不能用标准型公式报6向听。
+  const sevenStarsReady = sevenStars.filter(t => !(t.suit === Suit.Zihai && t.value === 7));
+  assert.equal(calculateShanten(sevenStarsReady, [], GameMode.MCR), 0);
+  assert.ok(calculateWaitingTiles(sevenStarsReady, [], GameMode.MCR).some(t => t.suit === Suit.Zihai && t.value === 7));
 
   // 全不靠 + 组合龙：12 + 12 = 24（组合龙声明另计的组合龙；全不靠不计五门齐）
   const lesser = [...tiles('147', Suit.Man), ...tiles('258', Suit.Pin), ...tiles('369', Suit.Sou), ...tiles('12345', Suit.Zihai)];
@@ -641,6 +645,7 @@ test('国标特殊结构：七星不靠/全不靠/组合龙都能成牌', () => 
   assert.ok(!lesserIds.includes('qiXingBuKao'));
   assert.ok(!lesserIds.includes('quanDaiYao'));
   assert.equal(lesserApi.totalFan, 24);
+  assert.equal(calculateShanten(lesser.filter(t => !(t.suit === Suit.Zihai && t.value === 5)), [], GameMode.MCR), 0);
 
   // 组合龙 + 明碰：111m 补一副面子、22p 作将，无字 1 番另计
   const knitted = [...tiles('147', Suit.Man), ...tiles('258', Suit.Pin), ...tiles('369', Suit.Sou), ...tiles('111', Suit.Man), ...tiles('22', Suit.Pin)];
@@ -648,6 +653,9 @@ test('国标特殊结构：七星不靠/全不靠/组合龙都能成牌', () => 
   const knittedApi = calculateMCRTotalFan(knitted, []);
   assert.deepEqual(knittedApi.patterns.map(p => p.id).sort(), ['wuZi', 'zuHeLong']);
   assert.equal(knittedApi.totalFan, 13);
+  // 组合龙作为合法结构，去掉一张后也应识别为听牌。
+  const knittedReady = knitted.filter((t, i) => i !== knitted.length - 1);
+  assert.equal(calculateShanten(knittedReady, [], GameMode.MCR), 0);
 
   // 特殊结构同样不计不求人，但自摸仍照记；未知来源时两者都不计
   const draw = calculateMCRTotalFan(sevenStars, [], 'selfDraw');
