@@ -91,8 +91,8 @@ const AnalysisResultModal: React.FC<Props> = ({ result, lang, onClose }) => {
               </h3>
               <p className="text-xs text-gray-600">
                 {lang === 'zh'
-                  ? '当前尚未摸入第14张，不能直接推荐弃牌。下列数字是未见张数而非摸牌概率；标「待牌·摸到成和」的是能直接构成和牌型的牌，其余只是改善向听。实际摸牌后再推荐打哪张。'
-                  : 'No 14th tile drawn: no discard decision yet. Numbers are unseen copies, not draw probabilities; "Wait: completes hand" marks tiles that finish the shape, the rest only improve shanten. Re-analyze after drawing.'}
+                  ? '当前尚未摸入第14张，不能直接推荐弃牌。下列数字是未见张数而非摸牌概率；标「结构待牌」的是摸到后可完成牌型的牌（国标能否8番起和仍需核验）；其余只是改善向听。实际摸牌后再推荐打哪张。'
+                  : 'No 14th tile drawn: no discard decision yet. Numbers are unseen copies, not draw probabilities; "Shape wait" marks tiles that complete the hand structure (MCR still requires an 8-fan check); the rest only improve shanten. Re-analyze after drawing.'}
               </p>
               {result.improvingDrawsNote && (
                 <p className="text-xs text-amber-800 bg-amber-50 p-2 rounded-lg">{result.improvingDrawsNote}</p>
@@ -103,7 +103,9 @@ const AnalysisResultModal: React.FC<Props> = ({ result, lang, onClose }) => {
                     <div key={index} className={'flex flex-col items-center gap-1 rounded-lg p-2 w-16 ' + (completesHand ? 'border-2 border-[#CCFF00] bg-lime-50' : 'border border-gray-100')}>
                       <div className="w-9"><TileUI tile={tile} size="responsive" /></div>
                       <span className="text-[10px] text-gray-600">{remaining}{lang === 'zh' ? '张未见' : ' unseen'}</span>
-                      <span className={completesHand ? 'text-[10px] font-bold text-[#1A237E]' : 'text-[10px] text-gray-400'}>{completesHand ? (lang === 'zh' ? '待牌·摸到成和' : 'Wait: completes hand') : (shantenAfter < 0 ? (lang === 'zh' ? '结构成牌' : 'Shape complete') : `${shantenAfter}${lang === 'zh' ? '向听' : ' shanten'}`)}</span>
+                      <span className={completesHand ? 'text-[10px] font-bold text-[#1A237E]' : 'text-[10px] text-gray-400'}>{completesHand ? (result.mode === GameMode.MCR
+                        ? (lang === 'zh' ? '结构待牌' : 'Shape wait')
+                        : (lang === 'zh' ? '待牌·摸到成和' : 'Wait: completes hand')) : (shantenAfter < 0 ? (lang === 'zh' ? '结构成牌' : 'Shape complete') : `${shantenAfter}${lang === 'zh' ? '向听' : ' shanten'}`)}</span>
                     </div>
                   ))}
                 </div>
