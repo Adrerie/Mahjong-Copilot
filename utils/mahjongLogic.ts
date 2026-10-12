@@ -87,13 +87,16 @@ export const analyzeGame = (state: GameState, lang: Language = 'en'): AnalysisRe
   let contextPending = false;
   const scoreNote = mode === GameMode.Sichuan
     ? (zh
-      ? `参考口径：${SICHUAN_RULE.id}（平胡0、对对胡1、清一色2、七对2、带幺九2、金钩钓2含对对胡，每根+1，封顶${SICHUAN_RULE.capExponent}指数番=16倍），来源 ${SICHUAN_RULE.source}。未记录自摸/点炮、杠类型、海底等事件，不能作为实际结算依据。`
-      : `Reference table: ${SICHUAN_RULE.id} (ping 0, all pungs 1, full flush 2, seven pairs 2, terminals 2, single wait 2 incl. all pungs, +1 per root, capped at ${SICHUAN_RULE.capExponent} exponents = 16x), source ${SICHUAN_RULE.source}. Draw/claim source, kong type and last-tile events are not recorded; do not use as a settlement.`)
+      ? `参考口径：${SICHUAN_RULE.id}（平胡0、对对胡1、清一色2、七对2、带幺九2、金钩钓2含对对胡，每根+1；已记录的杠开/杠炮/抢杠/海底事件各+1；封顶${SICHUAN_RULE.capExponent}指数番=16倍）。自摸/点炮决定付款方向，但不自动加番；杠分、多人付款仍未结算。来源 ${SICHUAN_RULE.source}。`
+      : `Reference table: ${SICHUAN_RULE.id} (base exponents, +1/root, +1 for confirmed kong/last-tile win events, capped at ${SICHUAN_RULE.capExponent} = 16x). Ordinary self-draw changes who pays, not the exponent; no kong or multiplayer settlement. Source ${SICHUAN_RULE.source}.`)
     : (zh
       ? '国标按番种列表相加、8 番起和；未覆盖番种与未记录的和牌张/末张/圈门风/杠类型会影响总番，结论按「已达 / 待核 / 不足」标注。'
       : 'MCR adds fan values towards an 8-fan minimum. Uncovered patterns and unrecorded winning tile, last-tile, seat/round wind and kong types still affect the total; the verdict says met / unverified / unmet.');
   if (isWinning && mode === GameMode.Sichuan) {
-    const score = recognizeSichuanPatterns(hand, melds, lang);
+    const score = recognizeSichuanPatterns(hand, melds, lang, {
+      winSource: state.winSource,
+      winEvent: state.sichuanWinEvent,
+    });
     suggestions = [{
       name: zh ? `成牌（${score.label}，参考计番）` : `Complete shape (${score.label}, reference score)`,
       baseFan: score.cappedExponent, fan: score.cappedExponent, probability: 0, missingTiles: [],
