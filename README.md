@@ -134,7 +134,7 @@ python scripts/evaluate_real_table.py --image-dir "D:\\Photos\\mahjong" --weight
 # 或指定文件：--images "D:\\Photos\\a.jpg" "D:\\Photos\\b.jpg" "D:\\Photos\\c.jpg"
 ```
 
-每张照片分别生成 `detections.jpg` 和 `detections.json`，另有 `summary.json` 与等待人工填写正确框/错框/漏框的 `review.csv`。统计的检测框数量**不是识别准确率**；3张图只作初步可行性判断。候选牌全部标记为 `unassigned`，必须核实本人手牌、可见牌池、副露、他家及未知归属。
+每张照片分别生成 `detections.jpg` 和 `detections.json`，另有 `summary.json` 与等待人工填写正确框/错框/漏框的 `review.csv`。输出包含输入图像与权重 SHA-256 和实际推理参数；**复测请使用新的 `--out` 目录**，脚本不会静默覆盖既有人工复核结果。统计的检测框数量**不是识别准确率**；3张图只作初步可行性判断。候选牌全部标记为 `unassigned`，必须核实本人手牌、可见牌池、副露、他家及未知归属。
 
 核实实拍效果后才决定是否将 Nano ONNX 接入 Android ONNX Runtime Mobile；仓库模型 MIT 声明不自动覆盖权重/数据集/第三方依赖的授权。类别数在 README 和数据 YAML 不一致（38/37），以实际模型类别映射为准。**当前 App 仍只支持固定布局游戏截图导入，真实照片的自动检测和牌池计数尚未上线。**
 
