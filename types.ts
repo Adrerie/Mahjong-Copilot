@@ -19,6 +19,9 @@ export type Language = 'en' | 'zh';
  */
 export type WinSource = 'selfDraw' | 'claim' | 'unknown';
 
+/** 川麻独立的和牌事件。普通和牌不加事件番，特殊事件按当前四川牌桌口径各 +1。 */
+export type SichuanWinEvent = 'ordinary' | 'kongBloom' | 'kongDiscard' | 'robbingKong' | 'lastDraw' | 'lastDiscard';
+
 /** 门风/圈风：1 东、2 南、3 西、4 北（与牌值一致）。 */
 export type Wind = 1 | 2 | 3 | 4;
 
@@ -105,6 +108,8 @@ export interface GameState {
   discards: Tile[];
   /** 国标和牌来源；未记录时视为 'unknown'，不得据此计自摸/不求人/门前清。 */
   winSource?: WinSource;
+  /** 四川血战和牌事件；未记录时不计事件番，不能用国标 afterKong 推断。 */
+  sichuanWinEvent?: SichuanWinEvent | null;
   /** 国标和牌张；未记录时不计边张/坎张/单钓将，也不确认九莲宝灯。 */
   winningTile?: Tile | null;
   /** 国标门风；未记录时不计门风刻。 */
