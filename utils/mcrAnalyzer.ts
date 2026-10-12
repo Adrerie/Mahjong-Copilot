@@ -14,12 +14,13 @@ import { recognizeMCRPatterns, calculateTotalFan, calculateMCRExtras } from './m
 
 // 计算组成某顺子的成本（缺少的牌数）
 const costToMakeSeq = (hand: Tile[], melds: Meld[], suit: Suit, startVal: number): number => {
-  const allTiles = [...hand, ...melds.flatMap(m => m.tiles)];
+  // 碰/杠不可拆成顺子；已明吃的顺子只有完全匹配时才可利用。
+  if (melds.some(m => m.type === 'chi' && m.tiles[0]?.suit === suit &&
+      Math.min(...m.tiles.map(t => t.value)) === startVal)) return 0;
+  if (melds.length >= 4) return Infinity;
   let cost = 0;
   for (let v = startVal; v <= startVal + 2; v++) {
-    if (!allTiles.some(t => t.suit === suit && t.value === v)) {
-      cost++;
-    }
+    if (!hand.some(t => t.suit === suit && t.value === v)) cost++;
   }
   return cost;
 };
@@ -33,13 +34,25 @@ const planSequences = (
   melds: Meld[],
   required: { suit: Suit; startVal: number }[],
 ): { cost: number; missing: Tile[] } => {
+  // 完全匹配的明吃逐一锁定；其他副露占用剩余面子槽，不能拆牌重用。
+  const pending = [...required];
+  let unrelated = 0;
+  for (const meld of melds) {
+    const index = meld.type === 'chi'
+      ? pending.findIndex(r => r.suit === meld.tiles[0]?.suit &&
+          r.startVal === Math.min(...meld.tiles.map(t => t.value)))
+      : -1;
+    if (index >= 0) pending.splice(index, 1);
+    else unrelated++;
+  }
+  if (unrelated > 4 - required.length) return { cost: Infinity, missing: [] };
   const pool = new Map<string, number>();
-  [...hand, ...melds.flatMap(m => m.tiles)].forEach(tile => {
+  hand.forEach(tile => {
     const key = getTileKey(tile.suit, tile.value);
     pool.set(key, (pool.get(key) ?? 0) + 1);
   });
   const missing: Tile[] = [];
-  for (const { suit, startVal } of required) {
+  for (const { suit, startVal } of pending) {
     for (let value = startVal; value <= startVal + 2; value++) {
       const key = getTileKey(suit, value);
       const available = pool.get(key) ?? 0;
@@ -51,17 +64,6 @@ const planSequences = (
 };
 
 
-
-// 获取组成某顺子缺少的牌
-const getMissingForSeq = (hand: Tile[], suit: Suit, startVal: number): Tile[] => {
-  const missing: Tile[] = [];
-  for (let v = startVal; v <= startVal + 2; v++) {
-    if (!hand.some(t => t.suit === suit && t.value === v)) {
-      missing.push(createTile(suit, v));
-    }
-  }
-  return missing;
-};
 
 /**
  * MCR 分析主函数 - 分析当前手牌可能达成的番型
@@ -336,17 +338,10 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
   ];
   
   for (const perm of huaLongPerms) {
-    const c1 = costToMakeSeq(hand, melds, perm[0][0] as Suit, perm[0][1] as number);
-    const c2 = costToMakeSeq(hand, melds, perm[1][0] as Suit, perm[1][1] as number);
-    const c3 = costToMakeSeq(hand, melds, perm[2][0] as Suit, perm[2][1] as number);
-    const total = c1 + c2 + c3;
-    
+    const { cost: total, missing } = planSequences(hand, melds,
+      perm.map(([suit, startVal]) => ({ suit: suit as Suit, startVal: startVal as number })));
+
     if (total <= 5) {
-      const missing = [
-        ...getMissingForSeq(hand, perm[0][0] as Suit, perm[0][1] as number),
-        ...getMissingForSeq(hand, perm[1][0] as Suit, perm[1][1] as number),
-        ...getMissingForSeq(hand, perm[2][0] as Suit, perm[2][1] as number)
-      ];
       const { score: extraScore, details: extraDetails } = calculateMCRExtras(allTiles, melds, ['huaLong']);
       suggestions.push({
         name: t.mixedStraight || '花龙',
@@ -362,18 +357,10 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
   // 1g. Mixed Triple Chow (San Se San Tong Shun) - 8 Fan
   // 三色三同顺：3种花色相同序数的顺子
   for (let i = 1; i <= 7; i++) { // Can be 123 to 789
-    const m1 = costToMakeSeq(hand, melds, Suit.Man, i);
-    const m2 = costToMakeSeq(hand, melds, Suit.Pin, i);
-    const m3 = costToMakeSeq(hand, melds, Suit.Sou, i);
-    const totalMissing = m1 + m2 + m3;
-    
-    // 必须是三种不同花色各一组
+    const { cost: totalMissing, missing: missingTiles } = planSequences(hand, melds, [
+      { suit: Suit.Man, startVal: i }, { suit: Suit.Pin, startVal: i }, { suit: Suit.Sou, startVal: i },
+    ]);
     if (totalMissing <= 5) {
-      const missingTiles = [
-        ...getMissingForSeq(hand, Suit.Man, i),
-        ...getMissingForSeq(hand, Suit.Pin, i),
-        ...getMissingForSeq(hand, Suit.Sou, i)
-      ];
       
       // Calculate extras (排除主番种避免重复显示)
       const { score: extraScore, details: extraDetails } = calculateMCRExtras(allTiles, melds, ['sanSeSanTongShun']);
@@ -451,17 +438,10 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
   
   for (let i = 1; i <= 5; i++) {
     for (const [s1, s2, s3] of perms) {
-      const c1 = costToMakeSeq(hand, melds, s1, i);
-      const c2 = costToMakeSeq(hand, melds, s2, i+1);
-      const c3 = costToMakeSeq(hand, melds, s3, i+2);
-      const totalMissing = c1 + c2 + c3;
-      
+      const { cost: totalMissing, missing: missingTiles } = planSequences(hand, melds, [
+        { suit: s1, startVal: i }, { suit: s2, startVal: i + 1 }, { suit: s3, startVal: i + 2 },
+      ]);
       if (totalMissing <= 4) {
-        const missingTiles = [
-          ...getMissingForSeq(hand, s1, i),
-          ...getMissingForSeq(hand, s2, i+1),
-          ...getMissingForSeq(hand, s3, i+2)
-        ];
         const { score: exScore, details: exDetails } = calculateMCRExtras(allTiles, melds, ['sanSeSanBuGao']);
         
         suggestions.push({
