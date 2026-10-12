@@ -79,7 +79,7 @@ Mahjong-Copilot/
 
 ### 环境要求
 
-- **Node.js** >= 18.0
+- **Node.js** >= 22.0（Capacitor 8 要求）
 - **npm** >= 9.0
 
 ### 安装步骤
@@ -118,8 +118,11 @@ npm run preview   # 本地预览构建产物
 npm run build
 npm run capacitor:sync
 
-# 生成 Debug APK（仅供测试安装）
+# Windows：生成 Debug APK（仅供测试安装）
 npm run android:assembleDebug
+
+# macOS / Linux：使用仓库内 Gradle Wrapper
+# cd android && ./gradlew assembleDebug
 ```
 
 `android/` 工程已随仓库提交，`capacitor.config.json` 的 `webDir` 指向 `dist`。Debug APK 不是正式签名发行包。
