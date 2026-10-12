@@ -77,7 +77,11 @@ const AnalysisResultModal: React.FC<Props> = ({ result, lang, onClose }) => {
           <div className="space-y-3">
              <div className="flex justify-between items-end px-1">
                  <h3 className="text-gray-400 text-xs font-black uppercase tracking-wider">{t.targetPatterns}</h3>
-                 <span className="text-[10px] text-gray-400 font-bold uppercase">{t.totalFan}</span>
+                 <span className="text-[10px] text-gray-400 font-bold uppercase">
+                   {result.mode === GameMode.Sichuan
+                     ? (lang === 'zh' ? '单次和牌参考（非整局结算）' : 'Single win reference (not settlement)')
+                     : t.totalFan}
+                 </span>
              </div>
              
              {result.suggestions.length === 0 && (
@@ -155,8 +159,8 @@ const AnalysisResultModal: React.FC<Props> = ({ result, lang, onClose }) => {
               {result.mode === GameMode.MCR && (
                 <p className="text-xs text-amber-800 bg-amber-50 p-2 rounded-lg mb-2">
                   {lang === 'zh'
-                    ? '国标麻将需要至少 8 番才可起和。'
-                    : 'MCR requires at least 8 fan to win.'}
+                    ? '以下只按牌型算结构待牌；每张牌能否正式起和仍需逐张核对 8 番与和牌事实。国标至少 8 番才可起和。'
+                    : 'These waits come from hand shape only; each tile still needs 8-fan and event verification. MCR requires at least 8 fan.'}
                 </p>
               )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">

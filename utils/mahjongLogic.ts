@@ -96,6 +96,8 @@ export const analyzeGame = (state: GameState, lang: Language = 'en'): AnalysisRe
     const score = recognizeSichuanPatterns(hand, melds, lang, {
       winSource: state.winSource,
       winEvent: state.sichuanWinEvent,
+      // 海底事件只看已记录的牌墙张数，牌墙还有牌时不加事件番。
+      wallCount,
     });
     suggestions = [{
       name: zh ? `成牌（${score.label}，参考计番）` : `Complete shape (${score.label}, reference score)`,

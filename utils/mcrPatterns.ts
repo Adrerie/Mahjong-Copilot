@@ -449,8 +449,11 @@ const recognizeSetPatterns = (
   }
   if (siGuiYi > 0) add('siGuiYi', siGuiYi);
 
-  // 全求人：4 副全为吃/碰（含杠时无法确认明暗）+ 和别家打出的牌
-  if (melds.length === 4 && melds.every(meld => meld.type !== 'gang') && winSource === 'claim') add('quanQiuRen');
+  // 全求人：4 副全部来自别家（吃/碰/明杠/补杠）+ 和别家打出的牌。
+  // 暗杠是自摸成刻，不算「求人」；杠类型未记录时不确认明暗，宁可漏计也不虚加。
+  const allMeldsClaimed = melds.every(meld =>
+    meld.type !== 'gang' || meld.kongKind === 'exposed' || meld.kongKind === 'added');
+  if (melds.length === 4 && allMeldsClaimed && winSource === 'claim') add('quanQiuRen');
 
   // 两副顺子组成的小番必须遵守套算一次；三副顺子的高番成立时，
   // 第四副最多再贡献一个小番，不能将所有两两关系直接相加。

@@ -367,8 +367,8 @@ const InputScreen: React.FC<Props> = ({ mode, lang, setLang, onBack }) => {
               </div>
             </div>
             <p className="text-[10px] text-gray-500">{lang === 'zh'
-              ? '特殊事件各加1指数番；普通自摸不自动加番。杠分、包赔和多人结算暂不计。'
-              : 'Special events add one exponent each; regular self-draw adds none. Kong payments and settlement excluded.'}</p>
+              ? '特殊事件各加1指数番；普通自摸不自动加番。海底捞月/海底炮只在牌墙剩最后一张时计入；杠分、包赔和多人结算暂不计。'
+              : 'Special events add one exponent each; regular self-draw adds none. Last-tile events count only when the wall holds its final tile. Kong payments and settlement excluded.'}</p>
           </div>
         )}
 

@@ -501,6 +501,17 @@ test('川麻：边界读法与封顶，未建模事件不加番', () => {
   }
   assert.equal(recognizeSichuanPatterns(pongHand, [], 'zh', { winSource: 'claim', winEvent: 'lastDraw' }).eventExponent, 0);
   assert.equal(recognizeSichuanPatterns(pongHand, [], 'zh', { winSource: 'selfDraw', winEvent: 'kongBloom' }).eventExponent, 0);
+  // 海底事件必须有「最后一张」这个事实：牌墙还有牌时不加事件番，牌墙见底才加。
+  const lastDrawWallLeft = recognizeSichuanPatterns(pongHand, [], 'zh', { winSource: 'selfDraw', winEvent: 'lastDraw', wallCount: 50 });
+  assert.equal(lastDrawWallLeft.eventExponent, 0);
+  assert.equal(lastDrawWallLeft.cappedExponent, 1);
+  assert.ok(lastDrawWallLeft.details.some(d => d.includes('不是最后一张')));
+  assert.equal(recognizeSichuanPatterns(pongHand, [], 'zh', { winSource: 'selfDraw', winEvent: 'lastDraw', wallCount: 1 }).eventExponent, 1);
+  assert.equal(recognizeSichuanPatterns(pongHand, [], 'zh', { winSource: 'claim', winEvent: 'lastDiscard', wallCount: 0 }).eventExponent, 1);
+  const wallLeftState = sichuan(pongHand, Suit.Sou, [], { winSource: 'selfDraw', sichuanWinEvent: 'lastDraw', wallCount: 50 });
+  assert.equal(analyzeGame(wallLeftState, 'zh').suggestions[0]?.scoreText, '1 指数番 · 2 倍');
+  const wallLastState = sichuan(pongHand, Suit.Sou, [], { winSource: 'selfDraw', sichuanWinEvent: 'lastDraw', wallCount: 1 });
+  assert.equal(analyzeGame(wallLastState, 'zh').suggestions[0]?.scoreText, '2 指数番 · 4 倍');
   const withOwnKong = recognizeSichuanPatterns(
     [...tiles('11122233355', Suit.Man)], [gang(9, Suit.Man)], 'zh',
     { winSource: 'selfDraw', winEvent: 'kongBloom' },
@@ -514,6 +525,8 @@ test('川麻：边界读法与封顶，未建模事件不加番', () => {
   assert.deepEqual(validateGameState(eventState, 'zh'), []);
   assert.equal(decodeEntryState(encodeEntryState(eventState), GameMode.Sichuan)?.sichuanWinEvent, 'robbingKong');
   assert.equal(analyzeGame(eventState, 'zh').suggestions[0]?.scoreText, '2 指数番 · 4 倍');
+  // 单次和牌参考只列出结算所需信息，不推断对手状态。
+  assert.ok(analyzeGame(eventState, 'zh').suggestions[0]?.patternDetails.some(d => d.includes('各家是否已胡')));
   assert.ok(validateGameState({ ...eventState, winSource: 'selfDraw' }, 'zh').length > 0);
   assert.ok(validateGameState({ ...eventState, sichuanWinEvent: 'kongBloom' }, 'zh').length > 0);
   // 国标路径不受影响：仍按番数显示，不出现指数番文本
@@ -890,6 +903,21 @@ test('高价值番种：大三元与三色三同顺都要识别且不重复计�
   assert.ok(mcrPatternIds(shiftedChows).includes('sanSeSanBuGao'));
   const shiftedPungs = [...tiles('222555', Suit.Man), ...tiles('33366', Suit.Pin), ...tiles('444', Suit.Sou)];
   assert.ok(mcrPatternIds(shiftedPungs).includes('sanSeSanJieGao'));
+});
+
+test('全求人：明杠也算求人，暗杠或未记录杠类型不算', () => {
+  const pair = [...tiles('55', Suit.Sou)];
+  const claimedPongs = [pong(1, Suit.Man), pong(2, Suit.Man), pong(3, Suit.Pin)];
+  // 明杠 + 3 副明碰 + 点和：全求人 6 + 碰碰和 6 + 幺九刻/明杠等，可确认达到 8 番
+  const withExposedKong = calculateMCRTotalFan(pair, [...claimedPongs, gang(9, Suit.Sou, 'exposed')], 'claim', {});
+  assert.ok(withExposedKong.patterns.some(p => p.id === 'quanQiuRen'), '明杠应计入全求人');
+  // 自摸不算求人；暗杠是自摸成刻，也不算；杠类型未记录时不确认明暗，宁漏不虚加。
+  assert.ok(!calculateMCRTotalFan(pair, [...claimedPongs, gang(9, Suit.Sou, 'exposed')], 'selfDraw', {})
+    .patterns.some(p => p.id === 'quanQiuRen'));
+  assert.ok(!calculateMCRTotalFan(pair, [...claimedPongs, gang(9, Suit.Sou, 'concealed')], 'claim', {})
+    .patterns.some(p => p.id === 'quanQiuRen'));
+  assert.ok(!calculateMCRTotalFan(pair, [...claimedPongs, gang(9, Suit.Sou)], 'claim', {})
+    .patterns.some(p => p.id === 'quanQiuRen'));
 });
 
 test('高番不计规则：清幺九/字一色/绿一色/双箭刻按参考口径过滤', () => {

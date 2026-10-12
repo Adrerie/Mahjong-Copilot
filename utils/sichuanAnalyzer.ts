@@ -162,7 +162,7 @@ const countPairs = (counts: Map<string, number>): number => {
 
 export const recognizeSichuanPatterns = (
   hand: Tile[], melds: Meld[], lang: Language,
-  context: { winSource?: WinSource; winEvent?: SichuanWinEvent | null } = {},
+  context: { winSource?: WinSource; winEvent?: SichuanWinEvent | null; wallCount?: number } = {},
 ): SichuanScore => {
   const t = TEXT[lang];
   const allTiles = [...hand, ...melds.flatMap(m => m.tiles)];
@@ -229,8 +229,12 @@ export const recognizeSichuanPatterns = (
   const eventSource: WinSource | null =
     context.winEvent === 'kongBloom' || context.winEvent === 'lastDraw' ? 'selfDraw' :
     context.winEvent === 'kongDiscard' || context.winEvent === 'robbingKong' || context.winEvent === 'lastDiscard' ? 'claim' : null;
+  // 海底捞月/海底炮必须是牌墙最后一张：牌墙还有牌时该事件不成立，宁可漏计也不虚加。
+  // 未传牌墙张数（库调用）时不构成矛盾，只按已录入的事件计。
+  const lastTileEvent = context.winEvent === 'lastDraw' || context.winEvent === 'lastDiscard';
+  const lastTileBlocked = lastTileEvent && typeof context.wallCount === 'number' && context.wallCount > 1;
   // 五类真实和牌事件在 Hi8 口径中各 +1；普通自摸仅改变赔付对象，不自行加番。
-  const validEvent = !!eventSource && context.winSource === eventSource &&
+  const validEvent = !!eventSource && context.winSource === eventSource && !lastTileBlocked &&
     (context.winEvent !== 'kongBloom' || melds.some(m => m.type === 'gang'));
   const eventExponent = validEvent ? 1 : 0;
   const uncappedExponent = baseExponent + roots + eventExponent;
@@ -270,16 +274,25 @@ export const recognizeSichuanPatterns = (
   else if (context.winSource === 'claim') details.push(lang === 'zh' ? '点炮：由放炮者付款（未记录具体玩家）' : 'Claim: discarder pays (player unknown)');
   if (validEvent && context.winEvent && context.winEvent !== 'ordinary')
     details.push(`${eventLabels[context.winEvent][lang]} (+1 ${t.exponentUnit})`);
+  if (lastTileBlocked) {
+    details.push(lang === 'zh'
+      ? `已记录牌墙 ${context.wallCount} 张，不是最后一张，海底事件暂不计`
+      : `Wall still holds ${context.wallCount} tiles, so the last-tile event does not apply`);
+  }
   details.push(uncappedExponent > SICHUAN_RULE.capExponent
     ? `${t.exponentUnit} ${uncappedExponent} → ${lang === 'zh' ? '封顶' : 'capped at'} ${SICHUAN_RULE.capExponent} = ${multiplier} ${t.timesUnit}`
     : `${t.exponentUnit} ${uncappedExponent} = ${multiplier} ${t.timesUnit}`);
   const sourceRecorded = context.winSource && context.winSource !== 'unknown';
+  // 整局结算缺少四人牌局事实：这里只列出需要哪些信息，绝不按单人录牌推断对手状态。
+  const settlementNeeds = lang === 'zh'
+    ? '整局结算还需要：各家是否已胡、杠的归属与类型、是否流局、放炮者是哪家；当前没有这些数据，不推断。'
+    : 'Settlement would need each seat\'s win state, kong ownership and type, whether the hand was drawn, and who discarded; none of that is recorded, so nothing is inferred.';
   const pendingContext = sourceRecorded && context.winEvent
     ? (lang === 'zh' ? '仅为单次和牌倍率；杠分与多人支付未结算' : 'Single-win multiplier only; kong payments and multi-player settlement excluded')
     : sourceRecorded
       ? (lang === 'zh' ? '特殊和牌事件未记录，暂不加事件番；杠分与多人支付未结算' : 'Special win event unrecorded; no event bonus; kong payments excluded')
       : t.pendingEvents;
-  details.push(pendingContext);
+  details.push(pendingContext, settlementNeeds);
 
   return {
     ruleId: SICHUAN_RULE.id,
