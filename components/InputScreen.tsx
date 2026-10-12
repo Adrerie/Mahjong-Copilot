@@ -7,8 +7,8 @@ import {
 import { analyzeGame, sortTiles } from '../utils/mahjongLogic';
 import { sichuanEventSource } from '../utils/inputValidation';
 import {
-  EntryMessage, decodeEntryState, encodeEntryState, entryStorageKey, planTextHand, planTileAdd,
-  withConsistentContext,
+  EntryMessage, decodeEntryState, emptyEntryState, encodeEntryState, entryStorageKey, planImportedState,
+  planTextHand, planTileAdd, withConsistentContext,
 } from '../utils/entryEditing';
 import TileSelector from './TileSelector';
 import TileUI from './TileUI';
@@ -29,15 +29,7 @@ const wallLimit = (mode: GameMode): number => mode === GameMode.Sichuan ? MAX_WA
 const clampWall = (mode: GameMode, value: number): number =>
   Number.isFinite(value) ? Math.min(wallLimit(mode), Math.max(0, Math.floor(value))) : 0;
 
-const emptyEntry = (mode: GameMode): GameState => ({
-  mode,
-  wallCount: mode === GameMode.MCR ? INITIAL_WALL_MCR : INITIAL_WALL_SICHUAN,
-  voidSuit: null,
-  hand: [],
-  melds: [],
-  discards: [],
-  winSource: 'unknown',
-});
+const emptyEntry = (mode: GameMode): GameState => emptyEntryState(mode);
 
 /** 录入目标区域：国标多一个「和牌张」区域，点牌即选中手上已有的那张。 */
 type EntryZone = 'hand' | 'melds' | 'discards' | 'winningTile';
@@ -371,8 +363,8 @@ const InputScreen: React.FC<Props> = ({ mode, lang, setLang, onBack }) => {
             </div>
         </div>
 
-        {mode === GameMode.MCR && (
-          <McrScreenshotImport lang={lang} currentHand={hand} canContinue={melds.length === 0 && [13, 14].includes(hand.length)} onApply={handleScreenshotHand} />
+        {(mode === GameMode.MCR || mode === GameMode.Sichuan) && (
+          <McrScreenshotImport mode={mode} lang={lang} currentHand={hand} canContinue={melds.length === 0 && [13, 14].includes(hand.length)} onApply={handleScreenshotHand} />
         )}
         <RealTableImport lang={lang} onApply={handleRealTable} />
 

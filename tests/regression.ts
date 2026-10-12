@@ -15,7 +15,7 @@
  */
 import assert from 'node:assert/strict';
 import { GameMode, GameState, KongKind, MCRContext, Meld, Suit, Tile, WinSource } from '../types';
-import { createTile, TEXT } from '../constants';
+import { createTile, INITIAL_WALL_MCR, INITIAL_WALL_SICHUAN, TEXT } from '../constants';
 import {
   analyzeGame,
   analyzeMCR,
@@ -36,8 +36,10 @@ import { classifyGlyph, HAND_CENTERS, isScreenshotRatio, REFERENCE_GLYPHS, TILE_
 import { compareHandSnapshots } from '../utils/gameSnapshot';
 import {
   decodeEntryState,
+  emptyEntryState,
   encodeEntryState,
   parseTileText,
+  planImportedState,
   planTextHand,
   planTileAdd,
   withConsistentContext,
@@ -1258,6 +1260,44 @@ test('建议层：末张提示只在牌墙剩 1 张且是 13 张等效听牌形�
   assert.ok(!closedNotTenpai.suggestions.some(s => s.name.includes('妙手回春') || s.name.includes('海底')));
   const twoLeft = analyzeGame(state([...tiles('1234567', Suit.Man)], [pong(1), pong(9)], { wallCount: 2 }), 'zh');
   assert.ok(!twoLeft.suggestions.some(s => s.name.includes('妙手回春') || s.name.includes('海底')));
+});
+
+test('导入落盘：四川新局面保留定缺与四川牌墙，国标清空定缺，续局只加用户确认的那张', () => {
+  const imported = [...tiles('123', Suit.Man), ...tiles('456', Suit.Pin), ...tiles('789', Suit.Sou), createTile(Suit.Sou, 9)];
+  const riverOne = [createTile(Suit.Pin, 1)];
+
+  // 新局面：按玩法重建牌墙；四川已声明的定缺保留（既不推断也不清空）
+  const sichuanNew = planImportedState(sichuan([], Suit.Man), GameMode.Sichuan, imported, { visibleRiver: riverOne });
+  assert.equal(sichuanNew.mode, GameMode.Sichuan);
+  assert.equal(sichuanNew.voidSuit, Suit.Man);
+  assert.equal(sichuanNew.wallCount, INITIAL_WALL_SICHUAN);
+  assert.equal(sichuanNew.hand.length, 10);
+  assert.equal(keys(sichuanNew.discards)[0], keys(riverOne)[0]);
+  assert.equal(sichuanNew.melds.length, 0);
+
+  // 国标新局面：定缺必须为空，牌墙用国标初始值
+  const mcrNew = planImportedState(state([...tiles('111', Suit.Man)]), GameMode.MCR, imported, { visibleRiver: [] });
+  assert.equal(mcrNew.voidSuit, null);
+  assert.equal(mcrNew.wallCount, INITIAL_WALL_MCR);
+  assert.equal(mcrNew.hand.length, 10);
+
+  // 续局：只有用户确认打过的那张进已见牌河，未确认时不动牌河
+  const confirmed = planImportedState(sichuan([createTile(Suit.Pin, 3)], Suit.Pin), GameMode.Sichuan, imported,
+    { importMode: 'continue', confirmedDiscard: createTile(Suit.Pin, 3) });
+  assert.equal(confirmed.discards.length, 1);
+  assert.equal(keys(confirmed.discards)[0], keys([createTile(Suit.Pin, 3)])[0]);
+  assert.equal(confirmed.voidSuit, Suit.Pin);
+  const unconfirmed = planImportedState(sichuan([createTile(Suit.Pin, 3)], Suit.Pin), GameMode.Sichuan, imported,
+    { importMode: 'continue' });
+  assert.equal(unconfirmed.discards.length, 0);
+  assert.equal(keys(unconfirmed.hand).length, 10);
+});
+
+test('空局面：牌墙按玩法取初始值，且与存储解码的空局面一致', () => {
+  assert.equal(emptyEntryState(GameMode.MCR).wallCount, INITIAL_WALL_MCR);
+  assert.equal(emptyEntryState(GameMode.Sichuan).wallCount, INITIAL_WALL_SICHUAN);
+  assert.equal(emptyEntryState(GameMode.Sichuan).voidSuit, null);
+  assert.equal(decodeEntryState(null, GameMode.Sichuan), null);
 });
 
 console.log(`\n${passed} 项守卫通过，${failed} 项失败。`);

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Tile, Language } from '../types';
+import { GameMode, Tile, Language } from '../types';
 import { createTile } from '../constants';
 import { compareHandSnapshots } from '../utils/gameSnapshot';
 import {
@@ -7,6 +7,7 @@ import {
 } from '../utils/mcrScreenshot';
 
 interface Props {
+  mode: GameMode;
   lang: Language;
   currentHand: Tile[];
   canContinue: boolean;
@@ -14,13 +15,14 @@ interface Props {
 }
 
 /** Preview and repair a single 13+drawn screenshot. Never alter the game state before confirmation. */
-const McrScreenshotImport: React.FC<Props> = ({ lang, onApply, currentHand, canContinue }) => {
+const McrScreenshotImport: React.FC<Props> = ({ mode, lang, onApply, currentHand, canContinue }) => {
   const [slots, setSlots] = useState<ScreenshotTile[]>([]);
   const [busy, setBusy] = useState(false);
   const [recordDiscard, setRecordDiscard] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [error, setError] = useState('');
   const zh = lang === 'zh';
+  const sichuan = mode === GameMode.Sichuan;
   const known = slots.filter(s => s.key !== null).length;
   const duplicates = useMemo(() => {
     const count = new Map<string, number>();
@@ -63,12 +65,18 @@ const McrScreenshotImport: React.FC<Props> = ({ lang, onApply, currentHand, canC
   return (
     <details className="bg-white rounded-2xl border-2 border-blue-100 shadow-sm p-3">
       <summary className="cursor-pointer font-black text-sm text-[#1A237E]">
-        {zh ? '从国标麻将截图导入手牌（实验功能）' : 'Import hand from MCR screenshot (experimental)'}
+        {zh
+          ? (sichuan ? '从四川血战截图导入手牌（实验功能）' : '从国标麻将截图导入手牌（实验功能）')
+          : (sichuan ? 'Import hand from Sichuan screenshot (experimental)' : 'Import hand from MCR screenshot (experimental)')}
       </summary>
       <p className="text-xs text-gray-500 mt-2 mb-3">
         {zh
-          ? '仅适配所提供的 16:10 横屏布局：底部13张及右侧单独摸入牌。现有样本只覆盖11种牌面；不认识的牌必须逐张修正。截图仅在本机处理；确认后的牌面可作为少量本地识别样本（非训练），导入可撤销。'
-          : 'For the supplied 16:10 landscape layout only: 13 hand tiles and optional separate draw. Reference samples cover only 11 faces; correct unknown tiles manually. Images stay on-device.'}
+          ? (sichuan
+            ? '仍按 16:10 横屏布局找底部13张及右侧单独摸入牌；四川截图若布局不同，槽位要逐张修正或改用手动录入。现有样本只覆盖11种牌面，不认识的牌必须逐张修正。定缺不会被推断，导入后请在下方核验缺门。截图仅在本机处理，导入可撤销。'
+            : '仅适配所提供的 16:10 横屏布局：底部13张及右侧单独摸入牌。现有样本只覆盖11种牌面；不认识的牌必须逐张修正。截图仅在本机处理；确认后的牌面可作为少量本地识别样本（非训练），导入可撤销。')
+          : (sichuan
+            ? 'Still assumes the 16:10 landscape layout: 13 bottom tiles plus an optional separate draw. If a Sichuan screenshot differs, correct every slot or enter tiles manually. Only 11 faces have samples. The void suit is never inferred; verify it below after importing.'
+            : 'For the supplied 16:10 landscape layout only: 13 hand tiles and optional separate draw. Reference samples cover only 11 faces; correct unknown tiles manually. Images stay on-device.')}
       </p>
       <label className="inline-flex cursor-pointer rounded-lg bg-[#1A237E] text-white font-bold text-sm px-4 py-2">
         {busy ? (zh ? '识别中…' : 'Scanning…') : (zh ? '选择游戏截图' : 'Choose game screenshot')}
@@ -121,7 +129,9 @@ const McrScreenshotImport: React.FC<Props> = ({ lang, onApply, currentHand, canC
           <div className="flex flex-wrap gap-2 mt-3">
             <button type="button" onClick={() => apply('replace')} disabled={!ready || !confirmed}
               className="rounded-lg bg-[#CCFF00] border-2 border-black text-black font-black px-3 py-2 text-sm disabled:opacity-40">
-              {zh ? '作为新局面导入（重置旧记录）' : 'Start new snapshot (reset context)'}
+              {zh
+                ? (sichuan ? '作为新局面导入（需另行核验定缺）' : '作为新局面导入（重置旧记录）')
+                : (sichuan ? 'Start new snapshot (verify void suit after)' : 'Start new snapshot (reset context)')}
             </button>
             {canContinue && (
               <button type="button" onClick={() => apply('continue')} disabled={!ready || !delta || !confirmed}
