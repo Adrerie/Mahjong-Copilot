@@ -720,6 +720,14 @@ test('杠：不明暗杠类型、不把杠算成四归一；七对保留四张�
   assert.ok(qiDuiApi.patterns.some(p => p.id === 'qiDui'));
   assert.equal(qiDuiApi.patterns.find(p => p.id === 'siGuiYi')?.count, 1);
   assert.equal(qiDuiApi.totalFan, 28); // 七对24 + 四归一2 + 无字1 + 缺一门1
+
+  // 七对的牌面全为偶数 ≠ 全双刻；真四副偶数刻子才计全双刻。
+  const evenPairs = [...tiles('22224444', Suit.Man), ...tiles('666688', Suit.Pin)];
+  assert.equal(checkWinning(countsToArray(countTiles(evenPairs)), 0), true);
+  assert.ok(!mcrPatternIds(evenPairs).includes('quanShuangKe'));
+  const evenPungs = [...tiles('222444', Suit.Man), ...tiles('66622', Suit.Pin), ...tiles('888', Suit.Sou)];
+  assert.equal(checkWinning(countsToArray(countTiles(evenPungs)), 0), true);
+  assert.ok(mcrPatternIds(evenPungs).includes('quanShuangKe'));
 });
 
 test('高价值番种：大三元与三色三同顺都要识别且不重复计低番', () => {
@@ -738,6 +746,12 @@ test('高价值番种：大三元与三色三同顺都要识别且不重复计�
   assert.ok(tripleApi.patterns.some(p => p.id === 'sanSeSanTongShun'));
   assert.equal(tripleApi.totalFan, 13);
   assert.equal(tripleApi.isValid, true);
+
+  // 三色三步高与三色三节高的起点不必是 1。
+  const shiftedChows = [...tiles('234789', Suit.Man), ...tiles('34555', Suit.Pin), ...tiles('456', Suit.Sou)];
+  assert.ok(mcrPatternIds(shiftedChows).includes('sanSeSanBuGao'));
+  const shiftedPungs = [...tiles('222555', Suit.Man), ...tiles('33366', Suit.Pin), ...tiles('444', Suit.Sou)];
+  assert.ok(mcrPatternIds(shiftedPungs).includes('sanSeSanJieGao'));
 });
 
 test('七对/连七对择优，九莲宝灯缺和牌张时不确认', () => {
