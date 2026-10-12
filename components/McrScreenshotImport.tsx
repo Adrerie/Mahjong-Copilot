@@ -18,6 +18,7 @@ const McrScreenshotImport: React.FC<Props> = ({ lang, onApply, currentHand, canC
   const [slots, setSlots] = useState<ScreenshotTile[]>([]);
   const [busy, setBusy] = useState(false);
   const [recordDiscard, setRecordDiscard] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
   const [error, setError] = useState('');
   const zh = lang === 'zh';
   const known = slots.filter(s => s.key !== null).length;
@@ -33,7 +34,7 @@ const McrScreenshotImport: React.FC<Props> = ({ lang, onApply, currentHand, canC
 
   const readFile = async (file?: File) => {
     if (!file) return;
-    setBusy(true); setSlots([]); setError(''); setRecordDiscard(false);
+    setBusy(true); setSlots([]); setError(''); setRecordDiscard(false); setConfirmed(false);
     try {
       setSlots(await recognizeMcrScreenshot(file));
     } catch (e) {
@@ -44,11 +45,12 @@ const McrScreenshotImport: React.FC<Props> = ({ lang, onApply, currentHand, canC
   };
 
   const select = (index: number, key: string) => {
+    setConfirmed(false);
     setSlots(previous => previous.map(slot => slot.index === index ? { ...slot, key: key || null } : slot));
   };
 
   const apply = (mode: 'replace' | 'continue') => {
-    if (!ready) return;
+    if (!ready || !confirmed) return;
     const tiles: Tile[] = slots.map(slot => {
       const info = TILE_OPTIONS.find(option => option.key === slot.key)!;
       return createTile(info.suit, info.value);
@@ -114,13 +116,14 @@ const McrScreenshotImport: React.FC<Props> = ({ lang, onApply, currentHand, canC
               )}
             </div>
           )}
+          <label className="block mt-3 text-xs font-bold"><input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} />{' '}{zh ? '我已逐张核对识别结果' : 'I have reviewed every tile'}</label>
           <div className="flex flex-wrap gap-2 mt-3">
-            <button type="button" onClick={() => apply('replace')} disabled={!ready}
+            <button type="button" onClick={() => apply('replace')} disabled={!ready || !confirmed}
               className="rounded-lg bg-[#CCFF00] border-2 border-black text-black font-black px-3 py-2 text-sm disabled:opacity-40">
               {zh ? '作为新局面导入（重置旧记录）' : 'Start new snapshot (reset context)'}
             </button>
             {canContinue && (
-              <button type="button" onClick={() => apply('continue')} disabled={!ready || !delta}
+              <button type="button" onClick={() => apply('continue')} disabled={!ready || !delta || !confirmed}
                 className="rounded-lg border-2 border-[#1A237E] px-3 py-2 text-sm font-bold disabled:opacity-40">
                 {zh ? '继续本局（保留牌河）' : 'Continue this round (keep river)'}
               </button>
