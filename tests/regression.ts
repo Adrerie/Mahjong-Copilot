@@ -999,6 +999,15 @@ test('建议层：一色三步高按实体牌算缺张，不重复借用同一�
   // 123+234+345 需要 1/5 各一张、2/4 各两张、3 三张：只有 123456789m 时缺 4 张
   assert.equal(suggestion.missingTiles.length, 4);
   for (const s of analyzeMCR(hand, [], 'zh', 50)) assert.equal(s.probability, 0);
+
+  // 三副已碰的牌不能被拆开凑123；只余一副面子时不能推荐需三副顺子的清龙。
+  const fixedPongs = [pong(1, Suit.Man), pong(2, Suit.Man), pong(3, Suit.Man)];
+  const residual = [...tiles('789', Suit.Man), createTile(Suit.Pin, 5)];
+  assert.ok(!analyzeMCR(residual, fixedPongs, 'zh', 50).some(s => s.name === TEXT.zh.pureStraight));
+  // 已明吃的顺子可以计入目标顺子，但仍只能使用一次。
+  const fixedChow = [chi('123', Suit.Man)];
+  const chowHand = [...tiles('456789', Suit.Man), ...tiles('22', Suit.Pin), ...tiles('333', Suit.Sou)];
+  assert.ok(analyzeMCR(chowHand, fixedChow, 'zh', 50).some(s => s.name === TEXT.zh.pureStraight));
 });
 
 test('建议层：五门齐报出的向听等于真实向听', () => {
