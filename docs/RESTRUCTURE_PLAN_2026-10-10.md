@@ -18,6 +18,17 @@
 3. **国标准确性**：待牌仍是结构听牌（未逐张核实8番资格）；81番与不计/附加组合未穷举；仍有启发式建议候选需查。
 4. **运行检查**：本轮四川事件与恢复已实测；国标本轮的改动只在测试与浏览器层验证，未在真机逐项重测。
 
+## 后续 TODO · 端侧实时辅助（先记录，暂不开发）
+
+这部分在 P4 现有计番/录牌收尾后再实施，**不属于当前验收范围**；不另开复杂阶段，不改变现有手动录牌模式。
+
+- [ ] **Android 悬浮窗与主动捕获**：Capacitor + Kotlin 原生插件实现悬浮球（启动/暂停、识别状态、推荐弃牌）；用户授权悬浮窗及 MediaProjection 后才能截取其他 App 画面。Android 14+ 每次新投影会话重新申请授权，遇到 `FLAG_SECURE` 不尝试绕过。参考 [TextSnip](https://github.com/rhengtl/textsnip)（MIT）。
+- [ ] **游戏画面识牌**：按游戏/分辨率/皮肤手动校准手牌、四家牌河及副露 ROI；先验证 OpenCV 模板匹配，识别困难时用 YOLO Nano/ONNX 轻量视觉模型，保留人工纠错。参考 [MahjongHelper](https://github.com/toki-2004/MahjongHelper)（MIT）、[QueHun](https://github.com/jzjzzzzzzz/quehun)（Apache-2.0）、[huanlemajiang](https://github.com/tian-xiu/huanlemajiang)（复用前核实许可）。
+- [ ] **连续牌局追踪**：变化帧检测 + 多帧确认，按四家座位记录出牌**顺序与事件**、碰/杠/吃时的牌河移除和副露变化；为视觉观察新增极简事件记录，不把现有排序后的 `GameState.discards: Tile[]` 误当真实历史。参考 [Mahjong Assistant 的 DiscardTracker / OpenCallTracker / TemporalDebouncer](https://github.com/Blairqiao/Mahjong_Assistant)（仓库许可待核），仅借鉴算法思想。
+- [ ] **本地实时决策**：视觉状态校验后复用当前国标/四川和牌、向听与合法弃牌算法；只在稳定局面改变时重新求解。再比较专用小型麻将策略网络与基线的候选弃牌质量、推理延迟、内存和 APK/模型体积，确有收益才作为可选离线模型，不将聊天 Qwen、RAG 或 LoRA 当成前置依赖；国标与四川策略分开验证。
+- [ ] **现实牌桌模式（后续可选）**：摄像头识别与游戏屏幕识别保持两个输入适配器，复用状态追踪和决策接口。评估 [Mahjong-YOLO](https://github.com/nikmomo/Mahjong-YOLO)（MIT，Nano 权重可用于研究），先确认实拍角度、遮挡与模型许可证/第三方依赖。
+- [ ] **实际设备与合规检查**：测牌河准确率、漏牌/重复牌、耗电、发热、横竖屏、后台恢复和离线运行；本地处理图像、不自动点击/代打、不绕过受保护画面，并遵守游戏辅助使用条款。移植源码/模型前核查许可证及模型权重分发权。
+
 ## 最小验收
 
 主要改动一次运行 `npm test && npm run typecheck && npm run build`；推送后核查一次现有 Actions Web/Android。只留关键正反断言，不重复跑旧快照、不扩测试矩阵、不建新阶段文档。
