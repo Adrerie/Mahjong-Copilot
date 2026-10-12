@@ -38,6 +38,7 @@ import {
   parseTileText,
   planTextHand,
   planTileAdd,
+  withConsistentContext,
 } from '../utils/entryEditing';
 
 // ---------- 构造辅助 ----------
@@ -506,6 +507,9 @@ test('川麻：边界读法与封顶，未建模事件不加番', () => {
   );
   assert.equal(withOwnKong.eventExponent, 1);
   assert.equal(withOwnKong.cappedExponent, 4);
+  const ownKongState = sichuan([...tiles('11122233355', Suit.Man)], Suit.Sou,
+    [gang(9, Suit.Man)], { winSource: 'selfDraw', sichuanWinEvent: 'kongBloom' });
+  assert.equal(withConsistentContext({ ...ownKongState, melds: [] }).sichuanWinEvent, null);
   const eventState = sichuan(pongHand, Suit.Sou, [], { winSource: 'claim', sichuanWinEvent: 'robbingKong' });
   assert.deepEqual(validateGameState(eventState, 'zh'), []);
   assert.equal(decodeEntryState(encodeEntryState(eventState), GameMode.Sichuan)?.sichuanWinEvent, 'robbingKong');
