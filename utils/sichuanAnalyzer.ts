@@ -266,14 +266,19 @@ export const recognizeSichuanPatterns = (
     lastDraw: { zh: '海底捞月', en: 'Last tile draw' },
     lastDiscard: { zh: '海底炮', en: 'Last tile discard' },
   };
+  if (context.winSource === 'selfDraw') details.push(lang === 'zh' ? '自摸：其余未胡玩家付款（人数未记录）' : 'Self-draw: active opponents pay (count unknown)');
+  else if (context.winSource === 'claim') details.push(lang === 'zh' ? '点炮：由放炮者付款（未记录具体玩家）' : 'Claim: discarder pays (player unknown)');
   if (validEvent && context.winEvent && context.winEvent !== 'ordinary')
     details.push(`${eventLabels[context.winEvent][lang]} (+1 ${t.exponentUnit})`);
   details.push(uncappedExponent > SICHUAN_RULE.capExponent
     ? `${t.exponentUnit} ${uncappedExponent} → ${lang === 'zh' ? '封顶' : 'capped at'} ${SICHUAN_RULE.capExponent} = ${multiplier} ${t.timesUnit}`
     : `${t.exponentUnit} ${uncappedExponent} = ${multiplier} ${t.timesUnit}`);
-  const pendingContext = context.winSource && context.winSource !== 'unknown' && context.winEvent
+  const sourceRecorded = context.winSource && context.winSource !== 'unknown';
+  const pendingContext = sourceRecorded && context.winEvent
     ? (lang === 'zh' ? '仅为单次和牌倍率；杠分与多人支付未结算' : 'Single-win multiplier only; kong payments and multi-player settlement excluded')
-    : t.pendingEvents;
+    : sourceRecorded
+      ? (lang === 'zh' ? '特殊和牌事件未记录，暂不加事件番；杠分与多人支付未结算' : 'Special win event unrecorded; no event bonus; kong payments excluded')
+      : t.pendingEvents;
   details.push(pendingContext);
 
   return {
