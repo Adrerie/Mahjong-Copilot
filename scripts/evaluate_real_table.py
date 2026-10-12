@@ -9,9 +9,18 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 from collections import Counter
 from pathlib import Path
+
+
+def sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def run() -> None:
@@ -43,9 +52,18 @@ def run() -> None:
     if not images or any(not p.is_file() for p in images):
         parser.error("Supply at least one existing image file")
 
+    # Repeated sweeps must not silently destroy manually reviewed reference data.
+    if args.out.exists() and (
+        (args.out / "review.csv").exists() or (args.out / "summary.json").exists()
+        or next(args.out.glob("*/detections.json"), None) is not None
+    ):
+        parser.error(f"Output already contains evaluation results: {args.out}. Use a new --out directory.")
+
     from ultralytics import YOLO
     import cv2
 
+    settings = {"imgsz": args.imgsz, "conf": args.conf, "iou": args.iou, "device": "cpu"}
+    model_hash = sha256(args.weights)
     model = YOLO(str(args.weights))
     model_classes = {int(k): str(v) for k, v in model.names.items()}
     args.out.mkdir(parents=True, exist_ok=True)
@@ -82,6 +100,9 @@ def run() -> None:
         report = {
             "source_image": str(image),
             "weights": str(args.weights),
+            "weights_sha256": model_hash,
+            "image_sha256": sha256(image),
+            "inference": settings,
             "photo_width": int(result.orig_shape[1]),
             "photo_height": int(result.orig_shape[0]),
             "model_classes": model_classes,
@@ -95,6 +116,7 @@ def run() -> None:
             raise RuntimeError(f"Could not write annotated image: {target / 'detections.jpg'}")
         reports.append({
             "image": str(image),
+            "image_sha256": report["image_sha256"],
             "result_dir": str(target),
             "candidate_count": len(candidates),
             "detector_label_counts": dict(sorted(Counter(c["detector_label"] for c in candidates).items())),
@@ -106,6 +128,7 @@ def run() -> None:
 
     (args.out / "summary.json").write_text(
         json.dumps({"number_of_images": len(reports), "model_classes": model_classes,
+                    "weights_sha256": model_hash, "inference": settings,
                     "images": reports,
                     "note": "Detection counts are not accuracy. Fill review.csv after inspecting each source and overlay."},
                    indent=2, ensure_ascii=False), encoding="utf-8")
