@@ -36,3 +36,8 @@ android/app/release/
 real-table-eval*/
 **/__pycache__/
 *.pyc
+
+# Local exported YOLO weights and provenance; reviewed redistribution requires a separate commit
+android/app/src/main/assets/mahjong_detector.onnx
+android/app/src/main/assets/mahjong_detector.json
+*.pt
