@@ -159,10 +159,16 @@ const lockedMeldShapes = (melds: Meld[]): LockedShape[] => melds.map(meld => {
 });
 
 /** 三花色各一副、逐步递增的顺子/刻子是否成立（step=1 三步高/三节高，step=3 花龙）。 */
-const hasShiftedTriple = (lookup: (suit: number, offset: number) => boolean, step: number): boolean =>
-  [0, 1, 2].some(a => [0, 1, 2].some(b => [0, 1, 2].some(c =>
-    new Set([a, b, c]).size === 3 &&
-    lookup(a, 0) && lookup(b, step) && lookup(c, step * 2))));
+const hasShiftedTriple = (lookup: (suit: number, offset: number) => boolean, step: number): boolean => {
+  // 起点不限于 1；234m / 345p / 456s 也是三色三步高。
+  for (let start = 0; start + 2 * step <= 8; start++) {
+    for (const a of [0, 1, 2]) for (const b of [0, 1, 2]) for (const c of [0, 1, 2]) {
+      if (a !== b && a !== c && b !== c &&
+        lookup(a, start) && lookup(b, start + step) && lookup(c, start + 2 * step)) return true;
+    }
+  }
+  return false;
+};
 
 /**
  * 一套合法拆分内的面子相关番种。
@@ -203,6 +209,9 @@ const recognizeSetPatterns = (
 
   // 碰碰和 / 暗刻族 / 杠数
   if (pongs.length === 4) add('pengPengHu');
+  // 全双刻必须在同一合法拆分内包含四副偶数刻子与偶数将。
+  const isEvenNumber = (index: number) => isNumberIndex(index) && [2, 4, 6, 8].includes(numberValueOfIndex(index));
+  if (pongs.length === 4 && isEvenNumber(pair) && pongIndices.every(isEvenNumber)) add('quanShuangKe');
   if (concealedPongs >= 4) add('siAnKe');
   else if (concealedPongs >= 3) add('sanAnKe');
   else if (concealedPongs >= 2) add('shuangAnKe');
@@ -418,7 +427,6 @@ const recognizeTilePatterns = (
   if (allTiles.length > 0 && allTiles.every(t => !isHonors(t) && t.value >= 7)) add('quanDa');
   if (allTiles.length > 0 && allTiles.every(t => !isHonors(t) && t.value >= 4 && t.value <= 6)) add('quanZhong');
   if (allTiles.length > 0 && allTiles.every(t => !isHonors(t) && t.value <= 3)) add('quanXiao');
-  if (allTiles.length > 0 && allTiles.every(t => !isHonors(t) && [2, 4, 6, 8].includes(t.value))) add('quanShuangKe');
   if (allTiles.length > 0 && allTiles.every(t => !isHonors(t) && t.value >= 6)) add('daYuWu');
   if (allTiles.length > 0 && allTiles.every(t => !isHonors(t) && t.value <= 4)) add('xiaoYuWu');
   if (allTiles.length > 0 && allTiles.every(isReversible)) add('tuiBuDao');
