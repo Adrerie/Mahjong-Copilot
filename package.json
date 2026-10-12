@@ -1,7 +1,7 @@
 {
   "name": "mahjong-copilot",
   "private": true,
-  "version": "1.1.0-Aipha",
+  "version": "1.1.0-beta.1",
   "capacitor": {
     "appId": "com.karislin.mahjong",
     "appName": "Mahjong Copilot",
