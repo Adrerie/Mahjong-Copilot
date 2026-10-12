@@ -556,6 +556,9 @@ test('国标：结构成牌与 8 番起和分开，空输入不得声明起和',
   assert.deepEqual(noFan.patterns.map(p => p.id), ['wuFanHu']);
   assert.equal(noFan.confirmedFan, 8);
   assert.equal(noFan.eligibility, 'met');
+  const incompleteContext = calculateMCRTotalFan(noFanHand, noFanMelds, 'claim', { ...full, winningTile: null });
+  assert.ok(!incompleteContext.patterns.some(p => p.id === 'wuFanHu'));
+  assert.equal(incompleteContext.isValid, false);
   const noFanUnknown = calculateMCRTotalFan(noFanHand, noFanMelds, 'unknown', full);
   assert.equal(noFanUnknown.patterns.some(p => p.id === 'wuFanHu'), false);
   assert.equal(noFanUnknown.confirmedFan, 0);
@@ -694,6 +697,11 @@ test('国标特殊结构：七星不靠/全不靠/组合龙都能成牌', () => 
   // 组合龙差一张：九张龙 + 55z 将 + 单张 2m，摸 2m 的刻子位仍差两张（换掉 8p 后听牌）
   const knittedTwoAway = [...tiles('147', Suit.Man), ...tiles('258', Suit.Pin), ...tiles('369', Suit.Sou), ...tiles('55', Suit.Zihai), createTile(Suit.Man, 2), createTile(Suit.Pin, 8)];
   assert.equal(calculateShanten(knittedTwoAway, [], GameMode.MCR), 1);
+  const starsReady = [...tiles('147', Suit.Man), ...tiles('258', Suit.Pin), createTile(Suit.Sou, 3), ...tiles('123456', Suit.Zihai)];
+  assert.equal(calculateShanten([...starsReady, createTile(Suit.Zihai, 1)], []), 0); // 14张先弃重张仍是听牌
+  assert.equal(calculateShanten(starsReady.slice(0, -1), []), 1); // 12张尚缺两次补张
+  const dragonReady = [...tiles('147111', Suit.Man), ...tiles('2582', Suit.Pin), ...tiles('369', Suit.Sou)];
+  assert.equal(calculateShanten([...dragonReady, createTile(Suit.Pin, 8)], []), 0);
   // 常规 13 张牌不受特殊型公式影响
   assert.equal(calculateShanten([...tiles('123456789', Suit.Man), ...tiles('123', Suit.Pin), ...tiles('5', Suit.Sou)], [], GameMode.MCR), 0);
 });
@@ -1039,6 +1047,12 @@ test('建议层：一色三步高按实体牌算缺张，不重复借用同一�
 });
 
 test('建议层：明碰/明杠不能拆成顺子，也不能被重复计入刻子', () => {
+  const partialTriple = analyzeMCR([...tiles('11222333', Suit.Man), ...tiles('456', Suit.Pin), ...tiles('77', Suit.Sou)], [], 'zh', 50)
+    .find(s => s.name.includes('一色三同顺'));
+  assert.deepEqual(partialTriple?.missingTiles.map(t => `${t.value}${t.suit}`), ['1m']);
+  const partialQuad = analyzeMCR([...tiles('11122223333', Suit.Man), ...tiles('55', Suit.Pin)], [], 'zh', 50)
+    .find(s => s.name.includes('一色四同顺'));
+  assert.deepEqual(partialQuad?.missingTiles.map(t => `${t.value}${t.suit}`), ['1m']);
   // 明碰 1m + 三组 23m：碰牌不能改当 123m 的三副顺子。
   const openPong = analyzeMCR([...tiles('23', Suit.Man), ...tiles('23', Suit.Man), ...tiles('23', Suit.Man),
     ...tiles('55', Suit.Pin), ...tiles('55', Suit.Sou)], [pong(1, Suit.Man)], 'zh', 50);

@@ -203,7 +203,7 @@ export const calculateMCRTotalFan = (
     const result = calculateTotalFan(recognizeMCRPatterns(hand, melds, source, ctx));
     // 无番和（8番）：除花牌外确实没有任何其他番种时才计。
     // 和牌来源未记录时可能还有自摸/门前清，此时不能判定「无番」。
-    if (source === 'unknown' || result.validPatterns.length > 0) return result;
+    if (source === 'unknown' || gapped.some(gap => gap !== 'winSource') || result.validPatterns.length > 0) return result;
     const pattern = getPatternById('wuFanHu');
     if (!pattern) return result;
     return {

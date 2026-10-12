@@ -48,22 +48,23 @@ export const calculateKokushiShanten = (tiles: number[]): number => {
 
 /**
  * 不靠（全不靠/七星不靠）与组合龙的向听。
- * 通用公式：向听 = 暗手张数 − 能固定进最终牌型的牌张数
- * （其余每张都要被摸到的牌替换；摸到的那张不算在手牌里）。
+ * 向听 = 最终暗手张数 − 能固定进最终牌型的牌张数 − 1。
+ * 13张与待弃牌的14张使用同一基准，不把多出的待弃牌误算成一次摸牌。
  * 吃碰杠是锁定面子：不靠不允许副露，组合龙最多一副副露（顶掉那副顺子/刻子）。
  */
 const knittedSpecialShanten = (tiles: number[], melds: Meld[]): number | null => {
-  const handCount = tiles.reduce((sum, count) => sum + count, 0);
+  const locked = countsToArray(countTiles(melds.flatMap(meld => meld.tiles)));
+  const distance = (matched: number) => 13 - melds.length * 3 - matched;
   let best: number | null = null;
   const keep = (value: number) => { best = best === null ? value : Math.min(best, value); };
 
   // 不靠：三色各取 147/258/369 中的一组，张张不同，加七种字牌（不允许副露）。
-  if (melds.length === 0 && handCount === 13) {
+  if (melds.length === 0) {
     const honors = tiles.slice(27).filter(count => count > 0).length;
     const numbers = KNITTED_PERMUTATIONS.reduce((bestNumbers, permutation) => Math.max(bestNumbers,
       [0, 1, 2].reduce((matched, suit) => matched +
         KNITTED_GROUPS[permutation[suit]].filter(offset => tiles[suit * 9 + offset] > 0).length, 0)), 0);
-    keep(13 - Math.min(13, numbers + honors));
+    keep(distance(numbers + honors));
   }
 
   // 组合龙：三色分别凑齐 147/258/369 共 9 张，其余是一副面子加一对将（最多一副副露）。
@@ -71,27 +72,34 @@ const knittedSpecialShanten = (tiles: number[], melds: Meld[]): number | null =>
     const needSet = melds.length === 0;
     for (const permutation of KNITTED_PERMUTATIONS) {
       const rest = [...tiles];
+      const required = new Array<number>(34).fill(0);
       let matched = 0;
       permutation.forEach((group, suit) =>
         KNITTED_GROUPS[group].forEach(offset => {
+          required[suit * 9 + offset] = 1;
           if (rest[suit * 9 + offset] > 0) { rest[suit * 9 + offset] -= 1; matched += 1; }
         }));
       for (let pair = 0; pair < 34; pair++) {
-        if (rest[pair] < 1) continue;
+        if (locked[pair] + required[pair] + 2 > 4) continue;
         const afterPair = [...rest];
         const pairMatched = Math.min(2, afterPair[pair]);
         afterPair[pair] -= pairMatched;
         let setMatched = 0;
         if (needSet) {
-          for (let index = 0; index < 34; index++) setMatched = Math.max(setMatched, Math.min(3, afterPair[index]));
+          for (let index = 0; index < 34; index++) {
+            if (index !== pair && locked[index] + required[index] + 3 <= 4) {
+              setMatched = Math.max(setMatched, Math.min(3, afterPair[index]));
+            }
+          }
           for (let suit = 0; suit < 3; suit++) {
             for (let offset = 0; offset <= 6; offset++) {
               const run = [suit * 9 + offset, suit * 9 + offset + 1, suit * 9 + offset + 2];
+              if (run.some(index => locked[index] + required[index] + (index === pair ? 2 : 0) + 1 > 4)) continue;
               setMatched = Math.max(setMatched, run.filter(index => afterPair[index] > 0).length);
             }
           }
         }
-        keep(handCount - (matched + pairMatched + setMatched));
+        keep(distance(matched + pairMatched + setMatched));
       }
     }
   }

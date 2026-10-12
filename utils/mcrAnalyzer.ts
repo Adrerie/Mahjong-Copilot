@@ -91,12 +91,8 @@ const chowAvailable = (hand: Tile[], melds: Meld[], suit: Suit, startVal: number
 };
 
 /** 补足 need 副同序顺子还缺的牌（每副顺子三张牌各缺一张）。 */
-const missingChowTiles = (suit: Suit, startVal: number, need: number, available: number): Tile[] => {
-  const gap = Math.max(0, need - available);
-  if (gap === 0) return [];
-  return [startVal, startVal + 1, startVal + 2].flatMap(value =>
-    Array.from({ length: gap }, () => createTile(suit, value)));
-};
+const missingChowTiles = (hand: Tile[], melds: Meld[], suit: Suit, startVal: number, need: number): Tile[] =>
+  planSequences(hand, melds, Array.from({ length: need }, () => ({ suit, startVal }))).missing;
 
 /** countTiles 的键（如 "1m"）还原成牌，用于把候选将牌显示给用户。 */
 const tileFromKey = (key: string): Tile => {
@@ -146,7 +142,7 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
         });
       } else if (availableChows >= 3) {
         // 已有3组，缺1组
-        const missing = missingChowTiles(s, i, 4, availableChows);
+        const missing = missingChowTiles(hand, melds, s, i, 4);
 
         const { score: extraScore, details: extraDetails } = calculateMCRExtras(allTiles, melds, ['yiSeSiTongShun', 'yiSeSanTongShun', 'yiBanGao', 'siGuiYi']);
         suggestions.push({
@@ -230,7 +226,7 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
         });
       } else if (availableChows >= 2 && seqCost === 0) {
         // 已有2组，缺1组
-        const missing = missingChowTiles(s, i, 3, availableChows);
+        const missing = missingChowTiles(hand, melds, s, i, 3);
 
         const { score: extraScore, details: extraDetails } = calculateMCRExtras(allTiles, melds, ['yiSeSanTongShun']);
         suggestions.push({

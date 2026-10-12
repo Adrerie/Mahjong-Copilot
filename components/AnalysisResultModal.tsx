@@ -30,15 +30,15 @@ const AnalysisResultModal: React.FC<Props> = ({ result, lang, onClose }) => {
                    result.status === 'incomplete' ? (lang === 'zh' ? '牌数未齐' : 'Incomplete hand') :
                    result.status === 'deadWait' ? (lang === 'zh' ? '死叫（无剩余待牌）' : 'Dead wait (no copies left)') :
                    result.isWinning ? (lang === 'zh'
-                      ? (result.contextPending ? '成牌（计番待核）' : '成牌（参考计番）')
-                      : (result.contextPending ? 'Complete shape (score unverified)' : 'Complete shape (reference score)')) :
+                      ? '成牌（参考计番）'
+                      : 'Complete shape (reference score)') :
                    result.isReady
                      ? (result.mode === GameMode.MCR
-                       ? (lang === 'zh' ? '结构听牌（起和待核）' : 'Shape tenpai (8-fan minimum unverified)')
+                       ? (lang === 'zh' ? '结构听牌' : 'Shape tenpai')
                        : t.ready)
                      : result.shanten !== null ? `${result.shanten} ${t.shanten}` : '—'}
                 </span>
-                {result.warnings.map((w, idx) => (
+                {result.warnings.filter(w => !w.startsWith('和牌来源未知') && !w.startsWith('Win source unknown')).map((w, idx) => (
                    <span key={idx} className="bg-[#FF006E] text-white text-xs font-bold px-2 py-0.5 rounded transform -rotate-1">
                      {w}
                    </span>
@@ -49,7 +49,6 @@ const AnalysisResultModal: React.FC<Props> = ({ result, lang, onClose }) => {
         </div>
 
         <div className="p-4 sm:p-6 overflow-y-auto space-y-6 no-scrollbar bg-gray-50/50">
-          {result.scoreNote && <p className="text-sm text-amber-800 bg-amber-50 p-3 rounded-xl">{result.scoreNote}</p>}
           
           {/* 1. Best Discard Section */}
           {result.bestDiscard && (
@@ -100,9 +99,10 @@ const AnalysisResultModal: React.FC<Props> = ({ result, lang, onClose }) => {
                                 <span className="font-bold text-[#1A237E] block leading-tight">{sug.name}</span>
                                 {/* Pattern Breakdown */}
                                 <div className="flex flex-wrap gap-1 mt-1">
-                                    {sug.patternDetails.map((detail, dIdx) => (
+                                    {sug.patternDetails.filter(detail => !/未记录|not recorded/i.test(detail)).map((detail, dIdx) => (
                                         <span key={dIdx} className="text-[10px] bg-blue-50 text-blue-800 px-1.5 py-0.5 rounded border border-blue-100">
-                                            {detail}
+                                            {detail.startsWith('8 番起和待核') ? '起和条件待确认'
+                                              : detail.startsWith('8-fan minimum unverified') ? 'Win eligibility unconfirmed' : detail}
                                         </span>
                                     ))}
                                 </div>
@@ -155,8 +155,8 @@ const AnalysisResultModal: React.FC<Props> = ({ result, lang, onClose }) => {
               {result.mode === GameMode.MCR && (
                 <p className="text-xs text-amber-800 bg-amber-50 p-2 rounded-lg mb-2">
                   {lang === 'zh'
-                    ? '待牌只按牌型计算：能否正式起和还要看实际和牌张、和牌来源、圈门风、末张与杠类型，达到 8 番才算起和。'
-                    : 'Waits are shape-only: whether the hand may actually win also depends on the winning tile, win source, seat/round wind, last tile and kong type, and needs 8 fan.'}
+                    ? '国标麻将需要至少 8 番才可起和。'
+                    : 'MCR requires at least 8 fan to win.'}
                 </p>
               )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
