@@ -487,6 +487,31 @@ test('川麻：边界读法与封顶，未建模事件不加番', () => {
   assert.equal(capped.ruleSource, 'https://hi8.com/g/sichuanmajiang');
   assert.equal(capped.uncappedExponent, capped.patterns.reduce((sum, p) => sum + p.exponent, 0) + capped.roots);
   assert.deepEqual(capped.pendingContext, TEXT.zh.pendingEvents);
+  // 四川同一 Hi8 口径：普通自摸不是额外番；明确特殊事件+1指数番，再封顶。
+  const ordinary = recognizeSichuanPatterns(pongHand, [], 'zh', { winSource: 'selfDraw', winEvent: 'ordinary' });
+  const lastDraw = recognizeSichuanPatterns(pongHand, [], 'zh', { winSource: 'selfDraw', winEvent: 'lastDraw' });
+  const lastDiscard = recognizeSichuanPatterns(pongHand, [], 'zh', { winSource: 'claim', winEvent: 'lastDiscard' });
+  const kongDiscard = recognizeSichuanPatterns(pongHand, [], 'zh', { winSource: 'claim', winEvent: 'kongDiscard' });
+  const robbing = recognizeSichuanPatterns(pongHand, [], 'zh', { winSource: 'claim', winEvent: 'robbingKong' });
+  assert.equal(ordinary.multiplier, 2);
+  for (const score of [lastDraw, lastDiscard, kongDiscard, robbing]) {
+    assert.equal(score.eventExponent, 1);
+    assert.equal(score.multiplier, 4);
+  }
+  assert.equal(recognizeSichuanPatterns(pongHand, [], 'zh', { winSource: 'claim', winEvent: 'lastDraw' }).eventExponent, 0);
+  assert.equal(recognizeSichuanPatterns(pongHand, [], 'zh', { winSource: 'selfDraw', winEvent: 'kongBloom' }).eventExponent, 0);
+  const withOwnKong = recognizeSichuanPatterns(
+    [...tiles('11122233355', Suit.Man)], [gang(9, Suit.Man)], 'zh',
+    { winSource: 'selfDraw', winEvent: 'kongBloom' },
+  );
+  assert.equal(withOwnKong.eventExponent, 1);
+  assert.equal(withOwnKong.cappedExponent, 4);
+  const eventState = sichuan(pongHand, Suit.Sou, [], { winSource: 'claim', sichuanWinEvent: 'robbingKong' });
+  assert.deepEqual(validateGameState(eventState, 'zh'), []);
+  assert.equal(decodeEntryState(encodeEntryState(eventState), GameMode.Sichuan)?.sichuanWinEvent, 'robbingKong');
+  assert.equal(analyzeGame(eventState, 'zh').suggestions[0]?.scoreText, '2 指数番 · 4 倍');
+  assert.ok(validateGameState({ ...eventState, winSource: 'selfDraw' }, 'zh').length > 0);
+  assert.ok(validateGameState({ ...eventState, sichuanWinEvent: 'kongBloom' }, 'zh').length > 0);
   // 国标路径不受影响：仍按番数显示，不出现指数番文本
   const mcr = analyzeGame(state([...tiles('111123', Suit.Sou), ...tiles('45678999', Suit.Man)]), 'zh');
   assert.equal(mcr.isWinning, true);
@@ -1053,6 +1078,10 @@ test('建议层：明碰/明杠不能拆成顺子，也不能被重复计入刻�
   const partialQuad = analyzeMCR([...tiles('11122223333', Suit.Man), ...tiles('55', Suit.Pin)], [], 'zh', 50)
     .find(s => s.name.includes('一色四同顺'));
   assert.deepEqual(partialQuad?.missingTiles.map(t => `${t.value}${t.suit}`), ['1m']);
+  // 两副已碰只余两个面子槽，绝不能推荐需要三副顺子的24番一色三同顺。
+  const impossible = analyzeMCR([...tiles('112233', Suit.Man), createTile(Suit.Pin, 5)],
+    [pong(9, Suit.Pin), pong(8, Suit.Sou)], 'zh', 50);
+  assert.ok(!impossible.some(s => s.name.includes('一色三同顺')));
   // 明碰 1m + 三组 23m：碰牌不能改当 123m 的三副顺子。
   const openPong = analyzeMCR([...tiles('23', Suit.Man), ...tiles('23', Suit.Man), ...tiles('23', Suit.Man),
     ...tiles('55', Suit.Pin), ...tiles('55', Suit.Sou)], [pong(1, Suit.Man)], 'zh', 50);
