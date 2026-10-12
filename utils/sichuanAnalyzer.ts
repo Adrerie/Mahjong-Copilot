@@ -9,7 +9,8 @@
  * - 这是该页面标注的**示例口径**，不是四川/重庆统一规范；2026-10-10复核了原页面。
  *   允许叠加的番型仍须在同一合法拆分中成立，七对和标准面子拆分分别评分后择高。
  * - 倍率 = 2^min(指数番, 封顶)，不再使用旧表「清对 6 番 = 64 倍」这类写法。
- * - 未记录自摸/点炮、杠类型、海底/抢杠等事件，因此不加这些番，只在结果里标注待补。
+ * - 自摸/点炮决定付款方向，不默认加番；明确记录的五类特殊和牌事件各 +1 指数番（封顶前）。
+ * - 不推断杠分转移、查叫/查花猪、支付人数及房间“自摸加底/加番”差异。
  * - 番型按**合法面子拆分**判断（对对胡、带幺九），不按「存在几张刻子」推断：
  *   枚举暗手每个合法「4 副面子 + 1 将」拆分，各拆分成套计番后择高。因此
  *   111222333m99911p 只计带幺九 2 指数番（123×3 拆分），不叠加另一套刻子拆分的对对胡；
@@ -17,7 +18,7 @@
  * - 清一色与根不依赖拆分，正常与选中的拆分相加。
  */
 
-import { Suit, Tile, Meld, FanSuggestion, Language } from '../types';
+import { Suit, Tile, Meld, FanSuggestion, Language, SichuanWinEvent, WinSource } from '../types';
 import { createTile, TEXT } from '../constants';
 import { countTiles, countsToArray } from './tileHelpers';
 
@@ -57,6 +58,7 @@ export interface SichuanScore {
   patterns: SichuanPatternHit[];
   baseExponent: number;
   roots: number;
+  eventExponent: number;
   uncappedExponent: number;
   cappedExponent: number;
   multiplier: number;
@@ -158,7 +160,10 @@ const countPairs = (counts: Map<string, number>): number => {
 
 // ========== 和牌计番 ==========
 
-export const recognizeSichuanPatterns = (hand: Tile[], melds: Meld[], lang: Language): SichuanScore => {
+export const recognizeSichuanPatterns = (
+  hand: Tile[], melds: Meld[], lang: Language,
+  context: { winSource?: WinSource; winEvent?: SichuanWinEvent | null } = {},
+): SichuanScore => {
   const t = TEXT[lang];
   const allTiles = [...hand, ...melds.flatMap(m => m.tiles)];
   const allCounts = countTiles(allTiles);
@@ -221,7 +226,14 @@ export const recognizeSichuanPatterns = (hand: Tile[], melds: Meld[], lang: Lang
   };
 
   const baseExponent = hits.reduce((total, hit) => total + hit.exponent, 0);
-  const uncappedExponent = baseExponent + roots;
+  const eventSource: WinSource | null =
+    context.winEvent === 'kongBloom' || context.winEvent === 'lastDraw' ? 'selfDraw' :
+    context.winEvent === 'kongDiscard' || context.winEvent === 'robbingKong' || context.winEvent === 'lastDiscard' ? 'claim' : null;
+  // 五类真实和牌事件在 Hi8 口径中各 +1；普通自摸仅改变赔付对象，不自行加番。
+  const validEvent = !!eventSource && context.winSource === eventSource &&
+    (context.winEvent !== 'kongBloom' || melds.some(m => m.type === 'gang'));
+  const eventExponent = validEvent ? 1 : 0;
+  const uncappedExponent = baseExponent + roots + eventExponent;
   const cappedExponent = Math.min(uncappedExponent, SICHUAN_RULE.capExponent);
   const multiplier = Math.pow(2, cappedExponent);
 
@@ -247,10 +259,22 @@ export const recognizeSichuanPatterns = (hand: Tile[], melds: Meld[], lang: Lang
     .sort((a, b) => b.exponent - a.exponent)
     .map(hit => `${names[hit.id]} (${hit.exponent} ${t.exponentUnit})`);
   if (roots > 0) details.push(`${t.root} ×${roots} (+${roots})`);
+  const eventLabels: Record<Exclude<SichuanWinEvent, 'ordinary'>, { zh: string; en: string }> = {
+    kongBloom: { zh: '杠上开花', en: 'Kong bloom' },
+    kongDiscard: { zh: '杠上炮', en: 'Kong discard win' },
+    robbingKong: { zh: '抢杠胡', en: 'Robbing a kong' },
+    lastDraw: { zh: '海底捞月', en: 'Last tile draw' },
+    lastDiscard: { zh: '海底炮', en: 'Last tile discard' },
+  };
+  if (validEvent && context.winEvent && context.winEvent !== 'ordinary')
+    details.push(`${eventLabels[context.winEvent][lang]} (+1 ${t.exponentUnit})`);
   details.push(uncappedExponent > SICHUAN_RULE.capExponent
     ? `${t.exponentUnit} ${uncappedExponent} → ${lang === 'zh' ? '封顶' : 'capped at'} ${SICHUAN_RULE.capExponent} = ${multiplier} ${t.timesUnit}`
     : `${t.exponentUnit} ${uncappedExponent} = ${multiplier} ${t.timesUnit}`);
-  details.push(t.pendingEvents);
+  const pendingContext = context.winSource && context.winSource !== 'unknown' && context.winEvent
+    ? (lang === 'zh' ? '仅为单次和牌倍率；杠分与多人支付未结算' : 'Single-win multiplier only; kong payments and multi-player settlement excluded')
+    : t.pendingEvents;
+  details.push(pendingContext);
 
   return {
     ruleId: SICHUAN_RULE.id,
@@ -261,11 +285,12 @@ export const recognizeSichuanPatterns = (hand: Tile[], melds: Meld[], lang: Lang
     patterns: [...hits].sort((a, b) => b.exponent - a.exponent),
     baseExponent,
     roots,
+    eventExponent,
     uncappedExponent,
     cappedExponent,
     multiplier,
     details,
-    pendingContext: t.pendingEvents,
+    pendingContext,
   };
 };
 
