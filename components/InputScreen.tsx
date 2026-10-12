@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AnalysisResult, GameMode, GameState, KongKind, Language, Meld, SichuanWinEvent, Suit, Tile, WinSource, Wind } from '../types';
 import {
   INITIAL_WALL_MCR, INITIAL_WALL_SICHUAN, MAX_WALL_MCR, MAX_WALL_SICHUAN,
-  SUIT_LABELS, TEXT, THEME, WIND_LABELS,
+  SUIT_LABELS, TEXT, THEME, WIND_LABELS, getTileKey,
 } from '../constants';
 import { analyzeGame, sortTiles } from '../utils/mahjongLogic';
 import { sichuanEventSource } from '../utils/inputValidation';
@@ -194,10 +194,14 @@ const InputScreen: React.FC<Props> = ({ mode, lang, setLang, onBack }) => {
     setTextInput('');
   };
 
-  const handleScreenshotHand = (hand: Tile[]) => {
-    // A screenshot is a NEW round observation, not an addition to stale melds/river.
-    // The wall count is left as-is: a single screenshot does not prove its meaning.
-    const candidate: GameState = { ...emptyEntry(GameMode.MCR), wallCount: entry.wallCount, hand };
+  const handleScreenshotHand = (hand: Tile[], importMode: 'replace' | 'continue', confirmedDiscard?: string) => {
+    // Only verified snapshots update state; a single frame cannot supply a play timeline.
+    const oldDiscard = confirmedDiscard && importMode === 'continue'
+      ? entry.hand.find(t => getTileKey(t.suit, t.value) === confirmedDiscard)
+      : undefined;
+    const candidate: GameState = importMode === 'continue'
+      ? { ...entry, hand, discards: oldDiscard ? [...entry.discards, oldDiscard] : entry.discards }
+      : { ...emptyEntry(GameMode.MCR), hand };
     const errors = validateGameState(candidate, lang);
     if (errors.length) {
       setEntryError({ zh: validateGameState(candidate, 'zh')[0], en: validateGameState(candidate, 'en')[0] });
@@ -349,7 +353,7 @@ const InputScreen: React.FC<Props> = ({ mode, lang, setLang, onBack }) => {
         </div>
 
         {mode === GameMode.MCR && (
-          <McrScreenshotImport lang={lang} onApply={handleScreenshotHand} />
+          <McrScreenshotImport lang={lang} currentHand={hand} canContinue={melds.length === 0 && [13, 14].includes(hand.length)} onApply={handleScreenshotHand} />
         )}
 
         {/* === SICHUAN WIN CONTEXT === */}
