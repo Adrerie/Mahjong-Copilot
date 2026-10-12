@@ -167,7 +167,7 @@ export const analyzeGame = (state: GameState, lang: Language = 'en'): AnalysisRe
   return { mode, status, isReady, isWinning, shanten, waitingTiles, suggestions, scoreNote,
     bestDiscard: discard && { tile: discard.tile, reason: hasVoid ? (zh ? '优先打定缺花色' : 'Discard void suit first') : discard.reason,
       ukeire: discard.ukeire, ukeireTiles: discard.ukeireTiles },
-    improvingDraws: improvingDraws.slice(0, 8),
+    improvingDraws: hand.length + melds.length * 3 === 13 ? improvingDraws.slice(0, 8) : undefined,
     scoreEstimate: isWinning ? suggestions[0]?.fan : undefined, contextPending, warnings };
 };
 
