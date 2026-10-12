@@ -50,6 +50,18 @@ export const calculateShanten = (hand: Tile[], melds: Meld[], mode: GameMode = G
   if (melds.length > 4) return 8;
   const tiles = countsToArray(countTiles(hand));
   if (checkWinning(tiles, melds.length, mode)) return -1;
+  // 国标不靠与组合龙已支持和牌，但不在标准/七对/十三幺向听公式里。
+  // 对完整的13张等效牌做一次实际补张判和，避免「已听牌却显示6向听」。
+  if (mode === GameMode.MCR && hand.length + melds.length * 3 === 13) {
+    const used = countsToArray(countTiles([...hand, ...melds.flatMap(meld => meld.tiles)]));
+    for (let i = 0; i < 34; i++) {
+      if (used[i] >= 4) continue;
+      tiles[i]++;
+      const completes = checkWinning(tiles, melds.length, mode);
+      tiles[i]--;
+      if (completes) return 0;
+    }
+  }
   let result = standardShanten(tiles, melds.length);
   if (melds.length === 0) {
     result = Math.min(result, Math.max(0, calculateQiDuiShanten(tiles)));
