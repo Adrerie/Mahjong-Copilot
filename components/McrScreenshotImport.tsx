@@ -1,19 +1,23 @@
 import React, { useMemo, useState } from 'react';
 import { Tile, Language } from '../types';
-import { createTile } from '../constants';
+import { createTile, getTileKey } from '../constants';
+import { compareHandSnapshots } from '../utils/gameSnapshot';
 import {
   recognizeMcrScreenshot, ScreenshotTile, TILE_OPTIONS,
 } from '../utils/mcrScreenshot';
 
 interface Props {
   lang: Language;
-  onApply: (hand: Tile[]) => void;
+  currentHand: Tile[];
+  canContinue: boolean;
+  onApply: (hand: Tile[], mode: 'replace' | 'continue', confirmedDiscard?: string) => void;
 }
 
 /** Preview and repair a single 13+drawn screenshot. Never alter the game state before confirmation. */
-const McrScreenshotImport: React.FC<Props> = ({ lang, onApply }) => {
+const McrScreenshotImport: React.FC<Props> = ({ lang, onApply, currentHand, canContinue }) => {
   const [slots, setSlots] = useState<ScreenshotTile[]>([]);
   const [busy, setBusy] = useState(false);
+  const [recordDiscard, setRecordDiscard] = useState(false);
   const [error, setError] = useState('');
   const zh = lang === 'zh';
   const known = slots.filter(s => s.key !== null).length;
@@ -23,10 +27,13 @@ const McrScreenshotImport: React.FC<Props> = ({ lang, onApply }) => {
     return [...count.entries()].filter(([, n]) => n > 4).map(([k]) => TILE_OPTIONS.find(o => o.key === k)?.name ?? k);
   }, [slots]);
   const ready = (slots.length === 13 || slots.length === 14) && known === slots.length && duplicates.length === 0;
+  const delta = useMemo(() => ready && canContinue && [13, 14].includes(currentHand.length)
+    ? compareHandSnapshots(currentHand.map(t => getTileKey(t.suit, t.value)), slots.map(s => s.key!))
+    : null, [ready, canContinue, currentHand, slots]);
 
   const readFile = async (file?: File) => {
     if (!file) return;
-    setBusy(true); setSlots([]); setError('');
+    setBusy(true); setSlots([]); setError(''); setRecordDiscard(false);
     try {
       setSlots(await recognizeMcrScreenshot(file));
     } catch (e) {
@@ -40,13 +47,14 @@ const McrScreenshotImport: React.FC<Props> = ({ lang, onApply }) => {
     setSlots(previous => previous.map(slot => slot.index === index ? { ...slot, key: key || null } : slot));
   };
 
-  const apply = () => {
+  const apply = (mode: 'replace' | 'continue') => {
     if (!ready) return;
     const tiles: Tile[] = slots.map(slot => {
       const info = TILE_OPTIONS.find(option => option.key === slot.key)!;
       return createTile(info.suit, info.value);
     });
-    onApply(tiles);
+    onApply(tiles, mode, mode === 'continue' && recordDiscard && delta?.kind === 'discard'
+      ? delta.removed[0] : undefined);
   };
 
   return (
@@ -91,14 +99,36 @@ const McrScreenshotImport: React.FC<Props> = ({ lang, onApply }) => {
           {!!duplicates.length && <p role="alert" className="text-red-600 text-xs mt-2">
             {zh ? `同种牌超过4张：${duplicates.join('、')}` : `More than 4 of: ${duplicates.join(', ')}`}
           </p>}
-          <button type="button" onClick={apply} disabled={!ready}
-            className="mt-3 rounded-lg bg-[#CCFF00] border-2 border-black text-black font-black px-4 py-2 text-sm disabled:opacity-40">
-            {zh ? `确认并替换暗手（${slots.length}张）` : `Import checked hand (${slots.length})`}
-          </button>
+          {delta && (
+            <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50 p-2 text-xs">
+              {zh ? '与当前手牌对比：' : 'Compared with current hand: '}
+              {delta.kind === 'draw' ? (zh ? '多一张摸入牌' : 'one drawn tile') :
+                delta.kind === 'discard' ? (zh ? '少一张牌（需确认是否打出）' : 'one missing tile (confirm discard)') :
+                delta.kind === 'unchanged' ? (zh ? '手牌未改变' : 'hand unchanged') :
+                (zh ? '变化不明确：可能跨过多个操作' : 'ambiguous change: actions may be missing')}
+              {delta.kind === 'discard' && (
+                <label className="block mt-2">
+                  <input type="checkbox" checked={recordDiscard} onChange={e => setRecordDiscard(e.target.checked)} />
+                  {' '}{zh ? '我确认减少的这一张是本次打出的牌，加入已见牌河' : 'I confirm the removed tile was discarded; add to visible river'}
+                </label>
+              )}
+            </div>
+          )}
+          <div className="flex flex-wrap gap-2 mt-3">
+            <button type="button" onClick={() => apply('replace')} disabled={!ready}
+              className="rounded-lg bg-[#CCFF00] border-2 border-black text-black font-black px-3 py-2 text-sm disabled:opacity-40">
+              {zh ? '作为新局面导入（重置旧记录）' : 'Start new snapshot (reset context)'}
+            </button>
+            {canContinue && (
+              <button type="button" onClick={() => apply('continue')} disabled={!ready || !delta}
+                className="rounded-lg border-2 border-[#1A237E] px-3 py-2 text-sm font-bold disabled:opacity-40">
+                {zh ? '继续本局（保留牌河）' : 'Continue this round (keep river)'}
+              </button>
+            )}
+          </div>
           <p className="text-[11px] text-gray-500 mt-1">
-            {zh
-              ? '导入将清空旧副露和牌河，以免旧局面混入新截图；保留牌墙数，可点撤销返回原局面。'
-              : 'Import clears previous melds/river to prevent mixing rounds; wall count is retained. Undo restores the prior state.'}
+            {zh ? '逐张确认后才写入。继续本局不会自动推断其他人的出牌、碰杠或先后顺序；新局面将重置旧牌墙与牌河。操作后可撤销。'
+              : 'Verify every tile first. Continue never guesses other players\' actions or chronology. New snapshot resets old wall and river. Undo is available.'}
           </p>
         </>
       )}
