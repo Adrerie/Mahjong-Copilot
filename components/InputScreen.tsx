@@ -14,6 +14,7 @@ import TileSelector from './TileSelector';
 import TileUI from './TileUI';
 import AnalysisResultModal from './AnalysisResultModal';
 import McrScreenshotImport from './McrScreenshotImport';
+import RealTableImport from './RealTableImport';
 import { validateGameState } from '../utils/inputValidation';
 
 interface Props {
@@ -213,6 +214,23 @@ const InputScreen: React.FC<Props> = ({ mode, lang, setLang, onBack }) => {
     setAnalysis(analyzeGame(candidate, lang));
   };
 
+  const handleRealTable = (hand: Tile[], visibleRiver: Tile[]) => {
+    // Only manually attributed boxes enter the engine. A still photo has no temporal order.
+    const candidate: GameState = {
+      ...emptyEntry(mode), hand, discards: visibleRiver,
+      voidSuit: mode === GameMode.Sichuan ? entry.voidSuit : null,
+    };
+    const errors = validateGameState(candidate, lang);
+    if (errors.length) {
+      setEntryError({ zh: validateGameState(candidate, 'zh')[0], en: validateGameState(candidate, 'en')[0] });
+      return;
+    }
+    commit(candidate);
+    setShowKeyboard(false);
+    setTextInput('');
+    setAnalysis(analyzeGame(candidate, lang));
+  };
+
   const handleAnalyze = () => {
     setAnalysis(analyzeGame(entry, lang));
     setShowKeyboard(false);
@@ -355,6 +373,7 @@ const InputScreen: React.FC<Props> = ({ mode, lang, setLang, onBack }) => {
         {mode === GameMode.MCR && (
           <McrScreenshotImport lang={lang} currentHand={hand} canContinue={melds.length === 0 && [13, 14].includes(hand.length)} onApply={handleScreenshotHand} />
         )}
+        <RealTableImport lang={lang} onApply={handleRealTable} />
 
         {/* === SICHUAN WIN CONTEXT === */}
         {mode === GameMode.Sichuan && (
