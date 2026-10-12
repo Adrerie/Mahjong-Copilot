@@ -31,3 +31,8 @@ android/app/release/
 *.keystore
 *.p12
 *.pfx
+
+# Local real-table samples, detector outputs and Python bytecode
+real-table-eval/
+**/__pycache__/
+*.pyc
