@@ -1,7 +1,7 @@
-import { GameMode, GameState, KongKind, Meld, Suit, Tile, WinSource, Wind } from '../types';
+import { GameMode, GameState, KongKind, Meld, SichuanWinEvent, Suit, Tile, WinSource, Wind } from '../types';
 import { MAX_TILES_IN_HAND, SUIT_LABELS, createTile, getTileKey } from '../constants';
 import { countTiles } from './tileHelpers';
-import { isTile, validateGameState, winningTileInHand } from './inputValidation';
+import { isSichuanWinEvent, isTile, validateGameState, winningTileInHand } from './inputValidation';
 
 /**
  * 录入层的纯函数，供 InputScreen 与 npm test 共用：
@@ -349,9 +349,14 @@ export const decodeEntryState = (raw: string | null, mode: GameMode): GameState 
     winningTile = state.winningTile;
   }
 
+  let sichuanWinEvent: SichuanWinEvent | null = null;
+  if ('sichuanWinEvent' in state && state.sichuanWinEvent !== undefined && state.sichuanWinEvent !== null) {
+    if (!isSichuanWinEvent(state.sichuanWinEvent)) return null;
+    sichuanWinEvent = state.sichuanWinEvent;
+  }
   const candidate = withConsistentContext({
     mode, wallCount: state.wallCount, voidSuit, hand, melds, discards, winSource,
-    seatWind, roundWind, lastTile, afterKong, winningTile,
+    seatWind, roundWind, lastTile, afterKong, winningTile, sichuanWinEvent,
   });
   return validateGameState(candidate, 'zh', false).length === 0 ? candidate : null;
 };
