@@ -16,11 +16,11 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#F0F8FF] text-[#37474F] antialiased">
+    <div className="mc-screen bg-[#F0F8FF] text-[#37474F] antialiased">
       {!currentMode ? (
         <ModeSelection onSelect={handleModeSelect} lang={lang} />
       ) : (
-        <InputScreen mode={currentMode} lang={lang} setLang={setLang} onBack={handleBack} />
+        <InputScreen key={currentMode} mode={currentMode} lang={lang} setLang={setLang} onBack={handleBack} />
       )}
     </div>
   );

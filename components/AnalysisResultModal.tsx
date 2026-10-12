@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { AnalysisResult, Language } from '../types';
+import { AnalysisResult, GameMode, Language } from '../types';
 import { TEXT } from '../constants';
 import TileUI from './TileUI';
 
@@ -26,9 +26,19 @@ const AnalysisResultModal: React.FC<Props> = ({ result, lang, onClose }) => {
                  <span className={`px-2 py-0.5 rounded text-xs font-black border border-black shadow-[1px_1px_0_0_#000]
                     ${result.isReady ? 'bg-[#CCFF00] text-black' : 'bg-gray-100 text-gray-500'}
                 `}>
-                  {result.isWinning ? (lang === 'zh' ? '成牌（计番待核）' : 'Complete shape (score unverified)') : result.isReady ? t.ready : `${result.shanten} ${t.shanten}`}
+                  {result.status === 'invalid' ? (lang === 'zh' ? '输入无效' : 'Invalid input') :
+                   result.status === 'incomplete' ? (lang === 'zh' ? '牌数未齐' : 'Incomplete hand') :
+                   result.status === 'deadWait' ? (lang === 'zh' ? '死叫（无剩余待牌）' : 'Dead wait (no copies left)') :
+                   result.isWinning ? (lang === 'zh'
+                      ? '成牌（参考计番）'
+                      : 'Complete shape (reference score)') :
+                   result.isReady
+                     ? (result.mode === GameMode.MCR
+                       ? (lang === 'zh' ? '结构听牌' : 'Shape tenpai')
+                       : t.ready)
+                     : result.shanten !== null ? `${result.shanten} ${t.shanten}` : '—'}
                 </span>
-                {result.warnings.map((w, idx) => (
+                {result.warnings.filter(w => !w.startsWith('和牌来源未知') && !w.startsWith('Win source unknown')).map((w, idx) => (
                    <span key={idx} className="bg-[#FF006E] text-white text-xs font-bold px-2 py-0.5 rounded transform -rotate-1">
                      {w}
                    </span>
@@ -39,7 +49,6 @@ const AnalysisResultModal: React.FC<Props> = ({ result, lang, onClose }) => {
         </div>
 
         <div className="p-4 sm:p-6 overflow-y-auto space-y-6 no-scrollbar bg-gray-50/50">
-          {result.scoreNote && <p className="text-sm text-amber-800 bg-amber-50 p-3 rounded-xl">{result.scoreNote}</p>}
           
           {/* 1. Best Discard Section */}
           {result.bestDiscard && (
@@ -68,12 +77,16 @@ const AnalysisResultModal: React.FC<Props> = ({ result, lang, onClose }) => {
           <div className="space-y-3">
              <div className="flex justify-between items-end px-1">
                  <h3 className="text-gray-400 text-xs font-black uppercase tracking-wider">{t.targetPatterns}</h3>
-                 <span className="text-[10px] text-gray-400 font-bold uppercase">{t.totalFan}</span>
+                 <span className="text-[10px] text-gray-400 font-bold uppercase">
+                   {result.mode === GameMode.Sichuan
+                     ? (lang === 'zh' ? '单次和牌参考（非整局结算）' : 'Single win reference (not settlement)')
+                     : t.totalFan}
+                 </span>
              </div>
              
              {result.suggestions.length === 0 && (
                 <div className="text-center py-8 text-gray-400 text-sm italic bg-white rounded-xl border border-dashed border-gray-200">
-                    No clear patterns detected yet.
+                    {lang === 'zh' ? '当前没有可展示的参考番型。' : 'No reference patterns available.'}
                 </div>
              )}
 
@@ -90,21 +103,28 @@ const AnalysisResultModal: React.FC<Props> = ({ result, lang, onClose }) => {
                                 <span className="font-bold text-[#1A237E] block leading-tight">{sug.name}</span>
                                 {/* Pattern Breakdown */}
                                 <div className="flex flex-wrap gap-1 mt-1">
-                                    {sug.patternDetails.map((detail, dIdx) => (
+                                    {sug.patternDetails.filter(detail => !/未记录|not recorded/i.test(detail)).map((detail, dIdx) => (
                                         <span key={dIdx} className="text-[10px] bg-blue-50 text-blue-800 px-1.5 py-0.5 rounded border border-blue-100">
-                                            {detail}
+                                            {detail.startsWith('8 番起和待核') ? '起和条件待确认'
+                                              : detail.startsWith('8-fan minimum unverified') ? 'Win eligibility unconfirmed' : detail}
                                         </span>
                                     ))}
                                 </div>
                             </div>
                          </div>
                          <div className="text-right shrink-0 ml-2">
-                             <span className="text-xl font-black text-[#FF006E]">{sug.fan}</span>
-                             <span className="text-[10px] text-gray-400 font-bold uppercase ml-1">{t.fan}</span>
+                             {sug.scoreText ? (
+                               <span className="text-sm font-black text-[#FF006E]">{sug.scoreText}</span>
+                             ) : (
+                               <>
+                                 <span className="text-xl font-black text-[#FF006E]">{sug.fan}</span>
+                                 <span className="text-[10px] text-gray-400 font-bold uppercase ml-1">{t.fan}</span>
+                               </>
+                             )}
                          </div>
                      </div>
 
-                     {/* Bottom Row: Missing Tiles + Probability */}
+                     {/* Missing tiles: heuristic success percentages are deliberately hidden */}
                      <div className="flex items-center justify-between gap-4">
                          
                          {/* Missing Tiles */}
@@ -127,26 +147,22 @@ const AnalysisResultModal: React.FC<Props> = ({ result, lang, onClose }) => {
                              </div>
                          </div>
 
-                         {/* Probability Bar */}
-                         <div className="w-16 sm:w-24 text-right shrink-0">
-                             <div className="text-[10px] text-gray-400 font-bold uppercase mb-1">{t.prob}</div>
-                             <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
-                                 <div 
-                                    className={`h-full rounded-full ${sug.probability > 60 ? 'bg-[#CCFF00]' : sug.probability > 30 ? 'bg-yellow-400' : 'bg-gray-300'}`} 
-                                    style={{ width: `${Math.min(100, sug.probability)}%` }}
-                                 ></div>
-                             </div>
-                             <span className="text-xs font-mono font-bold text-gray-600 mt-1 block">{sug.probability}%</span>
-                         </div>
                      </div>
                  </div>
              ))}
           </div>
 
           {/* 3. Waiting Tiles (Only if Ready) */}
-          {result.isReady && (
+          {(result.isReady || result.status === 'deadWait') && (
             <div>
               <h3 className="text-gray-400 text-xs font-black uppercase tracking-wider mb-3 ml-1">{t.waits}</h3>
+              {result.mode === GameMode.MCR && (
+                <p className="text-xs text-amber-800 bg-amber-50 p-2 rounded-lg mb-2">
+                  {lang === 'zh'
+                    ? '以下只按牌型算结构待牌；每张牌能否正式起和仍需逐张核对 8 番与和牌事实。国标至少 8 番才可起和。'
+                    : 'These waits come from hand shape only; each tile still needs 8-fan and event verification. MCR requires at least 8 fan.'}
+                </p>
+              )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {result.waitingTiles.map((wait, idx) => (
                   <div key={idx} className="flex items-center justify-between bg-white border-2 border-[#CCFF00] p-2 rounded-xl shadow-[2px_2px_0_0_#CCFF00]">

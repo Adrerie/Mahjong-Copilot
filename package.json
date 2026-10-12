@@ -1,7 +1,7 @@
 {
   "name": "mahjong-copilot",
   "private": true,
-  "version": "1.1.0-Aipha",
+  "version": "1.1.0-beta.1",
   "capacitor": {
     "appId": "com.karislin.mahjong",
     "appName": "Mahjong Copilot",
@@ -31,8 +31,11 @@
   "devDependencies": {
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
+    "autoprefixer": "^10.6.1",
     "esbuild": "^0.28.2",
+    "postcss": "^8.5.29",
     "sharp": "^0.34.5",
+    "tailwindcss": "^3.4.19",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
   }

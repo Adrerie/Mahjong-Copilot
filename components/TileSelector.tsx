@@ -39,7 +39,8 @@ const TileSelector: React.FC<TileSelectorProps> = ({ mode, lang, onSelect, disab
                 tile={t} 
                 size="responsive"
                 className="shadow-[0_2px_0_0_rgba(0,0,0,0.1)] active:shadow-none active:translate-y-0.5"
-                onClick={() => !disabled && onSelect(createTile(t.suit, t.value))} 
+                onClick={disabled ? undefined : () => onSelect(createTile(t.suit, t.value))}
+                actionLabel={`${lang === 'zh' ? '添加' : 'Add'} ${t.value}${SUIT_LABELS[lang][t.suit]}`} 
              />
           </div>
         ))}

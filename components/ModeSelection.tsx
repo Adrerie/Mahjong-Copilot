@@ -11,9 +11,14 @@ const ModeSelection: React.FC<Props> = ({ onSelect, lang }) => {
   const t = TEXT[lang];
 
   return (
-    <div className={`h-screen flex flex-col items-center justify-center p-6 bg-gradient-to-br ${THEME.bgGradient}`}>
+    <div className={`mc-screen flex flex-col items-center justify-center overflow-y-auto bg-gradient-to-br ${THEME.bgGradient}`}
+      style={{
+        paddingTop: 'calc(1.5rem + var(--safe-top))',
+        paddingBottom: 'calc(1.5rem + var(--safe-bottom))',
+        paddingInline: 'calc(1.5rem + var(--safe-left)) calc(1.5rem + var(--safe-right))',
+      }}>
       
-      <div className="mb-12 text-center">
+      <div className="mb-12 text-center shrink-0">
         <div className="inline-block bg-[#CCFF00] px-4 py-1 rounded-full border-2 border-black shadow-neu-sm mb-4 transform -rotate-2">
             <span className="font-black text-xs tracking-widest uppercase">AI Assistant</span>
         </div>
@@ -22,7 +27,7 @@ const ModeSelection: React.FC<Props> = ({ onSelect, lang }) => {
         </h1>
       </div>
 
-      <div className="w-full max-w-md space-y-6">
+      <div className="w-full max-w-md lg:max-w-lg space-y-6">
         {/* Card 1: MCR */}
         <button
           onClick={() => onSelect(GameMode.MCR)}

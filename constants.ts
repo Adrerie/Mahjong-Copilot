@@ -4,6 +4,8 @@ import { Suit, Tile, Language } from './types';
 export const MAX_TILES_IN_HAND = 14; 
 export const INITIAL_WALL_MCR = 83;
 export const INITIAL_WALL_SICHUAN = 55;
+export const MAX_WALL_MCR = 144;
+export const MAX_WALL_SICHUAN = 108;
 
 export const THEME = {
   primary: '#CCFF00', // Acid Lime
@@ -24,6 +26,27 @@ export const TEXT = {
     sichuanDesc: 'Blood Battle • Void Suit',
     wallTiles: 'Wall',
     voidSuit: 'Void',
+    winSource: 'Win by',
+    winUnknown: 'Unknown',
+    winSelfDraw: 'Self-draw',
+    winClaim: 'Claim',
+    winContext: 'Win context',
+    winningTile: 'Winning tile',
+    notRecorded: 'Not recorded',
+    pick: 'Pick',
+    clear: 'Clear',
+    seatWind: 'Seat wind',
+    roundWind: 'Round wind',
+    lastTile: 'Last wall tile',
+    afterKong: 'After a kong',
+    kongDrawWin: 'Kong draw',
+    robKongWin: 'Robbing kong',
+    yes: 'Yes',
+    no: 'No',
+    kongKind: 'Kong',
+    kongExposed: 'Melded',
+    kongConcealed: 'Concealed',
+    kongAdded: 'Added',
     hand: 'Hand',
     melds: 'Melds',
     discards: 'River',
@@ -53,6 +76,16 @@ export const TEXT = {
     emptyRiver: 'Add discards...',
     addingTo: 'Adding to',
     removeHint: 'Tap to remove',
+    textEntry: 'Text Entry',
+    textEntryHint: 'Number group + suit letter: s/m/p/z or 条/万/筒/字',
+    textEntryPlaceholder: 'e.g. 33344466699977s',
+    apply: 'Apply',
+    undo: 'Undo',
+    undoEmpty: 'Nothing to undo',
+    back: 'Back',
+    removeMeld: 'Delete this meld',
+    done: 'Done',
+    dismiss: 'Dismiss',
     analysisTitle: 'Analysis Report',
     handArea: 'My Tiles',
     targetPatterns: 'Target Patterns',
@@ -134,7 +167,12 @@ export const TEXT = {
     haiDi: 'Last Tile', // 海底捞月 (+1根)
     heJueZhang: 'Win on Last Tile', // 和绝张 (+1根)
     huaZhu: 'Flower Pig', // 花猪 (有缺未打)
-    illegal: 'Illegal'
+    illegal: 'Illegal',
+    exponentUnit: 'exp', // 四川指数番
+    timesUnit: 'x', // 四川倍数
+    potential: 'potential', // 未成牌时的潜力标记
+    potentialOnly: 'Not a complete hand: these are patterns that could still be built, not a settlement.',
+    pendingEvents: 'Draw/claim source, kong type and last-tile events are not recorded, so they add nothing here.',
   },
   zh: {
     mcr: '国标麻将',
@@ -143,6 +181,27 @@ export const TEXT = {
     sichuanDesc: '血战到底 • 缺一门',
     wallTiles: '牌墙',
     voidSuit: '定缺',
+    winSource: '和牌方式',
+    winUnknown: '未知',
+    winSelfDraw: '自摸',
+    winClaim: '点和',
+    winContext: '和牌上下文',
+    winningTile: '和牌张',
+    notRecorded: '未记录',
+    pick: '选择',
+    clear: '清除',
+    seatWind: '门风',
+    roundWind: '圈风',
+    lastTile: '末张',
+    afterKong: '杠后和牌',
+    kongDrawWin: '杠上开花',
+    robKongWin: '抢杠和',
+    yes: '是',
+    no: '否',
+    kongKind: '杠种',
+    kongExposed: '明杠',
+    kongConcealed: '暗杠',
+    kongAdded: '补杠',
     hand: '手牌',
     melds: '副露',
     discards: '牌河',
@@ -172,6 +231,16 @@ export const TEXT = {
     emptyRiver: '添加打出的牌...',
     addingTo: '当前输入',
     removeHint: '点击删除',
+    textEntry: '文本录牌',
+    textEntryHint: '一组数字紧跟花色：s/m/p/z 或 条/万/筒/字',
+    textEntryPlaceholder: '例：33344466699977s',
+    apply: '应用',
+    undo: '撤销',
+    undoEmpty: '没有可撤销的操作',
+    back: '返回',
+    removeMeld: '删除这副面子',
+    done: '收起',
+    dismiss: '关闭',
     analysisTitle: '分析报告',
     handArea: '我的牌',
     targetPatterns: '番种建议',
@@ -254,6 +323,11 @@ export const TEXT = {
     heJueZhang: '和绝张', // +1根
     huaZhu: '花猪', // 有缺未打
     illegal: '无法和牌',
+    exponentUnit: '指数番', // 四川指数番
+    timesUnit: '倍', // 四川倍数
+    potential: '潜力', // 未成牌时的潜力标记
+    potentialOnly: '尚未成牌：这里只列还能做的番型，不构成结算依据。',
+    pendingEvents: '自摸/点炮、杠类型、海底等事件未记录，未计相关加番。',
   }
 };
 
@@ -270,6 +344,12 @@ export const SUIT_LABELS: Record<Language, Record<Suit, string>> = {
     [Suit.Sou]: '条',
     [Suit.Zihai]: '字',
   }
+};
+
+/** 门风/圈风按 Wind（1 东 2 南 3 西 4 北）取值。 */
+export const WIND_LABELS: Record<Language, string[]> = {
+  en: ['E', 'S', 'W', 'N'],
+  zh: ['东', '南', '西', '北'],
 };
 
 // ============================================================
@@ -291,21 +371,21 @@ export interface MCRPattern {
 export const MCR_88_FAN: MCRPattern[] = [
   { id: 'daSiXi', nameZh: '大四喜', nameEn: 'Big Four Winds', fan: 88, description: '和牌时4副风刻(杠)', excludes: ['xiaoSiXi', 'sanFengKe', 'pengPengHu', 'quanFengKe', 'menFengKe', 'yaoJiuKe'], includes: ['hunYaoJiu', 'hunYiSe', 'ziYiSe'] },
   { id: 'daSanYuan', nameZh: '大三元', nameEn: 'Big Three Dragons', fan: 88, description: '和牌时3副箭刻(杠)', excludes: ['xiaoSanYuan', 'jianKe', 'shuangJianKe'], includes: ['quanDaiYao', 'ziYiSe'] },
-  { id: 'lvYiSe', nameZh: '绿一色', nameEn: 'All Green', fan: 88, description: '由23468条及发财组成的和牌', excludes: ['hunYiSe', 'qingYiSe'], includes: ['siGuiYi', 'jianKe', 'qingYiSe', 'yiSeSanJieGao', 'pengPengHu', 'duanYao'] },
-  { id: 'jiuLianBaoDeng', nameZh: '九莲宝灯', nameEn: 'Nine Gates', fan: 88, description: '门前清时特定牌型1112345678999+任意同花色牌', excludes: ['qingYiSe', 'menQianQing', 'buQiuRen', 'yaoJiuKe'], includes: ['siGuiYi', 'qingLong', 'shuangAnKe', 'lianLiu'] },
-  { id: 'siGang', nameZh: '四杠', nameEn: 'Four Kongs', fan: 88, description: '和牌时4个杠', excludes: ['sanGang', 'shuangMingGang', 'shuangAnGang', 'mingGang', 'danDiaoJiang', 'pengPengHu'], includes: ['siAnKe', 'quanDa', 'sanSeSanJieGao', 'shuangTongKe', 'yaoJiuKe', 'hunYaoJiu', 'sanTongKe', 'wuMenQi', 'jianKe'] },
-  { id: 'lianQiDui', nameZh: '连七对', nameEn: 'Seven Shifted Pairs', fan: 88, description: '由一种花色序数牌组成的7个连续对子', excludes: ['qingYiSe', 'qiDui', 'menQianQing', 'buQiuRen', 'pingHu', 'danDiaoJiang'], includes: ['duanYao'] },
+  { id: 'lvYiSe', nameZh: '绿一色', nameEn: 'All Green', fan: 88, description: '由23468条及发财组成的和牌', excludes: ['hunYiSe', 'queYiMen'], includes: ['siGuiYi', 'jianKe', 'yiSeSanJieGao', 'pengPengHu', 'duanYao'] },
+  { id: 'jiuLianBaoDeng', nameZh: '九莲宝灯', nameEn: 'Nine Gates', fan: 88, description: '门前清时特定牌型1112345678999+任意同花色牌', excludes: ['qingYiSe', 'menQianQing', 'buQiuRen', 'wuZi', 'queYiMen'], includes: ['siGuiYi', 'qingLong', 'shuangAnKe', 'lianLiu'] },
+  { id: 'siGang', nameZh: '四杠', nameEn: 'Four Kongs', fan: 88, description: '和牌时4个杠', excludes: ['sanGang', 'shuangMingGang', 'shuangAnGang', 'mingAnGang', 'mingGang', 'anGang', 'danDiaoJiang', 'pengPengHu'], includes: ['siAnKe', 'quanDa', 'sanSeSanJieGao', 'shuangTongKe', 'yaoJiuKe', 'hunYaoJiu', 'sanTongKe', 'wuMenQi', 'jianKe'] },
+  { id: 'lianQiDui', nameZh: '连七对', nameEn: 'Seven Shifted Pairs', fan: 88, description: '由一种花色序数牌组成的7个连续对子', excludes: ['qingYiSe', 'qiDui', 'menQianQing', 'buQiuRen', 'pingHu', 'danDiaoJiang', 'wuZi', 'queYiMen'], includes: ['duanYao'] },
   { id: 'shiSanYao', nameZh: '十三幺', nameEn: 'Thirteen Orphans', fan: 88, description: '由全部幺九牌及字牌各一张组成,另有一张重复', excludes: ['wuMenQi', 'menQianQing', 'buQiuRen', 'danDiaoJiang', 'hunYaoJiu'] },
 ];
 
 // 64番
 export const MCR_64_FAN: MCRPattern[] = [
-  { id: 'qingYaoJiu', nameZh: '清幺九', nameEn: 'All Terminals', fan: 64, description: '由序数牌一、九组成的刻子和牌', excludes: ['pengPengHu', 'hunYaoJiu', 'shuangTongKe', 'wuZi', 'yaoJiuKe'], includes: ['qiDui', 'siGuiYi'] },
+  { id: 'qingYaoJiu', nameZh: '清幺九', nameEn: 'All Terminals', fan: 64, description: '由序数牌一、九组成的刻子和牌', excludes: ['pengPengHu', 'hunYaoJiu', 'quanDaiYao', 'shuangTongKe', 'wuZi', 'yaoJiuKe'], includes: ['qiDui', 'siGuiYi'] },
   { id: 'xiaoSiXi', nameZh: '小四喜', nameEn: 'Little Four Winds', fan: 64, description: '和牌时3副风刻(杠)加1对风将', excludes: ['sanFengKe', 'yaoJiuKe'], includes: ['pengPengHu'] },
   { id: 'xiaoSanYuan', nameZh: '小三元', nameEn: 'Little Three Dragons', fan: 64, description: '和牌时2副箭刻(杠)加1对箭将', excludes: ['shuangJianKe', 'jianKe', 'queYiMen'], includes: ['hunYaoJiu', 'shuangTongKe'] },
-  { id: 'ziYiSe', nameZh: '字一色', nameEn: 'All Honors', fan: 64, description: '由字牌组成的和牌', excludes: ['pengPengHu', 'hunYaoJiu', 'yaoJiuKe'], includes: ['shuangJianKe'] },
+  { id: 'ziYiSe', nameZh: '字一色', nameEn: 'All Honors', fan: 64, description: '由字牌组成的和牌', excludes: ['pengPengHu', 'hunYaoJiu', 'quanDaiYao', 'yaoJiuKe', 'queYiMen'], includes: ['shuangJianKe'] },
   { id: 'siAnKe', nameZh: '四暗刻', nameEn: 'Four Concealed Pungs', fan: 64, description: '4个暗刻(杠)', excludes: ['pengPengHu', 'menQianQing', 'buQiuRen', 'shuangAnGang', 'sanAnKe', 'shuangAnKe'] },
-  { id: 'yiSeShuangLongHui', nameZh: '一色双龙会', nameEn: 'Pure Terminal Chows', fan: 64, description: '由一种花色的123、789各两组及5作将组成', excludes: ['qingYiSe', 'pingHu', 'yiBanGao', 'laoShaoFu', 'wuZi', 'queYiMen'] },
+  { id: 'yiSeShuangLongHui', nameZh: '一色双龙会', nameEn: 'Pure Terminal Chows', fan: 64, description: '由一种花色的123、789各两组及5作将组成', excludes: ['qingYiSe', 'qiDui', 'pingHu', 'yiBanGao', 'laoShaoFu', 'wuZi', 'queYiMen'] },
 ];
 
 // 48番
@@ -316,8 +396,8 @@ export const MCR_48_FAN: MCRPattern[] = [
 
 // 32番
 export const MCR_32_FAN: MCRPattern[] = [
-  { id: 'yiSeSiBuGao', nameZh: '一色四步高', nameEn: 'Four Shifted Chows', fan: 32, description: '一种花色4组依次递增1或2的顺子', excludes: ['yiSeSanBuGao', 'lianLiu'], includes: ['hunYiSe', 'pingHu'] },
-  { id: 'sanGang', nameZh: '三杠', nameEn: 'Three Kongs', fan: 32, description: '3个杠', excludes: ['shuangMingGang', 'shuangAnGang', 'mingGang'], includes: ['xiaoYuWu', 'sanSeSanJieGao'] },
+  { id: 'yiSeSiBuGao', nameZh: '一色四步高', nameEn: 'Four Shifted Chows', fan: 32, description: '一种花色4组依次递增1或2的顺子', excludes: ['yiSeSanBuGao', 'laoShaoFu', 'lianLiu'], includes: ['hunYiSe', 'pingHu'] },
+  { id: 'sanGang', nameZh: '三杠', nameEn: 'Three Kongs', fan: 32, description: '3个杠', excludes: ['shuangMingGang', 'shuangAnGang', 'mingAnGang', 'mingGang', 'anGang'], includes: ['xiaoYuWu', 'sanSeSanJieGao'] },
   { id: 'hunYaoJiu', nameZh: '混幺九', nameEn: 'All Terminals and Honors', fan: 32, description: '由幺九牌和字牌组成的和牌', excludes: ['pengPengHu', 'quanDaiYao', 'yaoJiuKe'], includes: ['sanTongKe', 'jianKe', 'wuMenQi', 'qiDui', 'siGuiYi', 'queYiMen'] },
 ];
 
@@ -325,7 +405,7 @@ export const MCR_32_FAN: MCRPattern[] = [
 export const MCR_24_FAN: MCRPattern[] = [
   { id: 'qiDui', nameZh: '七对', nameEn: 'Seven Pairs', fan: 24, description: '由7个对子组成的和牌', excludes: ['menQianQing', 'buQiuRen', 'danDiaoJiang'], includes: ['wuMenQi', 'lvYiSe', 'qingYiSe', 'quanShuangKe', 'tuiBuDao'] },
   { id: 'qiXingBuKao', nameZh: '七星不靠', nameEn: 'Greater Honors and Knitted Tiles', fan: 24, description: '7个单张的东南西北中发白加3种花色不相邻的7张序数牌', excludes: ['quanBuKao', 'wuMenQi', 'menQianQing', 'buQiuRen', 'danDiaoJiang'] },
-  { id: 'quanShuangKe', nameZh: '全双刻', nameEn: 'All Even Pungs', fan: 24, description: '由2、4、6、8序数牌组成的刻子和牌', excludes: ['pengPengHu', 'duanYao'], includes: ['tuiBuDao', 'shuangTongKe'] },
+  { id: 'quanShuangKe', nameZh: '全双刻', nameEn: 'All Even Pungs', fan: 24, description: '由2、4、6、8序数牌组成的刻子和牌', excludes: ['pengPengHu', 'duanYao', 'wuZi'], includes: ['tuiBuDao', 'shuangTongKe'] },
   { id: 'qingYiSe', nameZh: '清一色', nameEn: 'Full Flush', fan: 24, description: '由同一种花色序数牌组成的和牌', excludes: ['wuZi'], includes: ['qingLong', 'yiBanGao', 'siGuiYi', 'pingHu'] },
   { id: 'yiSeSanTongShun', nameZh: '一色三同顺', nameEn: 'Pure Triple Chow', fan: 24, description: '一种花色3组相同序数的顺子', excludes: ['yiBanGao'], includes: ['quanXiao', 'quanDaiYao', 'pingHu', 'queYiMen', 'xiXiangFeng'] },
   { id: 'yiSeSanJieGao', nameZh: '一色三节高', nameEn: 'Pure Shifted Pungs', fan: 24, description: '一种花色3个依次递增1的刻子', excludes: [], includes: ['hunYiSe', 'siGuiYi'] },
@@ -339,7 +419,7 @@ export const MCR_16_FAN: MCRPattern[] = [
   { id: 'qingLong', nameZh: '清龙', nameEn: 'Pure Straight', fan: 16, description: '同一种花色123、456、789的顺子', excludes: ['lianLiu', 'laoShaoFu'], includes: ['pingHu', 'queYiMen', 'xiXiangFeng'] },
   { id: 'sanSeShuangLongHui', nameZh: '三色双龙会', nameEn: 'Three-Suited Terminal Chows', fan: 16, description: '两种花色的123、789各一副加第三种花色5作将', excludes: ['pingHu', 'laoShaoFu', 'wuZi', 'xiXiangFeng'] },
   { id: 'yiSeSanBuGao', nameZh: '一色三步高', nameEn: 'Pure Shifted Chows', fan: 16, description: '一种花色3组依次递增1或2的顺子', excludes: [], includes: ['quanDaiWu', 'pingHu', 'xiXiangFeng'] },
-  { id: 'quanDaiWu', nameZh: '全带五', nameEn: 'All Fives', fan: 16, description: '每副牌及将牌都有5的序数牌', excludes: ['duanYao'], includes: ['quanZhong', 'sanSeSanTongShun', 'siGuiYi', 'pingHu', 'yiBanGao'] },
+  { id: 'quanDaiWu', nameZh: '全带五', nameEn: 'All Fives', fan: 16, description: '每副牌及将牌都有5的序数牌', excludes: ['duanYao', 'wuZi'], includes: ['quanZhong', 'sanSeSanTongShun', 'siGuiYi', 'pingHu', 'yiBanGao'] },
   { id: 'sanTongKe', nameZh: '三同刻', nameEn: 'Triple Pung', fan: 16, description: '3种花色3个相同序数的刻子', excludes: [], includes: ['quanShuangKe', 'quanZhong'] },
   { id: 'sanAnKe', nameZh: '三暗刻', nameEn: 'Three Concealed Pungs', fan: 16, description: '3个暗刻', excludes: ['shuangAnKe'] },
 ];
@@ -350,16 +430,16 @@ export const MCR_12_FAN: MCRPattern[] = [
   { id: 'zuHeLong', nameZh: '组合龙', nameEn: 'Knitted Straight', fan: 12, description: '3种花色的147、258、369组合成龙', excludes: [], includes: ['pingHu', 'wuMenQi', 'jianKe'] },
   { id: 'daYuWu', nameZh: '大于五', nameEn: 'Upper Four', fan: 12, description: '由6789组成的和牌', excludes: ['wuZi'], includes: ['sanSeSanTongShun', 'yiBanGao', 'pingHu'] },
   { id: 'xiaoYuWu', nameZh: '小于五', nameEn: 'Lower Four', fan: 12, description: '由1234组成的和牌', excludes: ['wuZi'], includes: ['qingYiSe', 'yiSeSanJieGao', 'tuiBuDao', 'siGuiYi'] },
-  { id: 'sanFengKe', nameZh: '三风刻', nameEn: 'Big Three Winds', fan: 12, description: '3副风刻(杠)', excludes: ['yaoJiuKe'], includes: ['ziYiSe', 'jianKe'] },
+  { id: 'sanFengKe', nameZh: '三风刻', nameEn: 'Big Three Winds', fan: 12, description: '3副风刻(杠)', excludes: [], includes: ['ziYiSe', 'jianKe'] },
 ];
 
 // 8番 (起和线 - Minimum for MCR)
 export const MCR_8_FAN: MCRPattern[] = [
+  { id: 'wuFanHu', nameZh: '无番和', nameEn: 'Chicken Hand', fan: 8, description: '除花牌外无其他番种', excludes: [] },
   { id: 'huaLong', nameZh: '花龙', nameEn: 'Mixed Straight', fan: 8, description: '3种花色的3组顺子连成1到9', excludes: [], includes: ['yiBanGao', 'pingHu'] },
   { id: 'tuiBuDao', nameZh: '推不倒', nameEn: 'Reversible Tiles', fan: 8, description: '由1234589筒、245689条、白板组成的和牌', excludes: ['queYiMen'], includes: ['shuangTongKe', 'wuZi', 'yaoJiuKe', 'qingYiSe', 'qiDui'] },
   { id: 'sanSeSanTongShun', nameZh: '三色三同顺', nameEn: 'Mixed Triple Chow', fan: 8, description: '3种花色相同序数的顺子', excludes: ['xiXiangFeng'], includes: ['pingHu', 'lianLiu'] },
   { id: 'sanSeSanJieGao', nameZh: '三色三节高', nameEn: 'Mixed Shifted Pungs', fan: 8, description: '3种花色依次递增1的刻子', excludes: [], includes: ['quanDa', 'pengPengHu', 'shuangTongKe', 'yaoJiuKe'] },
-  { id: 'wuFanHu', nameZh: '无番和', nameEn: 'Chicken Hand', fan: 8, description: '除门前清和自摸外无其他番种', excludes: [] },
   { id: 'miaoShouHuiChun', nameZh: '妙手回春', nameEn: 'Last Tile Draw', fan: 8, description: '自摸牌墙上最后一张牌和牌', excludes: ['ziMo'] },
   { id: 'haiDiLaoYue', nameZh: '海底捞月', nameEn: 'Last Tile Claim', fan: 8, description: '和别家打出的牌墙上最后一张牌', excludes: [] },
   { id: 'gangShangKaiHua', nameZh: '杠上开花', nameEn: 'Out with Replacement Tile', fan: 8, description: '开杠后补进的牌自摸和牌', excludes: ['ziMo'] },
@@ -374,7 +454,12 @@ export const MCR_6_FAN: MCRPattern[] = [
   { id: 'wuMenQi', nameZh: '五门齐', nameEn: 'All Types', fan: 6, description: '和牌时万、筒、条、风、箭全有', excludes: [], includes: ['quanDaiYao', 'jianKe', 'xiXiangFeng'] },
   { id: 'quanQiuRen', nameZh: '全求人', nameEn: 'Melded Hand', fan: 6, description: '4副全部吃碰明杠，和别家打出的牌', excludes: ['danDiaoJiang'] },
   { id: 'shuangAnGang', nameZh: '双暗杠', nameEn: 'Two Concealed Kongs', fan: 6, description: '2个暗杠', excludes: [] },
-  { id: 'shuangJianKe', nameZh: '双箭刻', nameEn: 'Two Dragon Pungs', fan: 6, description: '2副箭刻(杠)', excludes: [] },
+  { id: 'shuangJianKe', nameZh: '双箭刻', nameEn: 'Two Dragon Pungs', fan: 6, description: '2副箭刻(杠)', excludes: ['jianKe'] },
+];
+
+// 5番：明暗杠是国标唯一的 5 番番种，单独成组以便按真实番值参与择优。
+export const MCR_5_FAN: MCRPattern[] = [
+  { id: 'mingAnGang', nameZh: '明暗杠', nameEn: 'Melded and Concealed Kong', fan: 5, description: '1个明杠和1个暗杠', excludes: ['mingGang', 'anGang'] },
 ];
 
 // 4番
@@ -427,6 +512,7 @@ export const MCR_ALL_PATTERNS = {
   12: MCR_12_FAN,
   8: MCR_8_FAN,
   6: MCR_6_FAN,
+  5: MCR_5_FAN,
   4: MCR_4_FAN,
   2: MCR_2_FAN,
   1: MCR_1_FAN,
@@ -435,111 +521,14 @@ export const MCR_ALL_PATTERNS = {
 // 国标麻将核心规则常量
 export const MCR_RULES = {
   MIN_FAN_TO_WIN: 8, // 8番起和
-  TOTAL_FAN_TYPES: 81, // 81种番型
 };
 
 // ============================================================
-// 四川麻将 Sichuan (Blood Battle) 番种定义
-// 参考: https://zh.wikipedia.org/wiki/四川麻将
+// 四川麻将计番
+// 旧的番型/倍数表（清对 6 番 = 64 倍等）、未使用的杠收益与赔付常量已删除：
+// 唯一来源是 utils/sichuanAnalyzer.ts 的 SICHUAN_RULE 与 SICHUAN_PATTERN_EXPONENTS
+// （来源 https://hi8.com/g/sichuanmajiang，封顶 4 指数番 = 16 倍）。
 // ============================================================
-
-export interface SichuanPattern {
-  id: string;
-  nameZh: string;
-  nameEn: string;
-  fan: number; // 番数
-  multiplier: number; // 倍数 = 2^fan
-  description: string;
-  excludes: string[]; // 互斥牌型
-}
-
-// 基本牌型 (Base Types)
-export const SICHUAN_BASE_PATTERNS: SichuanPattern[] = [
-  { id: 'pingHu', nameZh: '平胡', nameEn: 'Ping Hu', fan: 0, multiplier: 1, description: '基本胡牌型，由顺子和将组成', excludes: [] },
-  { id: 'duiDuiHu', nameZh: '对对胡', nameEn: 'All Pungs', fan: 2, multiplier: 4, description: '由4个刻子和1对将组成', excludes: ['pingHu'] },
-  { id: 'qingYiSe', nameZh: '清一色', nameEn: 'Full Flush', fan: 4, multiplier: 16, description: '整手牌由同一花色组成（部分规则为2-3番）', excludes: [] },
-  { id: 'qingDui', nameZh: '清对', nameEn: 'Flush Pungs', fan: 6, multiplier: 64, description: '清一色+对对胡', excludes: ['qingYiSe', 'duiDuiHu'] },
-  { id: 'qiDui', nameZh: '七对', nameEn: 'Seven Pairs', fan: 4, multiplier: 16, description: '由7个对子组成', excludes: ['pingHu', 'duiDuiHu'] },
-  { id: 'longQiDui', nameZh: '龙七对', nameEn: 'Dragon Seven Pairs', fan: 6, multiplier: 64, description: '七对中含有四张相同的牌（含一根）', excludes: ['qiDui'] },
-  { id: 'jinGouDiao', nameZh: '金钩钓', nameEn: 'Golden Hook', fan: 4, multiplier: 16, description: '4个刻子/杠，单钓将', excludes: ['duiDuiHu'] },
-  { id: 'daiYaoJiu', nameZh: '带幺九', nameEn: 'With Terminals', fan: 4, multiplier: 16, description: '每副牌都带有1或9（可选规则）', excludes: [] },
-  { id: 'jiangDui', nameZh: '将对', nameEn: 'Honor Pungs', fan: 4, multiplier: 16, description: '全部由2、5、8组成的对对胡', excludes: ['duiDuiHu'] },
-  { id: 'qingQiDui', nameZh: '清七对', nameEn: 'Pure Seven Pairs', fan: 8, multiplier: 256, description: '清一色+七对', excludes: ['qingYiSe', 'qiDui'] },
-  { id: 'qingLongQiDui', nameZh: '清龙七对', nameEn: 'Pure Dragon Seven', fan: 10, multiplier: 1024, description: '清一色+龙七对', excludes: ['qingYiSe', 'longQiDui'] },
-  { id: 'qingJinGou', nameZh: '清金钩', nameEn: 'Pure Golden Hook', fan: 8, multiplier: 256, description: '清一色+金钩钓', excludes: ['qingYiSe', 'jinGouDiao'] },
-  { id: 'shiSanYao', nameZh: '十三幺', nameEn: 'Thirteen Orphans', fan: 8, multiplier: 256, description: '特殊牌型（部分地区规则）', excludes: [] },
-  { id: 'tianHu', nameZh: '天胡', nameEn: 'Heavenly Hand', fan: 8, multiplier: 256, description: '庄家起手和牌', excludes: [] },
-  { id: 'diHu', nameZh: '地胡', nameEn: 'Earthly Hand', fan: 8, multiplier: 256, description: '闲家第一张牌自摸和牌', excludes: [] },
-];
-
-// 加番要素 (Multipliers)
-export interface SichuanMultiplier {
-  id: string;
-  nameZh: string;
-  nameEn: string;
-  fanAdd: number; // 每个增加的番数
-  description: string;
-}
-
-export const SICHUAN_MULTIPLIERS: SichuanMultiplier[] = [
-  { id: 'gen', nameZh: '根', nameEn: 'Root', fanAdd: 1, description: '四张相同的牌（无论是否开杠），每根+1番' },
-  { id: 'gangShangKaiHua', nameZh: '杠上开花', nameEn: 'Kong Bloom', fanAdd: 1, description: '杠后补牌和牌+1番' },
-  { id: 'gangShangPao', nameZh: '杠上炮', nameEn: 'Kong Shot', fanAdd: 1, description: '杠后打牌点炮+1番' },
-  { id: 'qiangGang', nameZh: '抢杠', nameEn: 'Rob Kong', fanAdd: 1, description: '抢杠和牌+1番' },
-  { id: 'haiDiLao', nameZh: '海底捞', nameEn: 'Sea Bottom', fanAdd: 1, description: '最后一张牌和牌+1番' },
-  { id: 'menQing', nameZh: '门清', nameEn: 'Concealed', fanAdd: 1, description: '门前清（无副露）+1番（部分规则）' },
-  { id: 'zhongZhang', nameZh: '中张', nameEn: 'Middle Tiles', fanAdd: 1, description: '全部由2-8组成（断幺九）+1番（部分规则）' },
-];
-
-// 杠牌即时收益
-export interface SichuanKongPayment {
-  type: string;
-  nameZh: string;
-  nameEn: string;
-  payment: string;
-  description: string;
-}
-
-export const SICHUAN_KONG_PAYMENTS: SichuanKongPayment[] = [
-  { type: 'anGang', nameZh: '暗杠', nameEn: 'Concealed Kong', payment: '每家付2倍底分', description: '4张全为自己摸到，下雨（收益更高）' },
-  { type: 'mingGang', nameZh: '明杠(点杠)', nameEn: 'Direct Kong', payment: '点杠者付2倍底分', description: '3张手牌+别人打出的牌' },
-  { type: 'jiaGang', nameZh: '加杠(补杠)', nameEn: 'Added Kong', payment: '每家付1倍底分', description: '碰后自摸第4张，刮风' },
-];
-
-// 特殊规则
-export const SICHUAN_RULES = {
-  VOID_SUIT_REQUIRED: true, // 必须定缺
-  BLOOD_BATTLE: true, // 血战到底（一家胡牌后继续）
-  HUA_ZHU_PENALTY: true, // 花猪赔付
-  CHA_DA_JIAO_PENALTY: true, // 查大叫赔付
-  BASE_MULTIPLIER: 1, // 底分倍数
-  MAX_FAN_LIMIT: 10, // 封顶番数（部分规则）
-};
-
-// 四川麻将花色（无字牌）
-export const SICHUAN_SUITS = [Suit.Man, Suit.Pin, Suit.Sou];
-
-// 定缺花色选择
-export const VOID_SUIT_OPTIONS = {
-  [Suit.Man]: { zh: '缺万', en: 'Void Wan' },
-  [Suit.Pin]: { zh: '缺筒', en: 'Void Pin' },
-  [Suit.Sou]: { zh: '缺条', en: 'Void Sou' },
-};
-
-// 惩罚类型
-export interface SichuanPenalty {
-  id: string;
-  nameZh: string;
-  nameEn: string;
-  condition: string;
-  penalty: string;
-}
-
-export const SICHUAN_PENALTIES: SichuanPenalty[] = [
-  { id: 'huaZhu', nameZh: '花猪', nameEn: 'Flower Pig', condition: '未打完定缺花色却已无牌可和', penalty: '赔付所有玩家（按最大番计算）' },
-  { id: 'chaDaJiao', nameZh: '查大叫', nameEn: 'Big Call Check', condition: '游戏结束时未听牌', penalty: '赔付所有已听牌玩家（按其可能最大番计算）' },
-  { id: 'chaDaJiaoHuaZhu', nameZh: '查花猪', nameEn: 'Check Flower Pig', condition: '游戏结束时仍有定缺花色', penalty: '赔付所有玩家（按最大番计算）' },
-];
 
 // ============================================================
 // 通用工具函数
@@ -552,22 +541,3 @@ export const createTile = (suit: Suit, value: number): Tile => ({
 });
 
 export const getTileKey = (suit: Suit, value: number) => `${value}${suit}`;
-
-// 获取番种信息（支持多语言）
-export const getPatternName = (patternId: string, lang: Language): string => {
-  const allPatterns = [
-    ...MCR_88_FAN, ...MCR_64_FAN, ...MCR_48_FAN, ...MCR_32_FAN,
-    ...MCR_24_FAN, ...MCR_16_FAN, ...MCR_12_FAN, ...MCR_8_FAN,
-    ...MCR_6_FAN, ...MCR_4_FAN, ...MCR_2_FAN, ...MCR_1_FAN,
-    ...SICHUAN_BASE_PATTERNS,
-  ];
-  const pattern = allPatterns.find(p => p.id === patternId);
-  if (!pattern) return patternId;
-  return lang === 'zh' ? pattern.nameZh : pattern.nameEn;
-};
-
-// 计算四川麻将倍数
-export const calculateSichuanMultiplier = (baseFan: number, roots: number = 0, extraFan: number = 0): number => {
-  const totalFan = baseFan + roots + extraFan;
-  return Math.pow(2, totalFan);
-};

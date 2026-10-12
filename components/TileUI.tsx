@@ -4,13 +4,14 @@ import { Tile, Suit } from '../types';
 interface TileUIProps {
   tile: Tile | { suit: Suit; value: number };
   onClick?: () => void;
+  actionLabel?: string;
   size?: 'sm' | 'md' | 'lg' | 'xl' | 'responsive';
   selected?: boolean;
   highlight?: boolean;
   className?: string;
 }
 
-const TileUI: React.FC<TileUIProps> = ({ tile, onClick, size = 'md', selected = false, highlight = false, className = '' }) => {
+const TileUI: React.FC<TileUIProps> = ({ tile, onClick, actionLabel, size = 'md', selected = false, highlight = false, className = '' }) => {
   
   // Tailwind classes don't support dynamic aspect-ratio perfectly in all flex contexts without height, 
   // but 'aspect-[3/4]' is standard.
@@ -181,25 +182,35 @@ const TileUI: React.FC<TileUIProps> = ({ tile, onClick, size = 'md', selected = 
       );
   };
 
-  return (
-    <div
-      onClick={onClick}
-      className={`
-        relative aspect-[3/4] flex flex-col items-center justify-center 
-        bg-white rounded-lg shadow-[1px_2px_4px_rgba(0,0,0,0.15)] 
-        border border-gray-200
-        select-none cursor-pointer transition-all duration-100 antialiased
-        ${currentSizeClass}
-        ${selected ? '-translate-y-1 ring-2 ring-[#CCFF00] shadow-[1px_4px_8px_rgba(0,0,0,0.2)]' : 'hover:-translate-y-0.5 active:translate-y-0'}
-        ${highlight ? 'ring-4 ring-[#CCFF00] animate-pop' : ''}
-        ${className}
-      `}
-    >
+  const tileBody = (
+    <>
       {getIcon()}
       {/* 3D Bottom Edge */}
       <div className="absolute bottom-0 left-0 right-0 h-[6%] bg-gray-300 rounded-b-lg opacity-50 pointer-events-none"></div>
-    </div>
+    </>
   );
+  const tileClassName = `
+    relative aspect-[3/4] flex flex-col items-center justify-center
+    bg-white rounded-lg shadow-[1px_2px_4px_rgba(0,0,0,0.15)]
+    border border-gray-200
+    select-none transition-all duration-100 antialiased
+    ${onClick ? 'cursor-pointer focus-visible:outline-2 focus-visible:outline-[#1A237E] focus-visible:outline-offset-2' : ''}
+    ${currentSizeClass}
+    ${selected ? '-translate-y-1 ring-2 ring-[#CCFF00] shadow-[1px_4px_8px_rgba(0,0,0,0.2)]' : 'hover:-translate-y-0.5 active:translate-y-0'}
+    ${highlight ? 'ring-4 ring-[#CCFF00] animate-pop' : ''}
+    ${className}
+  `;
+
+  // Interactive tiles use native buttons (Tab / Enter / Space).
+  // Non-interactive result and meld tiles remain presentational.
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} aria-label={actionLabel ?? `${tile.value}${tile.suit}`} className={tileClassName}>
+        {tileBody}
+      </button>
+    );
+  }
+  return <div className={tileClassName}>{tileBody}</div>;
 };
 
 export default TileUI;
