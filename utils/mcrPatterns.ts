@@ -165,6 +165,25 @@ const waitPatternId = (decomposition: HandDecomposition, winningTile: Tile): str
   return null;
 };
 
+/** 边/坎/单钓须只和一种牌；枚举结构待牌，不能只看选中的面子。 */
+const hasSingleStructuralWait = (hand: Tile[], melds: Meld[], winningTile: Tile): boolean => {
+  const counts = countsToArray(countTiles(hand));
+  const index = tileToIndex(winningTile);
+  if (index < 0 || counts[index] <= 0) return false;
+  counts[index]--;
+  const used = countsToArray(countTiles([...hand, ...melds.flatMap(m => m.tiles)]));
+  used[index]--;
+  let waits = 0;
+  for (let i = 0; i < 34; i++) {
+    if (used[i] >= 4) continue;
+    counts[i]++;
+    if (checkWinning(counts, melds.length, GameMode.MCR)) waits++;
+    counts[i]--;
+    if (waits > 1) return false;
+  }
+  return waits === 1;
+};
+
 /** 把已锁定的副露转成面子（吃=顺子，碰/杠=刻子）。 */
 const lockedMeldShapes = (melds: Meld[]): LockedShape[] => melds.map(meld => {
   const lowest = [...meld.tiles].sort((a, b) => a.value - b.value)[0];
@@ -199,6 +218,8 @@ const recognizeSetPatterns = (
   winSource: WinSource,
   allCounts: number[],
   ctx: MCRContext,
+  singleWait: boolean,
+  nineGates: boolean,
 ): RecognizedPattern[] => {
   const out: RecognizedPattern[] = [];
   const add = (id: string, count = 1) => {
@@ -207,14 +228,19 @@ const recognizeSetPatterns = (
   };
 
   const views = [
-    ...locked.map(item => viewOfShape(item.shape, false, item.kong, item.kongKind)),
+    ...locked.map(item => viewOfShape(item.shape, item.kongKind === 'concealed', item.kong, item.kongKind)),
     ...decomposition.shapes.map(shape => viewOfShape(shape, true, false)),
   ];
   if (views.length !== 4) return out;
 
   const pongs = views.filter(view => view.kind === 'pong');
   const chows = views.filter(view => view.kind === 'chow');
-  const concealedPongs = pongs.filter(view => view.concealed).length;
+  let concealedPongs = pongs.filter(view => view.concealed).length;
+  if (winSource === 'claim' && ctx.winningTile) {
+    const win = tileToIndex(ctx.winningTile);
+    const canUseInChowOrPair = decomposition.pair === win || chows.some(view => view.indices.includes(win));
+    if (!canUseInChowOrPair && pongs.some(view => view.concealed && !view.kong && view.indices[0] === win)) concealedPongs--;
+  }
   const kongCount = views.filter(view => view.kong).length;
   const pair = decomposition.pair;
   const pongIndices = pongs.map(view => view.indices[0]);
@@ -276,6 +302,7 @@ const recognizeSetPatterns = (
   // 门风/圈风刻与三风刻会消化对应风刻的幺九刻，按参考口径在同一次拆分里扣减：
   // 三风刻扣三副风刻，门风与圈风各扣一副（同一副只扣一次）。
   let yaoJiuKeCount = yaoJiuPongs;
+  if (nineGates) yaoJiuKeCount -= 1;
   if (windPongs === 3) {
     yaoJiuKeCount = Math.max(0, yaoJiuKeCount - 3);
   } else if (windPongs < 4) {
@@ -285,7 +312,7 @@ const recognizeSetPatterns = (
   if (yaoJiuKeCount > 0) add('yaoJiuKe', yaoJiuKeCount);
 
   // 边张 / 坎张 / 单钓将：只在记录和牌张时按当前拆分的听牌形状判定。
-  const waitShape = ctx.winningTile ? waitPatternId(decomposition, ctx.winningTile) : null;
+  const waitShape = singleWait && ctx.winningTile ? waitPatternId(decomposition, ctx.winningTile) : null;
   if (waitShape) add(waitShape);
 
   // 同刻：三同刻已含双同刻，故双同刻只计恰好两花色
@@ -502,8 +529,9 @@ const sourcePatterns = (
   };
   // 不计不求人的特殊型（七星不靠/全不靠/七对/九莲宝灯）不得加入，否则会连带排除自摸
   const excludesFullyConcealed = recognized.some(r => r.pattern.excludes?.includes('buQiuRen'));
-  if (melds.length === 0 && winSource === 'selfDraw' && !excludesFullyConcealed) add('buQiuRen');
-  if (melds.length === 0 && winSource === 'claim') add('menQianQing');
+  const fullyConcealed = melds.every(meld => meld.type === 'gang' && meld.kongKind === 'concealed');
+  if (fullyConcealed && winSource === 'selfDraw' && !excludesFullyConcealed) add('buQiuRen');
+  if (fullyConcealed && winSource === 'claim') add('menQianQing');
   if (winSource === 'selfDraw') add('ziMo');
   return out;
 };
@@ -531,12 +559,12 @@ const recognizeEventPatterns = (
   }
   // 杠后和牌：自摸补张记杠上开花，点和别家加杠的牌记抢杠和；和牌方式未知时不确认
   if (ctx.afterKong === true) {
-    if (winSource === 'selfDraw') add('gangShangKaiHua');
+    if (winSource === 'selfDraw' && melds.some(meld => meld.type === 'gang')) add('gangShangKaiHua');
     else if (winSource === 'claim') add('qiangGangHu');
   }
-  if (ctx.winningTile && ctx.discards && ctx.discards.length > 0) {
+  if (ctx.winningTile) {
     const key = getTileKey(ctx.winningTile.suit, ctx.winningTile.value);
-    const visible = [...ctx.discards, ...melds.flatMap(meld => meld.tiles)]
+    const visible = [...(ctx.discards ?? []), ...melds.flatMap(meld => meld.tiles)]
       .filter(tile => getTileKey(tile.suit, tile.value) === key).length;
     if (visible === 3) add('heJueZhang');
   }
@@ -575,8 +603,7 @@ const recognizeStructurePatterns = (
   const allEven = [...counts.values()].every(count => count % 2 === 0);
   if (melds.length === 0 && allTiles.length === 14 && pairUnits === 7 && allEven) {
     add('qiDui');
-    // 七对的每一听都是单钓将，和牌张已记录时成立（和绝张由事件番种另行判定）
-    if (ctx.winningTile) add('danDiaoJiang');
+    // 七对不计单钓将，不能将该拆分的待牌形状混入普通拆分。
     const hogs = countArray.filter(count => count === 4).length;
     if (hogs > 0) {
       const pattern = getPatternById('siGuiYi');
@@ -620,6 +647,7 @@ const recognizeStructurePatterns = (
 export const recognizeMCRPatterns = (
   hand: Tile[], melds: Meld[], winSource: WinSource = 'unknown', ctx: MCRContext = {},
 ): RecognizedPattern[] => {
+  const singleWait = !!ctx.winningTile && hasSingleStructuralWait(hand, melds, ctx.winningTile);
   const allTiles = [...hand, ...melds.flatMap(m => m.tiles)];
   const counts = countTiles(allTiles);
   const allCounts = countsToArray(counts);
@@ -634,7 +662,7 @@ export const recognizeMCRPatterns = (
   const candidates: RecognizedPattern[][] = decompositions.map(decomposition => [
     ...tilePatterns,
     ...shared,
-    ...recognizeSetPatterns(decomposition, locked, melds, winSource, allCounts, ctx),
+    ...recognizeSetPatterns(decomposition, locked, melds, winSource, allCounts, ctx, singleWait, structures.some(r => r.pattern.id === 'jiuLianBaoDeng')),
   ]);
   exclusive.forEach(structure => candidates.push([
     ...tilePatterns, ...shared, structure,

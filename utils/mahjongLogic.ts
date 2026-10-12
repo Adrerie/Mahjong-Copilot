@@ -1,5 +1,5 @@
 
-import { validateGameState } from './inputValidation';
+import { validateGameState, winningTileInHand } from './inputValidation';
 /**
  * 麻将逻辑主入口模块
  * 
@@ -149,12 +149,13 @@ export const analyzeGame = (state: GameState, lang: Language = 'en'): AnalysisRe
 // ============================================================
 
 /** 计番所需、但当前局面可能未记录的事件事实；缺失时不得自动计对应番种。 */
-export type MCRContextGap = 'winSource' | 'winningTile' | 'lastTile' | 'seatWind' | 'kongType';
+export type MCRContextGap = 'winSource' | 'winningTile' | 'lastTile' | 'afterKong' | 'seatWind' | 'kongType';
 
 const MCR_CONTEXT_LABELS: Record<MCRContextGap, { zh: string; en: string }> = {
   winSource: { zh: '和牌来源（自摸/点和）', en: 'win source (self-draw or claim)' },
   winningTile: { zh: '和牌张（边张/坎张/单钓将、和绝张、九莲宝灯）', en: 'winning tile (wait shape, last tile, nine gates)' },
   lastTile: { zh: '末张（妙手回春/海底捞月）', en: 'last tile of the wall' },
+  afterKong: { zh: '杠后和牌（杠上开花/抢杠和）', en: 'replacement-tile or robbing-kong win' },
   seatWind: { zh: '门风/圈风', en: 'seat and round wind' },
   kongType: { zh: '明杠/暗杠/补杠', en: 'kong types' },
 };
@@ -180,11 +181,13 @@ export const calculateMCRTotalFan = (
   patterns: { id: string; name: string; fan: number; count: number }[];
   missingContext: MCRContextGap[];
 } => {
-  const state: GameState = { mode: GameMode.MCR, hand, melds, discards: [], wallCount: 0, voidSuit: null };
+  const state: GameState = { ...ctx, mode: GameMode.MCR, hand, melds, discards: ctx.discards ?? [], wallCount: 0, voidSuit: null };
+  ctx = { ...ctx, winningTile: winningTileInHand(state) };
   const gapped: MCRContextGap[] = [];
   if (winSource === 'unknown') gapped.push('winSource');
   if (!ctx.winningTile) gapped.push('winningTile');
   if (ctx.lastTile !== true && ctx.lastTile !== false) gapped.push('lastTile');
+  if (ctx.afterKong !== true && ctx.afterKong !== false) gapped.push('afterKong');
   if (!ctx.seatWind || !ctx.roundWind) gapped.push('seatWind');
   if (melds.some(meld => meld.type === 'gang' && !meld.kongKind)) gapped.push('kongType');
   const structuralWin = validateGameState(state, 'en').length === 0 &&

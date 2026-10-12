@@ -42,6 +42,7 @@ export const validateGameState = (state: GameState, lang: Language, requireCompl
   }
   // 和牌上下文：记录了就必须合法；和牌张不在暗手时按未记录处理，不报错也不计番。
   if (state.mode === GameMode.MCR) {
+    if (state.winningTile != null && !isTile(state.winningTile)) errors.push(error('和牌张不合法', 'Invalid winning tile'));
     if (state.seatWind != null && !isWind(state.seatWind)) errors.push(error('门风只能是东南西北', 'Seat wind must be E, S, W or N'));
     if (state.roundWind != null && !isWind(state.roundWind)) errors.push(error('圈风只能是东南西北', 'Round wind must be E, S, W or N'));
     if (state.lastTile !== undefined && state.lastTile !== null && typeof state.lastTile !== 'boolean') {

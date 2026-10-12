@@ -28,6 +28,7 @@ import {
   countTiles,
   countsToArray,
   recognizeMCRPatterns,
+  getPatternById,
 } from '../utils/mahjongLogic';
 import { validateGameState } from '../utils/inputValidation';
 import { recognizeSichuanPatterns } from '../utils/sichuanAnalyzer';
@@ -576,7 +577,7 @@ test('国标：事件上下文缺失时只报「仍缺什么」，可确认番�
   assert.equal(unknown.confirmedFan, 1);
   assert.equal(unknown.maxPossibleFan, 5);
   assert.equal(unknown.eligibility, 'unverified');
-  assert.deepEqual(unknown.missingContext, ['winSource', 'winningTile', 'lastTile', 'seatWind']);
+  assert.deepEqual(unknown.missingContext, ['winSource', 'winningTile', 'lastTile', 'afterKong', 'seatWind']);
   const result = analyzeGame(state(hand), 'zh');
   assert.equal(result.isWinning, true);
   const details = result.suggestions[0]?.patternDetails.join('\n') ?? '';
@@ -586,7 +587,7 @@ test('国标：事件上下文缺失时只报「仍缺什么」，可确认番�
 
   // 记录全部上下文后不再有「待核」，不足 8 番才敢判 unmet
   const full = calculateMCRTotalFan(hand, [], 'selfDraw', {
-    winningTile: hand[hand.length - 1], seatWind: 1, roundWind: 1, lastTile: false,
+    winningTile: hand[hand.length - 1], seatWind: 1, roundWind: 1, lastTile: false, afterKong: false,
   });
   assert.deepEqual(full.missingContext, []);
   assert.equal(full.eligibility, 'unmet');
@@ -748,7 +749,7 @@ test('杠：记录杠类型后才计明暗杠；不把杠算成四归一；七�
   assert.equal(patternCounts(hand, [gang(1, Suit.Pin, 'exposed'), gang(2, Suit.Pin, 'exposed')]).shuangMingGang, 1);
   assert.equal(mcrFan(hand, [gang(1, Suit.Pin, 'concealed'), gang(2, Suit.Pin, 'added')]), 8);
   assert.equal(patternCounts(hand, [gang(1, Suit.Pin, 'concealed'), gang(2, Suit.Pin, 'added')]).mingAnGang, 1);
-  assert.equal(mcrFan(hand, [gang(1, Suit.Pin, 'concealed'), gang(2, Suit.Pin, 'concealed')]), 9);
+  assert.equal(mcrFan(hand, [gang(1, Suit.Pin, 'concealed'), gang(2, Suit.Pin, 'concealed')]), 11); // 双暗杠6 + 双暗刻2 + 原有3番
   // 只记录了一半时，未记录的那副不算单杠人数
   assert.equal(patternCounts(hand, [gang(1, Suit.Pin, 'exposed'), gang(2)]).mingGang, 1);
   assert.equal(patternCounts(hand, [gang(1, Suit.Pin, 'exposed'), gang(2)]).shuangMingGang, undefined);
@@ -836,8 +837,8 @@ test('七对/连七对择优，九莲宝灯要核对和牌前的 13 张', () => 
   assert.ok(lianApi.patterns.some(p => p.id === 'lianQiDui'));
   assert.ok(!lianApi.patterns.some(p => p.id === 'qiDui'));
   assert.ok(!lianApi.patterns.some(p => p.id === 'qingYiSe'));
-  // 连七对88 + 无字1：连七对不计清一色后，清一色声明的无字不计不再连锁生效
-  assert.equal(lianApi.totalFan, 89);
+  // 连七对自身不计无字，不能因清一色被排除而加回来。
+  assert.equal(lianApi.totalFan, 88);
 
   const jiuLian = [...tiles('1112345678999', Suit.Man), createTile(Suit.Man, 5)];
   assert.equal(checkWinning(countsToArray(countTiles(jiuLian)), 0), true);
@@ -850,8 +851,8 @@ test('七对/连七对择优，九莲宝灯要核对和牌前的 13 张', () => 
   const jiuWin = calculateMCRTotalFan(jiuLian, [], 'selfDraw', { winningTile: createTile(Suit.Man, 5) });
   assert.ok(jiuWin.patterns.some(p => p.id === 'jiuLianBaoDeng'));
   assert.ok(!jiuWin.patterns.some(p => p.id === 'qingYiSe'));
-  // 九莲宝灯88 + 双暗刻2 + 无字1 + 单钓将1 + 自摸1；清一色不计后不再连锁排除无字
-  assert.equal(jiuWin.totalFan, 93);
+  // 九莲宝灯88 + 双暗刻2 + 额外幺九刻1 + 自摸1；九面听不计单钓，无字直接不计。
+  assert.equal(jiuWin.totalFan, 92);
   // 去掉和牌张后不是 1112345678999 时不得确认（123m×3 + 789m + 99m 是另一种清一色和牌）
   const notNine = tiles('12312312378999', Suit.Man);
   assert.equal(checkWinning(countsToArray(countTiles(notNine)), 0), true);
@@ -904,19 +905,43 @@ test('国标和牌上下文：门风/圈风刻、和牌张听型、末张与绝�
   assert.ok(!validated(pairWait, [], 'selfDraw', {}).includes('miaoShouHuiChun'));
 
   // 和绝张：和牌张在牌河/副露里已见三张才成立
-  const winners = createTile(Suit.Sou, 5);
-  const river = [...tiles('555', Suit.Sou)];
-  assert.ok(validated(pairWait, [], 'claim', { winningTile: winners, discards: river }).includes('heJueZhang'));
-  assert.ok(!validated(pairWait, [], 'claim', { winningTile: winners, discards: river.slice(0, 2) }).includes('heJueZhang'));
-  assert.ok(!validated(pairWait, [], 'claim', { discards: river }).includes('heJueZhang'));
+  const winners = createTile(Suit.Pin, 1);
+  const river = tiles('111', Suit.Pin);
+  const lastCopyHand = [...tiles('111', Suit.Man), ...tiles('123', Suit.Pin), ...tiles('456789', Suit.Sou), ...tiles('22', Suit.Zihai)];
+  assert.ok(validated(lastCopyHand, [], 'claim', { winningTile: winners, discards: river }).includes('heJueZhang'));
+  assert.ok(!validated(lastCopyHand, [], 'claim', { winningTile: winners, discards: river.slice(0, 2) }).includes('heJueZhang'));
+  assert.ok(!validated(lastCopyHand, [], 'claim', { discards: river }).includes('heJueZhang'));
 
   // 杠后和牌：自摸补张=杠上开花（不计自摸），点和加杠的牌=抢杠和（不计和绝张）
-  const kongDraw = validated(pairWait, [], 'selfDraw', { afterKong: true });
+  const kongDraw = validated([...tiles('123456', Suit.Man), ...tiles('55', Suit.Sou)], [gang(1), pong(9)], 'selfDraw', { afterKong: true });
   assert.ok(kongDraw.includes('gangShangKaiHua'));
   assert.ok(!kongDraw.includes('ziMo'));
   assert.ok(validated(pairWait, [], 'claim', { afterKong: true }).includes('qiangGangHu'));
   assert.ok(!validated(pairWait, [], 'unknown', { afterKong: true }).some(id => id === 'gangShangKaiHua' || id === 'qiangGangHu'));
   assert.ok(!validated(pairWait, [], 'selfDraw', {}).includes('gangShangKaiHua'));
+});
+
+test('新增上下文不虚报待牌与暗刻，牌河参与API校验', () => {
+  assert.equal(getPatternById('wuFanHu')?.fan, 8);
+  const multi = [...tiles('123456789', Suit.Man), ...tiles('11122', Suit.Pin)];
+  const multiIds = calculateMCRTotalFan(multi, [], 'claim', { winningTile: createTile(Suit.Pin, 2) }).patterns.map(p => p.id);
+  assert.ok(!multiIds.includes('danDiaoJiang')); // 和2p或3p，不能计单钓
+  const concealed = [gang(9, Suit.Pin, 'concealed')];
+  const hand = [...tiles('111', Suit.Man), ...tiles('123456', Suit.Sou), ...tiles('55', Suit.Pin)];
+  const draw = calculateMCRTotalFan(hand, concealed, 'selfDraw').patterns.map(p => p.id);
+  assert.ok(draw.includes('buQiuRen') && draw.includes('shuangAnKe'));
+  assert.ok(calculateMCRTotalFan(hand, concealed, 'claim').patterns.some(p => p.id === 'menQianQing'));
+  const pungs = [...tiles('111222555', Suit.Man), ...tiles('999', Suit.Pin), ...tiles('66', Suit.Sou)];
+  const claim = calculateMCRTotalFan(pungs, [], 'claim', { winningTile: createTile(Suit.Man, 2) });
+  assert.ok(!claim.patterns.some(p => p.id === 'siAnKe'));
+  assert.ok(claim.patterns.some(p => p.id === 'sanAnKe'));
+  const full = { winningTile: createTile(Suit.Zihai, 5), seatWind: 1, roundWind: 1, lastTile: false } as const;
+  const low = [...tiles('123456', Suit.Man), ...tiles('789', Suit.Pin), ...tiles('234', Suit.Sou), ...tiles('55', Suit.Zihai)];
+  assert.ok(calculateMCRTotalFan(low, [], 'claim', full).missingContext.includes('afterKong'));
+  assert.ok(calculateMCRTotalFan(low, [], 'claim', { ...full, winningTile: createTile(Suit.Sou, 9) }).missingContext.includes('winningTile'));
+  assert.equal(calculateMCRTotalFan(multi, [], 'claim', { discards: tiles('222', Suit.Pin) }).structuralWin, false); // 合计5张2p
+  const visiblePong = calculateMCRTotalFan([...tiles('123456', Suit.Man), ...tiles('789', Suit.Pin), ...tiles('55', Suit.Sou)], [pong(1, Suit.Man)], 'claim', { winningTile: createTile(Suit.Man, 1) });
+  assert.ok(visiblePong.patterns.some(p => p.id === 'heJueZhang')); // 无牌河，但明碰已见3张
 });
 
 test('顺子小番不重复套算，全带五不得由字牌索引碰巧成立', () => {
