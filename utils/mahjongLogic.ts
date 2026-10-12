@@ -110,9 +110,11 @@ export const analyzeGame = (state: GameState, lang: Language = 'en'): AnalysisRe
         ? calculateShanten(handAfterDraw, melds, mode)
         : (checkWinning(countsToArray(countTiles(handAfterDraw)), melds.length, mode)
           ? -1 : Math.max(0, calculateShanten(handAfterDraw, melds, mode)));
-      if (nextShanten < baseShanten) improvingDraws.push({ tile: incoming, remaining, shantenAfter: nextShanten });
+      if (nextShanten < baseShanten) improvingDraws.push({ tile: incoming, remaining, shantenAfter: nextShanten, completesHand: nextShanten < 0 });
     }
-    improvingDraws.sort((a, b) => a.shantenAfter - b.shantenAfter || b.remaining - a.remaining);
+    // 听牌时的待牌（摸到即成和牌型）排最前，其次才是只改善向听的进张。
+    improvingDraws.sort((a, b) => Number(b.completesHand ?? false) - Number(a.completesHand ?? false)
+      || a.shantenAfter - b.shantenAfter || b.remaining - a.remaining);
   }
   let suggestions: FanSuggestion[] = [];
   let contextPending = false;

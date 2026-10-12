@@ -85,23 +85,25 @@ const AnalysisResultModal: React.FC<Props> = ({ result, lang, onClose }) => {
           {result.improvingDraws && (
             <div className="bg-white p-4 rounded-2xl border border-blue-100 shadow-sm space-y-2">
               <h3 className="text-sm font-black text-[#1A237E]">
-                {lang === 'zh' ? '13张手牌：进张方向' : '13 tiles: useful draws'}
+                {result.isReady
+                  ? (lang === 'zh' ? '13张手牌：已听牌（待牌在前）' : '13 tiles: tenpai (waits first)')
+                  : (lang === 'zh' ? '13张手牌：进张方向' : '13 tiles: useful draws')}
               </h3>
               <p className="text-xs text-gray-600">
                 {lang === 'zh'
-                  ? '当前尚未摸入第14张，不能直接推荐弃牌。下列为可能改善结构向听的牌，数字是未见张数而非摸牌概率；实际摸牌后再推荐打哪张。'
-                  : 'No 14th tile drawn: no discard decision yet. Below are shape-improving draws, with unseen copies (not draw probabilities).'}
+                  ? '当前尚未摸入第14张，不能直接推荐弃牌。下列数字是未见张数而非摸牌概率；标「待牌·摸到成和」的是能直接构成和牌型的牌，其余只是改善向听。实际摸牌后再推荐打哪张。'
+                  : 'No 14th tile drawn: no discard decision yet. Numbers are unseen copies, not draw probabilities; "Wait: completes hand" marks tiles that finish the shape, the rest only improve shanten. Re-analyze after drawing.'}
               </p>
               {result.improvingDrawsNote && (
                 <p className="text-xs text-amber-800 bg-amber-50 p-2 rounded-lg">{result.improvingDrawsNote}</p>
               )}
               {result.improvingDraws.length ? (
                 <div className="flex flex-wrap gap-2">
-                  {result.improvingDraws.map(({ tile, remaining, shantenAfter }, index) => (
-                    <div key={index} className="flex flex-col items-center gap-1 border border-gray-100 rounded-lg p-2 w-16">
+                  {result.improvingDraws.map(({ tile, remaining, shantenAfter, completesHand }, index) => (
+                    <div key={index} className={'flex flex-col items-center gap-1 rounded-lg p-2 w-16 ' + (completesHand ? 'border-2 border-[#CCFF00] bg-lime-50' : 'border border-gray-100')}>
                       <div className="w-9"><TileUI tile={tile} size="responsive" /></div>
                       <span className="text-[10px] text-gray-600">{remaining}{lang === 'zh' ? '张未见' : ' unseen'}</span>
-                      <span className="text-[10px] text-gray-400">{shantenAfter < 0 ? (lang === 'zh' ? '结构成牌' : 'Shape complete') : `${shantenAfter}${lang === 'zh' ? '向听' : ' shanten'}`}</span>
+                      <span className={completesHand ? 'text-[10px] font-bold text-[#1A237E]' : 'text-[10px] text-gray-400'}>{completesHand ? (lang === 'zh' ? '待牌·摸到成和' : 'Wait: completes hand') : (shantenAfter < 0 ? (lang === 'zh' ? '结构成牌' : 'Shape complete') : `${shantenAfter}${lang === 'zh' ? '向听' : ' shanten'}`)}</span>
                     </div>
                   ))}
                 </div>

@@ -203,6 +203,26 @@ test('国标和四川：13张提示进张、14张推荐打哪张，维持模式�
   assert.ok(needsVoid.improvingDraws?.some(x => x.tile.suit === Suit.Pin), '仍有定缺牌时也给出非定缺进张方向');
   assert.ok(needsVoid.improvingDrawsNote?.includes('定缺'), '需说明进张按去除定缺后的牌形计算');
 });
+test('13张已听牌：待牌标记 completesHand 并排最前，未听牌时不冒充待牌', () => {
+  // 111m222m333m444m5m 是五面听：2m/3m/4m/5m/6m 都能构成4副+将。
+  const tenpai = analyzeGame(state([...tiles('111', Suit.Man), ...tiles('222', Suit.Man), ...tiles('333', Suit.Man), ...tiles('444', Suit.Man), ...tiles('5', Suit.Man)]), 'zh');
+  assert.equal(tenpai.isReady, true);
+  assert.ok(tenpai.improvingDraws?.length, '听牌时必须列出待牌');
+  assert.deepEqual(tenpai.improvingDraws!.filter(x => x.completesHand).map(x => `${x.tile.value}${x.tile.suit}`).sort(), ['2m', '3m', '4m', '5m', '6m'], '待牌必须是真正能成和的牌');
+  assert.ok(tenpai.improvingDraws!.every(x => x.completesHand), '该例进张全部是待牌');
+  assert.equal(tenpai.improvingDraws![0].completesHand, true, '待牌必须排在最前');
+
+  // 两面听 123m456m789m 55p 67p：待 5p/8p，按未见张数排序。
+  const ryanmen = analyzeGame(state([...tiles('123456789', Suit.Man), ...tiles('55', Suit.Pin), ...tiles('67', Suit.Pin)]), 'zh');
+  assert.deepEqual(ryanmen.improvingDraws?.map(x => `${x.tile.value}${x.tile.suit}`), ['8p', '5p']);
+  assert.ok(ryanmen.improvingDraws?.every(x => x.completesHand === true));
+
+  // 未听牌：只是改善向听，不得标成待牌。
+  const notReady = analyzeGame(state([...tiles('1479', Suit.Man), ...tiles('258', Suit.Pin), ...tiles('369', Suit.Sou), ...tiles('11', Suit.Pin), ...tiles('2', Suit.Sou)]), 'zh');
+  assert.equal(notReady.isReady, false);
+  assert.ok(notReady.improvingDraws?.every(x => !x.completesHand), '未听牌时不得标记待牌');
+});
+
 
 test('国标：结构已和但8番待核时显示续打备选，不代替8番核验', () => {
   const hand = [...tiles('123456', Suit.Man), ...tiles('123789', Suit.Pin), ...tiles('55', Suit.Sou)];
