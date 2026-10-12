@@ -31,6 +31,7 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: python -m py_compile scripts/evaluate_real_table.py
+      - run: python -m py_compile scripts/export_android_yolo.py
       - run: npm run typecheck
       - run: npm run build
       - name: Upload web dist
