@@ -21,8 +21,8 @@ jobs:
     name: Test and build web
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: npm
@@ -31,7 +31,7 @@ jobs:
       - run: npm run typecheck
       - run: npm run build
       - name: Upload web dist
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: web-dist
           path: dist/
@@ -43,8 +43,8 @@ jobs:
     needs: web
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: npm
@@ -67,7 +67,7 @@ jobs:
           cd android
           ./gradlew assembleDebug --no-daemon
       - name: Upload debug APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mahjong-copilot-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
