@@ -142,7 +142,9 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
         });
       } else if (availableChows >= 3) {
         // 已有3组，缺1组
-        const missing = missingChowTiles(hand, melds, s, i, 4);
+        const { cost: planCost, missing } = planSequences(hand, melds,
+          Array.from({ length: 4 }, () => ({ suit: s, startVal: i })));
+        if (!Number.isFinite(planCost)) continue;
 
         const { score: extraScore, details: extraDetails } = calculateMCRExtras(allTiles, melds, ['yiSeSiTongShun', 'yiSeSanTongShun', 'yiBanGao', 'siGuiYi']);
         suggestions.push({
@@ -226,7 +228,9 @@ export const analyzeMCR = (hand: Tile[], melds: Meld[], lang: Language, wallCoun
         });
       } else if (availableChows >= 2 && seqCost === 0) {
         // 已有2组，缺1组
-        const missing = missingChowTiles(hand, melds, s, i, 3);
+        const { cost: planCost, missing } = planSequences(hand, melds,
+          Array.from({ length: 3 }, () => ({ suit: s, startVal: i })));
+        if (!Number.isFinite(planCost)) continue;
 
         const { score: extraScore, details: extraDetails } = calculateMCRExtras(allTiles, melds, ['yiSeSanTongShun']);
         suggestions.push({
