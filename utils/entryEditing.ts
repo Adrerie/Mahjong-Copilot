@@ -60,8 +60,13 @@ const tileName = (tile: Tile): EntryMessage => ({
 /** 和牌张必须真的在暗手里；手牌变化后自动失效，避免记下无法核对的上下文。 */
 export const withConsistentContext = (state: GameState): GameState => {
   const winning = winningTileInHand(state);
-  if (winning === (state.winningTile ?? null)) return state;
-  return { ...state, winningTile: winning };
+  // 删除最后一副自己的杠后，原有「杠上开花」事件不再有牌面证据。
+  const sichuanWinEvent = state.mode === GameMode.Sichuan &&
+    state.sichuanWinEvent === 'kongBloom' && !state.melds.some(m => m.type === 'gang')
+      ? null : (state.sichuanWinEvent ?? null);
+  if (winning === (state.winningTile ?? null) &&
+      sichuanWinEvent === (state.sichuanWinEvent ?? null)) return state;
+  return { ...state, winningTile: winning, sichuanWinEvent };
 };
 
 /** 用已存在的校验器产生候选局面的拒绝原因，保证文案与手动录入完全一致。 */
