@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { AnalysisResult, GameMode, GameState, Language, Meld, Suit, Tile } from '../types';
+import { AnalysisResult, GameMode, GameState, Language, Meld, Suit, Tile, WinSource } from '../types';
 import {
   INITIAL_WALL_MCR, INITIAL_WALL_SICHUAN, MAX_WALL_MCR, MAX_WALL_SICHUAN,
   SUIT_LABELS, TEXT, THEME,
@@ -31,7 +31,15 @@ const emptyEntry = (mode: GameMode): GameState => ({
   hand: [],
   melds: [],
   discards: [],
+  winSource: 'unknown',
 });
+
+/** 国标和牌方式的三个可选值：未记录时按「未知」处理，不计自摸/不求人/门前清。 */
+const WIN_SOURCES: { value: WinSource; labelKey: 'winUnknown' | 'winSelfDraw' | 'winClaim' }[] = [
+  { value: 'unknown', labelKey: 'winUnknown' },
+  { value: 'selfDraw', labelKey: 'winSelfDraw' },
+  { value: 'claim', labelKey: 'winClaim' },
+];
 
 /** 读取上次局面；损坏或旧格式返回 null，绝不用半截数据覆盖空局面。 */
 const loadEntry = (mode: GameMode): GameState => {
@@ -200,6 +208,24 @@ const InputScreen: React.FC<Props> = ({ mode, lang, setLang, onBack }) => {
                     <button onClick={() => commit({ ...entry, wallCount: clampWall(mode, wallCount + 1) })} disabled={wallCount >= wallLimit(mode)} aria-label={`${t.wallTiles} +1`} className="w-6 h-6 bg-white rounded shadow text-[#1A237E] font-bold disabled:opacity-40">+</button>
                 </div>
             </div>
+            {mode === GameMode.MCR && (
+                <div className="flex flex-col items-end">
+                    <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">{t.winSource}</p>
+                    <div className="flex gap-1">
+                        {WIN_SOURCES.map(({ value, labelKey }) => (
+                            <button
+                                key={value}
+                                onClick={() => commit({ ...entry, winSource: value })}
+                                aria-pressed={(entry.winSource ?? 'unknown') === value}
+                                aria-label={`${t.winSource} ${t[labelKey]}`}
+                                className={`px-2 h-8 rounded-lg font-bold text-xs transition-all border-2 ${(entry.winSource ?? 'unknown') === value ? 'bg-[#1A237E] border-[#1A237E] text-white shadow-neu-sm' : 'bg-white border-gray-200 text-gray-400'}`}
+                            >
+                                {t[labelKey]}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
             {mode === GameMode.Sichuan && (
                 <div className="flex flex-col items-end">
                     <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">{t.voidSuit}</p>

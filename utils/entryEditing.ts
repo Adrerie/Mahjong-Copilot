@@ -1,4 +1,4 @@
-import { GameMode, GameState, Meld, Suit, Tile } from '../types';
+import { GameMode, GameState, Meld, Suit, Tile, WinSource } from '../types';
 import { MAX_TILES_IN_HAND, SUIT_LABELS, createTile, getTileKey } from '../constants';
 import { countTiles } from './tileHelpers';
 import { isTile, validateGameState } from './inputValidation';
@@ -284,6 +284,15 @@ export const decodeEntryState = (raw: string | null, mode: GameMode): GameState 
     voidSuit = found;
   }
 
-  const candidate: GameState = { mode, wallCount: state.wallCount, voidSuit, hand, melds, discards };
+  // 和牌方式：只在三个合法值内恢复，损坏数据整局丢弃，绝不猜成自摸或点和
+  let winSource: WinSource = 'unknown';
+  if ('winSource' in state && state.winSource !== undefined && state.winSource !== null) {
+    const sources: WinSource[] = ['selfDraw', 'claim', 'unknown'];
+    const found = sources.find(source => source === state.winSource);
+    if (!found) return null;
+    winSource = found;
+  }
+
+  const candidate: GameState = { mode, wallCount: state.wallCount, voidSuit, hand, melds, discards, winSource };
   return validateGameState(candidate, 'zh', false).length === 0 ? candidate : null;
 };
