@@ -69,14 +69,10 @@ def run() -> None:
     args.out.mkdir(parents=True, exist_ok=True)
     reports = []
     review_rows = []
-    used_names: set[str] = set()
-
     for index, image in enumerate(images, start=1):
         safe_stem = "".join(c if c.isalnum() or c in "-_" else "_" for c in image.stem)[:55] or "photo"
-        name = safe_stem
-        if name in used_names:
-            name = f"{safe_stem}_{index}"
-        used_names.add(name)
+        # Numbering guarantees unique result directories even for colliding image stems.
+        name = f"{index:03d}_{safe_stem}"
         target = args.out / name
         target.mkdir(parents=True, exist_ok=True)
 
