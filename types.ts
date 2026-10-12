@@ -91,6 +91,8 @@ export interface AnalysisResult {
   };
   suggestions: FanSuggestion[];
   scoreEstimate?: number; // Fan
+  /** 成牌但仍有未记录的事件事实（国标）；此时番数只能标「待核」，否则标「参考计番」。 */
+  contextPending?: boolean;
   warnings: string[];
 }
 

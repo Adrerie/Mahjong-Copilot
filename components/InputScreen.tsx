@@ -40,7 +40,7 @@ type EntryZone = 'hand' | 'melds' | 'discards' | 'winningTile';
 
 const WINDS: Wind[] = [1, 2, 3, 4];
 
-/** 杠类型三选：未记录时不计明杠/暗杠/双明杠/双暗杠。 */
+/** 杠类型三选：默认「未记录」，只有用户主动选择后才计明杠/暗杠/双明杠/双暗杠。 */
 const KONG_KINDS: { value: KongKind; labelKey: 'kongExposed' | 'kongConcealed' | 'kongAdded' }[] = [
   { value: 'exposed', labelKey: 'kongExposed' },
   { value: 'concealed', labelKey: 'kongConcealed' },
@@ -77,7 +77,7 @@ const InputScreen: React.FC<Props> = ({ mode, lang, setLang, onBack }) => {
   const [entryError, setEntryError] = useState<EntryMessage | null>(null);
   const [textInput, setTextInput] = useState('');
   const [meldType, setMeldType] = useState<Meld['type']>('pong');
-  const [meldKongKind, setMeldKongKind] = useState<KongKind>('exposed');
+  const [meldKongKind, setMeldKongKind] = useState<KongKind | null>(null);
   const [activeZone, setActiveZone] = useState<EntryZone>('hand');
   const [showKeyboard, setShowKeyboard] = useState(false);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
@@ -138,7 +138,7 @@ const InputScreen: React.FC<Props> = ({ mode, lang, setLang, onBack }) => {
       zone: activeZone,
       meldType,
       tile,
-      kongKind: meldType === 'gang' ? meldKongKind : undefined,
+      kongKind: meldType === 'gang' ? meldKongKind ?? undefined : undefined,
     });
     if (plan.outcome === 'rejected') {
       setEntryError(plan.message);
@@ -244,17 +244,26 @@ const InputScreen: React.FC<Props> = ({ mode, lang, setLang, onBack }) => {
                 <div className="flex flex-col items-end">
                     <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">{t.winSource}</p>
                     <div className="flex gap-1">
-                        {WIN_SOURCES.map(({ value, labelKey }) => (
+                        {WIN_SOURCES.map(({ value, labelKey }) => {
+                            const current = entry.winSource ?? 'unknown';
+                            return (
                             <button
                                 key={value}
-                                onClick={() => commit({ ...entry, winSource: value })}
-                                aria-pressed={(entry.winSource ?? 'unknown') === value}
+                                onClick={() => commit({
+                                    ...entry,
+                                    winSource: value,
+                                    // 换和牌方式时，已记录的杠后事件不再成立：杠上开花对应自摸、抢杠和对应点和，
+                                    // 不跟着改就会把杠后事件悄悄换一个含义，所以改为回到「未记录」由用户重选。
+                                    afterKong: value !== current && entry.afterKong === true ? null : entry.afterKong,
+                                })}
+                                aria-pressed={current === value}
                                 aria-label={`${t.winSource} ${t[labelKey]}`}
-                                className={`px-2 h-8 rounded-lg font-bold text-xs transition-all border-2 ${(entry.winSource ?? 'unknown') === value ? 'bg-[#1A237E] border-[#1A237E] text-white shadow-neu-sm' : 'bg-white border-gray-200 text-gray-400'}`}
+                                className={`px-2 h-8 rounded-lg font-bold text-xs transition-all border-2 ${current === value ? 'bg-[#1A237E] border-[#1A237E] text-white shadow-neu-sm' : 'bg-white border-gray-200 text-gray-400'}`}
                             >
                                 {t[labelKey]}
                             </button>
-                        ))}
+                            );
+                        })}
                     </div>
                 </div>
             )}
@@ -379,11 +388,12 @@ const InputScreen: React.FC<Props> = ({ mode, lang, setLang, onBack }) => {
                     </div>
                 </div>
 
-                {/* 杠后和牌：自摸补张记杠上开花，点和加杠的牌记抢杠和，同时带上和牌方式 */}
+                {/* 杠后和牌：先明确是/否，选「是」时自摸补张记杠上开花、点和加杠记抢杠和 */}
                 <div className="flex items-center gap-2 mt-2" onClick={(e) => e.stopPropagation()}>
                     <span className="w-12 shrink-0 text-[10px] text-gray-500 font-bold uppercase tracking-wider">{t.afterKong}</span>
-                    <div className="flex gap-1">
-                        <button type="button" onClick={() => commit({ ...entry, afterKong: null })} aria-pressed={!entry.afterKong} className={`px-2 h-7 rounded-lg font-bold text-xs border-2 ${!entry.afterKong ? 'bg-[#1A237E] border-[#1A237E] text-white shadow-neu-sm' : 'bg-white border-gray-200 text-gray-400'}`}>{t.notRecorded}</button>
+                    <div className="flex gap-1 flex-wrap">
+                        <button type="button" onClick={() => commit({ ...entry, afterKong: null })} aria-pressed={entry.afterKong == null} className={`px-2 h-7 rounded-lg font-bold text-xs border-2 ${entry.afterKong == null ? 'bg-[#1A237E] border-[#1A237E] text-white shadow-neu-sm' : 'bg-white border-gray-200 text-gray-400'}`}>{t.notRecorded}</button>
+                        <button type="button" onClick={() => commit({ ...entry, afterKong: false })} aria-pressed={entry.afterKong === false} className={`px-2 h-7 rounded-lg font-bold text-xs border-2 ${entry.afterKong === false ? 'bg-[#1A237E] border-[#1A237E] text-white shadow-neu-sm' : 'bg-white border-gray-200 text-gray-400'}`}>{t.no}</button>
                         <button type="button" onClick={() => commit({ ...entry, afterKong: true, winSource: 'selfDraw' })} aria-pressed={entry.afterKong === true && entry.winSource === 'selfDraw'} className={`px-2 h-7 rounded-lg font-bold text-xs border-2 ${entry.afterKong === true && entry.winSource === 'selfDraw' ? 'bg-[#1A237E] border-[#1A237E] text-white shadow-neu-sm' : 'bg-white border-gray-200 text-gray-400'}`}>{t.kongDrawWin}</button>
                         <button type="button" onClick={() => commit({ ...entry, afterKong: true, winSource: 'claim' })} aria-pressed={entry.afterKong === true && entry.winSource === 'claim'} className={`px-2 h-7 rounded-lg font-bold text-xs border-2 ${entry.afterKong === true && entry.winSource === 'claim' ? 'bg-[#1A237E] border-[#1A237E] text-white shadow-neu-sm' : 'bg-white border-gray-200 text-gray-400'}`}>{t.robKongWin}</button>
                     </div>
@@ -545,9 +555,15 @@ const InputScreen: React.FC<Props> = ({ mode, lang, setLang, onBack }) => {
                     </div>
                  )}
 
-                 {/* 杠类型：记录过的明杠/暗杠/补杠才计对应番种 */}
+                 {/* 杠类型：默认未记录，用户主动选明杠/暗杠/补杠后才计对应番种 */}
                  {activeZone === 'melds' && mode === GameMode.MCR && meldType === 'gang' && (
                     <div className="flex gap-1 ml-2 bg-gray-100 p-0.5 rounded-lg">
+                        <button
+                            onClick={() => setMeldKongKind(null)}
+                            aria-pressed={meldKongKind === null}
+                            aria-label={`${t.kongKind} ${t.notRecorded}`}
+                            className={`px-2.5 py-1 rounded text-xs font-bold ${meldKongKind === null ? 'bg-white shadow text-[#1A237E]' : 'text-gray-400'}`}
+                        >{t.notRecorded}</button>
                         {KONG_KINDS.map(({ value, labelKey }) => (
                             <button
                                 key={value}

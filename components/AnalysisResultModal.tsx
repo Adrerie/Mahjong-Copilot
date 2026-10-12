@@ -29,7 +29,9 @@ const AnalysisResultModal: React.FC<Props> = ({ result, lang, onClose }) => {
                   {result.status === 'invalid' ? (lang === 'zh' ? '输入无效' : 'Invalid input') :
                    result.status === 'incomplete' ? (lang === 'zh' ? '牌数未齐' : 'Incomplete hand') :
                    result.status === 'deadWait' ? (lang === 'zh' ? '死叫（无剩余待牌）' : 'Dead wait (no copies left)') :
-                   result.isWinning ? (lang === 'zh' ? '成牌（计番待核）' : 'Complete shape (score unverified)') :
+                   result.isWinning ? (lang === 'zh'
+                      ? (result.contextPending ? '成牌（计番待核）' : '成牌（参考计番）')
+                      : (result.contextPending ? 'Complete shape (score unverified)' : 'Complete shape (reference score)')) :
                    result.isReady ? t.ready : result.shanten !== null ? `${result.shanten} ${t.shanten}` : '—'}
                 </span>
                 {result.warnings.map((w, idx) => (

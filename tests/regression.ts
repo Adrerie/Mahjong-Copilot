@@ -253,6 +253,22 @@ test('加牌：四张上限、14 张等效、四副面子与吃牌跨度', () =>
   const short = state(tiles('12', Suit.Man));
   assert.equal(planTileAdd(short, { zone: 'melds', meldType: 'chi', tile: createTile(Suit.Man, 8) }).outcome, 'rejected');
   assert.equal(planTileAdd(short, { zone: 'melds', meldType: 'chi', tile: createTile(Suit.Man, 7) }).outcome, 'applied');
+
+  // 杠类型默认「未记录」：不传 kongKind 就不写类型，用户主动选了才记录
+  const gangHand = state(tiles('123', Suit.Man));
+  const defaultGang = planTileAdd(gangHand, { zone: 'melds', meldType: 'gang', tile: createTile(Suit.Man, 9) });
+  assert.equal(defaultGang.outcome, 'applied');
+  assert.equal(defaultGang.outcome === 'applied' ? defaultGang.state.melds[0].kongKind : 'x', undefined);
+  const typedGang = planTileAdd(gangHand, { zone: 'melds', meldType: 'gang', tile: createTile(Suit.Man, 9), kongKind: 'concealed' });
+  assert.equal(typedGang.outcome === 'applied' ? typedGang.state.melds[0].kongKind : 'x', 'concealed');
+  // 未记录类型的杠仍然参与结构，但会作为缺口提示，不自动计明杠/暗杠
+  const gangWin = [...tiles('123456789', Suit.Man), ...tiles('55', Suit.Sou)];
+  const gangCtx = { seatWind: 1 as const, roundWind: 1 as const, lastTile: false, afterKong: false };
+  const unknownGang = calculateMCRTotalFan(gangWin, [gang(1)], 'claim', gangCtx);
+  assert.ok(unknownGang.structuralWin);
+  assert.ok(unknownGang.missingContext.includes('kongType'));
+  assert.ok(!unknownGang.patterns.some(p => p.id === 'mingGang' || p.id === 'anGang'));
+  assert.ok(!calculateMCRTotalFan(gangWin, [gang(1, Suit.Pin, 'concealed')], 'claim', gangCtx).missingContext.includes('kongType'));
 });
 
 test('川麻录入拒绝字牌与吃，三门花色可录入但不能和牌', () => {
@@ -584,6 +600,8 @@ test('国标：事件上下文缺失时只报「仍缺什么」，可确认番�
   assert.ok(details.includes('8 番起和待核'));
   assert.ok(details.includes('和牌张'));
   assert.ok(result.warnings.some(w => w.includes('和牌来源未知')));
+  // 仍有未记录事实时界面标「待核」
+  assert.equal(result.contextPending, true);
 
   // 记录全部上下文后不再有「待核」，不足 8 番才敢判 unmet
   const full = calculateMCRTotalFan(hand, [], 'selfDraw', {
@@ -591,6 +609,12 @@ test('国标：事件上下文缺失时只报「仍缺什么」，可确认番�
   });
   assert.deepEqual(full.missingContext, []);
   assert.equal(full.eligibility, 'unmet');
+  // 普通和牌（杠后=否）+ 全部上下文：不再待核，标参考计番
+  const recorded = analyzeGame(state(hand, [], {
+    winSource: 'selfDraw', winningTile: hand[hand.length - 1], seatWind: 1, roundWind: 1, lastTile: false, afterKong: false,
+  }), 'zh');
+  assert.equal(recorded.contextPending, false);
+  assert.ok((recorded.suggestions[0]?.patternDetails.join('\n') ?? '').includes('不足 8 番起和'));
 });
 
 // ============================================================

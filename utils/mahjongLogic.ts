@@ -84,6 +84,7 @@ export const analyzeGame = (state: GameState, lang: Language = 'en'): AnalysisRe
   const discard = !isWinning ? calculateBestDiscard(hand, melds, discards, lang, mode, voidSuit) : undefined;
   if (discard) waitingTiles = describeWaits(discard.waitingTiles);
   let suggestions: FanSuggestion[] = [];
+  let contextPending = false;
   const scoreNote = mode === GameMode.Sichuan
     ? (zh
       ? `参考口径：${SICHUAN_RULE.id}（平胡0、对对胡1、清一色2、七对2、带幺九2、金钩钓2含对对胡，每根+1，封顶${SICHUAN_RULE.capExponent}指数番=16倍），来源 ${SICHUAN_RULE.source}。未记录自摸/点炮、杠类型、海底等事件，不能作为实际结算依据。`
@@ -115,6 +116,7 @@ export const analyzeGame = (state: GameState, lang: Language = 'en'): AnalysisRe
         : (zh ? `不足 8 番起和（可确认 ${result.confirmedFan} 番）`
           : `Below the 8-fan minimum (${result.confirmedFan} confirmed)`);
     const unrecorded = result.missingContext.map(gap => MCR_CONTEXT_LABELS[gap][lang]);
+    contextPending = result.missingContext.length > 0;
     suggestions = [{ name: zh ? '成牌（参考计番）' : 'Complete shape (reference score)', baseFan: result.confirmedFan,
       fan: result.confirmedFan, probability: 0, missingTiles: [],
       patternDetails: [...result.details, eligibilityText, `${zh ? '未记录' : 'Not recorded'}: ${unrecorded.join(zh ? '、' : ', ')}`] }];
@@ -133,7 +135,7 @@ export const analyzeGame = (state: GameState, lang: Language = 'en'): AnalysisRe
   return { mode, status, isReady, isWinning, shanten, waitingTiles, suggestions, scoreNote,
     bestDiscard: discard && { tile: discard.tile, reason: hasVoid ? (zh ? '优先打定缺花色' : 'Discard void suit first') : discard.reason,
       ukeire: discard.ukeire, ukeireTiles: discard.ukeireTiles },
-    scoreEstimate: isWinning ? suggestions[0]?.fan : undefined, warnings };
+    scoreEstimate: isWinning ? suggestions[0]?.fan : undefined, contextPending, warnings };
 };
 
 // ============================================================
