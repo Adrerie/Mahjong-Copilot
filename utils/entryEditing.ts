@@ -1,5 +1,5 @@
 import { GameMode, GameState, KongKind, Meld, SichuanWinEvent, Suit, Tile, WinSource, Wind } from '../types';
-import { MAX_TILES_IN_HAND, SUIT_LABELS, createTile, getTileKey } from '../constants';
+import { INITIAL_WALL_MCR, INITIAL_WALL_SICHUAN, MAX_TILES_IN_HAND, SUIT_LABELS, createTile, getTileKey } from '../constants';
 import { countTiles } from './tileHelpers';
 import { isSichuanWinEvent, isTile, validateGameState, winningTileInHand } from './inputValidation';
 
