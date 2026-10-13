@@ -175,6 +175,18 @@ cd android && ./gradlew assembleDebug
 
 `android/` 工程已随仓库提交，`capacitor.config.json` 的 `webDir` 指向 `dist`。APK `applicationId` 为 `com.karislin.mahjong`，`versionName=1.1.0-beta.1`、`versionCode=2`；它们与 npm 版本一致。Debug APK 用于安装测试，**不是正式签名发行包**；更换签名证书的 APK 可能需要先卸载旧包，卸载会清除本地存储。
 
+### Android 真机安全检查
+
+Windows PowerShell，在 **ADB 已授权且恰好连接一台设备**、Debug APK 构建完成后：
+
+```powershell
+.\scripts\check_android_device.ps1           # 只检查设备、APK SHA256 与 ONNX 是否在包内
+.\scripts\check_android_device.ps1 -Install  # 明确覆盖安装，不清空应用数据
+.\scripts\check_android_device.ps1 -Logs     # 仅本机查看最近崩溃/Capacitor 日志
+```
+
+脚本不能代替真人在游戏内测试：需要逐项检查手录、截图、实拍、撤销、横竖屏、离线与切后台。若遇 `INSTALL_FAILED_UPDATE_INCOMPATIBLE`，通常需要核对签名证书；**不要自动卸载旧 App 以免丢失存档**。当前 MediaProjection 实时悬浮窗尚处于计划阶段；普通 Debug APK 默认不含 YOLO 权重，必须在本机导出模型并重新构建才可能在应用内加载。具体步骤见 [唯一 TODO](docs/RESTRUCTURE_PLAN_2026-10-10.md)。
+
 应用在 Android 上使用 edge-to-edge 主题，界面按安全区（`env(safe-area-inset-*)`）留边；平板横屏（≥1000px）为录牌/上下文与手牌/牌河双栏，竖屏和手机保持单列，键盘在宽屏上限宽居中，不用固定宽度容器包裹整页。
 
 ---
@@ -199,6 +211,8 @@ cd android && ./gradlew assembleDebug
 GitHub 自动统计的 Contributors/贡献图由实际提交作者及合并记录决定，README 列名不会代替 Git 提交归属。
 
 ## 后续计划
+
+**长期设计取舍及参考来源**保存在根目录 [PRODUCT_DECISIONS.md](PRODUCT_DECISIONS.md)，包括保留、简化、延期和不做的功能，供最终优化时重议；当前唯一执行队列仍在 [TODO](docs/RESTRUCTURE_PLAN_2026-10-10.md)。
 
 下一步重点：导出已授权模型并实测含ONNX资产的Android APK、实拍人工校正端到端、游戏连续截图验证，继而经用户授权加入 MediaProjection 和轻量悬浮提醒。规则遗留包括四川完整时序和结算、国标逐张8番起和、完整番种边界；正式签名APK需另测覆盖安装及存档保留。详见 [后续 TODO](docs/RESTRUCTURE_PLAN_2026-10-10.md)。
 
