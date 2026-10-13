@@ -1,4 +1,4 @@
-# Read-only diagnostics by default. -Install explicitly opts into adb install -r.
+﻿# Read-only diagnostics by default. -Install explicitly opts into adb install -r.
 # No uninstall, no data clear, no automatic log upload, no permissions changed.
 param(
   [string]$Apk = "android/app/build/outputs/apk/debug/app-debug.apk",
