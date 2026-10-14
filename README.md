@@ -139,7 +139,7 @@ python scripts/evaluate_real_table.py --image-dir "D:\\Photos\\mahjong" --weight
 # 或指定文件：--images "D:\\Photos\\a.jpg" "D:\\Photos\\b.jpg" "D:\\Photos\\c.jpg"
 ```
 
-每张照片分别生成 `detections.jpg` 和 `detections.json`，另有 `summary.json` 与等待人工填写正确框/错框/漏框的 `review.csv`。输出包含输入图像与权重 SHA-256 和实际推理参数；**复测请使用新的 `--out` 目录**，脚本不会静默覆盖既有人工复核结果。统计的检测框数量**不是识别准确率**；3张图只作初步可行性判断。候选牌全部标记为 `unassigned`，必须核实本人手牌、可见牌池、副露、他家及未知归属。
+每张照片分别生成 `detections.jpg` 和 `detections.json`，另有 `summary.json` 与等待人工填写正确框/错框/漏框的 `review.csv`。输出包含图像路径和实际推理参数；**复测请使用新的 `--out` 目录**，脚本不会静默覆盖既有人工复核结果。统计的检测框数量**不是识别准确率**；3张图只作初步可行性判断。候选牌全部标记为 `unassigned`，必须核实本人手牌、可见牌池、副露、他家及未知归属。
 
 ### 本地转换并打包 Android 模型
 
@@ -154,7 +154,7 @@ cd android
 .\\gradlew.bat assembleDebug
 ```
 
-导出脚本校验37类、固定FP32 `[1,3,640,640]` 与41通道原始输出，生成 `android/app/src/main/assets/mahjong_detector.onnx` 和 `mahjong_detector.json`（权重 SHA-256 与类别表）。两个文件默认不入 Git；**必须在同一台机器先导出再构建 APK**，否则普通 CI APK 不含模型。原生端完成 letterbox、模型推理、NMS 和坐标还原；默认 `imgsz=640/conf=0.22/iou=0.7`，仅为小样本测试起点。请真机比较同图 PC/Android 输出及运行内存，核对第三方权重、数据集和 Ultralytics 的分发许可后才能公开发布内置模型版。
+导出脚本使用37类、固定FP32 `[1,3,640,640]` 与41通道原始输出，生成 `android/app/src/main/assets/mahjong_detector.onnx` 和 `mahjong_detector.json`（牌名类别表）。两个文件默认不入 Git；**必须在同一台机器先导出再构建 APK**，否则普通 CI APK 不含模型。原生端完成 letterbox、模型推理、NMS 和坐标还原；默认 `imgsz=640/conf=0.22/iou=0.7`，仅为小样本测试起点。先在 Android 实机验证照片识别和完整导入流程；公开发布时保留第三方开源许可和源码入口。
 
 游戏实时识别下一步改用 Android 用户主动授权的 MediaProjection + 前台服务 + 用户确认后的帧差更新；当前仍是**导入游戏截图**，没有系统级悬浮窗/持续录屏，不绕过受保护画面。
 
@@ -183,7 +183,7 @@ cd android && ./gradlew assembleDebug
 Windows PowerShell，在 **ADB 已授权且恰好连接一台设备**、Debug APK 构建完成后：
 
 ```powershell
-.\scripts\check_android_device.ps1           # 只检查设备、APK SHA256 与 ONNX 是否在包内
+.\scripts\check_android_device.ps1           # 查看设备与 APK 是否包含 ONNX
 .\scripts\check_android_device.ps1 -Install  # 明确覆盖安装，不清空应用数据
 .\scripts\check_android_device.ps1 -Logs     # 仅本机查看最近崩溃/Capacitor 日志
 ```
