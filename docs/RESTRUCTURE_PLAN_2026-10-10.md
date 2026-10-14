@@ -38,7 +38,9 @@ npm run build
 # android/app/src/main/assets/mahjong_detector.json
 # 已有 ONNX 时直接打包（无需 PyTorch）：
 # python -m pip install onnx
-# python scripts/export_android_yolo.py --onnx "D:\models\mahjong-yolon-best.onnx"
+# 从上游下载 ONNX，避免在本机转换 PT
+Invoke-WebRequest "https://raw.githubusercontent.com/nikmomo/Mahjong-YOLO/main/models/nano/mahjong-yolon-best.onnx" -OutFile "$env:TEMP\mahjong-yolon-best.onnx"
+python scripts/export_android_yolo.py --onnx "$env:TEMP\mahjong-yolon-best.onnx"
 # 只有 .pt 才用 --weights 转换：
 # python scripts/export_android_yolo.py --weights "D:\models\mahjong-yolon-best.pt"
 
