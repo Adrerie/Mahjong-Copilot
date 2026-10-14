@@ -139,7 +139,7 @@ const McrScreenshotImport: React.FC<Props> = ({ mode, lang, onApply, currentHand
           </div>
           <p className="text-[11px] text-gray-500 mt-1">
             {zh ? '核对牌面后直接点击导入。继续本局不推断他人操作；新局面重置牌墙和牌河，可撤销。'
-              : 'Review tile faces, then import. Continue does not infer opponents' actions. New snapshot resets wall and river. Undo is available.'}
+              : 'Review tile faces, then import. Continue does not infer other player actions. New snapshot resets wall and river. Undo is available.'}
           </p>
         </>
       )}
