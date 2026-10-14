@@ -167,7 +167,6 @@ jobs:
           grep -Fq "versionName='$version'" <<< "$package_info"
           mkdir -p release-artifacts
           cp "$apk" "release-artifacts/Mahjong-Copilot-v${version}-release.apk"
-          sha256sum "release-artifacts/Mahjong-Copilot-v${version}-release.apk"
       - name: Upload verified signed APK
         uses: actions/upload-artifact@v7
         with:
