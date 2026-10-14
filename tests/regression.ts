@@ -1300,6 +1300,38 @@ test('导入落盘：四川新局面保留定缺与四川牌墙，国标清空�
   assert.equal(keys(unconfirmed.hand).length, 10);
 });
 
+test('续局截图：手牌变化即清理过期和牌事件，手牌仅换ID不影响既有上下文', () => {
+  const original = [...tiles('123456789', Suit.Man), ...tiles('1234', Suit.Pin)];
+  const winningTile = original[12];
+  const entry = state(original, [], {
+    winSource: 'selfDraw', winningTile, lastTile: true, afterKong: true,
+    seatWind: 1, roundWind: 2,
+  });
+  const changed = planImportedState(entry, GameMode.MCR,
+    [...original.slice(0, -1), createTile(Suit.Pin, 5)], { importMode: 'continue' });
+  assert.equal(changed.winSource, 'unknown');
+  assert.equal(changed.winningTile, null);
+  assert.equal(changed.lastTile, null);
+  assert.equal(changed.afterKong, null);
+  assert.equal(changed.seatWind, 1);
+  assert.equal(changed.roundWind, 2);
+  assert.equal(entry.winSource, 'selfDraw', 'must not mutate the existing state');
+
+  const sameFacesNewIds = original.map(t => createTile(t.suit, t.value)).reverse();
+  const unchanged = planImportedState(entry, GameMode.MCR, sameFacesNewIds, { importMode: 'continue' });
+  assert.equal(unchanged.winSource, 'selfDraw');
+  assert.equal(unchanged.lastTile, true);
+  assert.equal(unchanged.afterKong, true);
+
+  const sichuanOriginal = sichuan([...tiles('123456789', Suit.Pin), ...tiles('1234', Suit.Sou)], Suit.Man, [], {
+    sichuanWinEvent: 'lastDraw',
+  });
+  const sichuanChanged = planImportedState(sichuanOriginal, GameMode.Sichuan,
+    [...sichuanOriginal.hand.slice(0, -1), createTile(Suit.Sou, 5)], { importMode: 'continue' });
+  assert.equal(sichuanChanged.sichuanWinEvent, null);
+  assert.equal(sichuanChanged.voidSuit, Suit.Man);
+});
+
 test('空局面：牌墙按玩法取初始值，且与存储解码的空局面一致', () => {
   assert.equal(emptyEntryState(GameMode.MCR).wallCount, INITIAL_WALL_MCR);
   assert.equal(emptyEntryState(GameMode.Sichuan).wallCount, INITIAL_WALL_SICHUAN);
