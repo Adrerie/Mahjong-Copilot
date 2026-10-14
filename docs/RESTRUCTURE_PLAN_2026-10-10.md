@@ -1,73 +1,51 @@
-# Mahjong Copilot · 唯一 TODO（精简执行版）
+# Mahjong Copilot · 唯一 TODO
 
-产品目标、论文和暂缓方案归档于 [PRODUCT_DECISIONS.md](../PRODUCT_DECISIONS.md)；[AGENTS.md](../AGENTS.md) 只管执行约束；第三方模型许可及作者致谢见 [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md)。不再追加第二份路线图。
+产品功能取舍保留在 [PRODUCT_DECISIONS.md](../PRODUCT_DECISIONS.md)，开发规范见 [AGENTS.md](../AGENTS.md)。目前继续在 [PR #3](https://github.com/Adrerie/Mahjong-Copilot/pull/3) 工作；不要另建计划、验收矩阵或门控流程。
 
-稳定 `main`，开发 [PR #3](https://github.com/Adrerie/Mahjong-Copilot/pull/3)，版本 `1.1.0-beta.1`（Android `versionCode 2`）。先保证已有功能可实测，复杂功能按下列顺序推进。
+## 已有成果
 
-## 已完成及证据（代码提交不等于所有场景实测）
+- 手动录牌、国标与四川出牌/进张建议、定缺、撤销和局面保存已存在。
+- 游戏截图支持固定布局识牌、用户修正、新局/续局；已修复四川导入及换牌后过期和牌上下文。
+- 安卓真实牌桌照片可使用本地 YOLO ONNX 识别并显示候选框。已有 Lenovo TB710FU 真机测试记录：含模型的本地 Debug APK 可加载，5张照片推理约106–134ms/张；**照片完整确认导入、撤销和游戏局内悬浮识别仍未验收**。
+- 上游 [Mahjong-YOLO](https://github.com/nikmomo/Mahjong-YOLO) 已有可用 ONNX。保留 `mahjong_detector.onnx` 和用于牌名映射的 `mahjong_detector.json` 即可打包，不再做哈希或复杂模型清单校验。模型本地文件未推送 Git；普通 CI APK 不带模型。
+- 原作者和开源许可证见 [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md)。开源使用不以购买商业授权为前置；公开分发保留对应开源声明和源码入口。
 
-- [x] 国标、四川的手动录入和可解释策略：13张进张、14张弃牌建议、四川定缺；截图固定16:10槽位、人工修正、续局/新局、撤销；实拍 ONNX 识别框+人工区域/牌面分配，手动兜底。
-- [x] **Lenovo TB710FU 平板本机测试记录（2026-10-13）**：Android 16/API36，arm64；同签名 `adb install -r` 成功，保存的数据未丢；包含 ONNX 的本地 Debug APK **91.82 MiB**（SHA256 `b6dc94293dd43b03c52af3dcffe5dc27e87ddf3c10dd247fe9e4744f95ea0157`）；模型 `ONNX · 37 classes` 可加载。模型 SHA256 `9ce26c999929cc724e9e8d55ba239d0fc975b9e175518be9a73be3ffb2cac625`；5张实拍 106–134 ms/张（中位110 ms），与PC输出候选数量存在每图最多4框差异；一次相册9框显示完成、但**未完成最后确认导入**。一次手录+分析通过，`logcat` 未见异常。RAM PSS约595 MB，继续监控。
-- [x] 上游 [Mahjong-YOLO](https://github.com/nikmomo/Mahjong-YOLO) 自带 37 类 ONNX 与当前 `[1,3,640,640]`/ `[1,41,8400]` 契约兼容，故**无需重复转换来证明可用性**。需要版本/哈希对账时仍可用 `scripts/export_android_yolo.py` 从既有 .pt 导出；不覆盖已有 `.onnx`。
-- [x] 续局截图导入已从硬编码国标入口改用 `planImportedState`，四川可保留定缺和牌墙；新增**换牌后清空过期和牌事件**的回归检查（等待此批 CI 核验）。
-- [x] **开源许可路线与署名已成文**：上游 Shin Zhang/@nikmomo 的 MIT 版权声明、Ultralytics YOLO11 的 AGPL-3.0 和 GPLv3 组合说明已收录 `THIRD_PARTY_NOTICES.md`，不需要商业许可；但公开分发内置模型仍必须提供对应源码/告知，并确保实际模型来源一致。非商业不意味着仅署名就已合规。
-- [x] `scripts/check_android_device.ps1` 可在单台已授权 ADB 设备上核对 APK、模型资产、**APK 内模型哈希/37类映射**，仅 `-Install` 时覆盖安装，不卸载或清存档。
-- [ ] 实拍5张原图、复核表/误差统计均保留开发机，`11/16` 与 `13/16` 是不同测量口径，不能宣传成泛化准确率。
+## 下一步直接做的工作
 
-## P0 · 立即补齐当前 Android 功能实测
+- [ ] **完善现有功能真机操作**：拍照→检测→修改牌面/归属→补牌→导入→分析→撤销；国标和四川分别试截图13→14、14→13、重启与存档。出现 Bug 直接修；不要求建立新测试框架。
+- [ ] **实现 Android 游戏内悬浮识别**：由用户授权 MediaProjection，放置轻量悬浮球；在游戏中点击球截取画面，调用现有识别和建议逻辑。先让当前平板上的一个游戏能实际使用，不必一次完成通用布局、多游戏适配与后台自动追踪。
+- [ ] **提升游戏识别**：根据真实截图调整手牌区域/模板，按需要维护牌河和副露。局面变化明显时更新提示，不确定时简单提示手动修正。避免高频全屏 YOLO。
+- [ ] **优化策略**：优先完善国标8番与四川规则的明显错误；可测试现成策略模型，但不自训，不引入未经验证的复杂融合函数。已有出牌建议保持可用。
+- [ ] **公开 APK**：本地模型打包体验确认后，保留 MIT/AGPL/GPL 的必要版权告知及源码获取地址，使用现有签名工作流发布；不增加哈希检验或审批链。
 
-- [ ] **修复后 CI 全绿**：npm 44项原守卫+新回归、TypeScript、Web、Python 语法、Android Debug；故障只修具体错误。普通 CI 的 Debug APK **不包含本地被 gitignore 的 ONNX**，下载普通构建时请检查说明，不要假称它是内置模型版本。
-- [ ] **实拍完整链路**（真机触屏优先）：含 ONNX APK 打开相册→选照片→每个候选框指定本家/公开牌河/忽略并纠正牌面→补漏→确认导入13或14张→显示正确分析→撤销回原局面；测试4张上限、误框冲突与拒识。保留实测屏录/日志于本机，不上传私有图。
-- [ ] **游戏截图完整链路**：国标和四川分别验证13→14、14→13且明确确认弃牌、同样13张但多步变化不猜、错误槽位人工改牌、定缺保存、撤销与重启存档。
-- [ ] **设备稳定性**：横竖屏/后台切换/断网/冷启动/长时间连续推理；记录单帧耗时、PSS峰值、发热/崩溃及用户界面可操作性。前述真机/CDP只证明有限步骤，未经手指确认的页面交互不算手动通过。
-- [ ] **APK 来源**：分清本机内置模型 APK、普通 GitHub Actions 无模型 APK 和未来正式签名 APK。公开含模型版本须随附第三方 notices、模型哈希、源码获取入口与 GPL/AGPL 合规材料；签名一致和存档保留测试通过后才发布。**不因非商用自行忽略义务，也不再把付费商业许可当作主线前置条件。**
+## 明确不做
 
-## P1 · 游戏内实时悬浮助手（复杂任务：逐段交付）
+不做文件哈希校验、参数多处交叉对账、源码字符串测试、逐关阶段门槛、独立验证系统、完整 Event Sourcing、数据库服务、通用游戏视觉 Agent、全量自博弈训练、多模型串联、复杂复盘大盘。这些不是目前的用户功能。
 
-1. **第一段：悬浮球 + 授权截图**。安卓用户主动授权 MediaProjection，正确的 Android 14+ mediaProjection 前台服务/通知、悬浮窗权限；首版只需点悬浮球取一帧、识别并显示简单候选建议、暂停/停止/拒绝恢复。不绕过 `FLAG_SECURE`、不点击游戏、不上传画面。**验收**：切到一款指定游戏后点球看到建议；停下后系统投影会话完全结束，无残留窗口/旧推荐。
-2. **第二段：手牌 ROI + 局部校正**。为首款游戏保存相对 ROI（手牌、可见牌河、副露、本人回合），模板匹配优先，必要时区域 OCR；实拍 YOLO 不作为每帧全屏引擎。**验收**：能在布局稳定的游戏截图中校准全部34种牌面候选，未知低置信显示待核，可一键重同步。
-3. **第三段：低频自动刷新与局面维护**。在点击式稳定后做画面变化触发的低频观察，按实际耗时与发热调节；只存当前可信状态、前一稳定观察及少量已确认事件。**验收**：真实一轮摸打/牌河变化正确，副露不双计；跳帧、动画或关键区域遮挡时不生成虚构操作，暂停建议或请求人工确认。
-4. **边界**：先验收一款 Android 游戏；不能预先为多种客户端、通用布局 AI 或复杂事件总线搭架构。
-
-## P2 · 规则/策略与发布（不阻碍 P0/P1）
-
-- [ ] 国标逐张8番起和及番种排除关系；四川缺门、血战已胡玩家、海底/查叫/花猪及四人净结算，先补反例测试，不重建规则引擎。
-- [ ] 现成国标策略模型**独立评测**：规则引擎先出合法动作 mask，现有 `calculateBestDiscard` 保持默认回退；比较同一局面、Botzone 对局、动作合法性、时延及真实收益。不要训练新模型，也不要未经标定混合两个评分函数。
-- [ ] 最终发布：主线 CI、许可与对应源码告知、模型/签名哈希、相同证书覆盖安装保留存档；再同步 npm / Android 版本、递增 versionCode 和创建 Tag。
-- **移出本轮实现**：Qwen/RAG、自训练/蒸馏、多头网络、完整 ISMCTS/CVaR、日麻、通用多游戏 UI Agent、全量复盘平台；备选仍记录在根目录决策档案。
-
-## 可复制给 Codex / Windows PowerShell 的命令
+## Windows PowerShell：直接构建并在设备上操作
 
 ```powershell
 git fetch origin
 git switch feat/mcr-screenshot-import-20261012
 git pull --ff-only origin feat/mcr-screenshot-import-20261012
-git status --short
-
 npm ci
 npm test
 npm run typecheck
 npm run build
-python -m py_compile scripts/evaluate_real_table.py scripts/export_android_yolo.py
 
-# 要验证“内置模型”必须让这两个本地文件存在，不能仅下载 GitHub 的普通 CI APK：
-Get-Item android/app/src/main/assets/mahjong_detector.onnx
-Get-Item android/app/src/main/assets/mahjong_detector.json
-# 如果原本没有这两个文件，且本地 .pt 同目录并无待保留的 ONNX，才执行：
-# python -m pip install ultralytics onnx
-# python scripts/export_android_yolo.py --weights "D:\models\mahjong-yolon-best.pt"
+# 在本机准备 ONNX 和对应牌名 JSON 后运行：
+# android/app/src/main/assets/mahjong_detector.onnx
+# android/app/src/main/assets/mahjong_detector.json
+# 如果只有 .pt，可使用 python scripts/export_android_yolo.py --weights "D:\models\mahjong-yolon-best.pt"
 
 npx cap sync android
 Push-Location android
 .\gradlew.bat assembleDebug
 Pop-Location
 
-# 先只读检查：设备/包体/ONNX 资源哈希和37类，失败不安装
-.\scripts\check_android_device.ps1
-# 已核对签名相容才安装，保留原本数据：
 .\scripts\check_android_device.ps1 -Install
-# 测试后选用：最近运行异常，日志不自动上传：
+# 遇到故障才看日志：
 .\scripts\check_android_device.ps1 -Logs
 ```
 
-实际设备的每个测试项目记录 **通过/失败/未测**、截图或日志摘要、使用的 APK SHA256 和设备型号。复杂问题仅更新本文件，简单可复现 Bug 才直接修改；保持 PR 打开，未经实际证据不提前勾选。
+设备安装后直接打开应用试照片识别、导入、分析、撤销；记录能否完成及出现的具体问题。**不要把构建成功或代码测试成功当作悬浮窗已可用。**
