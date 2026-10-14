@@ -147,7 +147,8 @@ python scripts/evaluate_real_table.py --image-dir "D:\\Photos\\mahjong" --weight
 
 ```powershell
 python -m pip install onnx
-python scripts/export_android_yolo.py --onnx "D:\\models\\mahjong-yolon-best.onnx"
+Invoke-WebRequest "https://raw.githubusercontent.com/nikmomo/Mahjong-YOLO/main/models/nano/mahjong-yolon-best.onnx" -OutFile "$env:TEMP\mahjong-yolon-best.onnx"
+python scripts/export_android_yolo.py --onnx "$env:TEMP\mahjong-yolon-best.onnx"
 # 只有 .pt 时：先安装 ultralytics，再使用 --weights 转换
 npm run build
 npx cap sync android
