@@ -101,7 +101,6 @@ const RealTableImport: React.FC<Props> = ({ lang, onApply }) => {
   };
 
   const update = (id: number, patch: Partial<ReviewedBox>) => {
-    setConfirmed(false);
     setBoxes(old => old.map(b => b.id === id ? { ...b, ...patch } : b));
   };
 
