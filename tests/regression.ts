@@ -1373,6 +1373,12 @@ test('端侧检测契约：导出脚本、原生推理与PC评测参数逐项对
   has(plugin, '"external".equals', '原生 NMS 归属校验');
   has(plugin, 'Model checksum does not match manifest', '原生 SHA-256 校验');
   has(exporter, 'Output model already exists', '导出脚本不得静默覆盖已有模型');
+  const exportCall = exporter.indexOf('model.export(format="onnx"');
+  assert.ok(exportCall > 0, '导出脚本必须调用 ONNX 导出');
+  assert.ok(exporter.indexOf('if dest.exists() or manifest.exists():') < exportCall,
+    'APK 模型存在检查必须发生在 Ultralytics 导出之前');
+  assert.ok(exporter.indexOf('source_onnx.exists()') < exportCall,
+    '禁止导出时覆盖与 .pt 同目录的已有 ONNX');
 
   // 手动兜底：模型缺失时原生只报不可用，不猜牌面
   has(plugin, 'Model unavailable or invalid', '原生缺失兜底');
