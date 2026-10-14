@@ -3,6 +3,7 @@
 param(
   [string]$Apk = "android/app/build/outputs/apk/debug/app-debug.apk",
   [switch]$Install,
+  [switch]$Launch,
   [switch]$Logs
 )
 $ErrorActionPreference = "Stop"
@@ -57,6 +58,10 @@ if (Test-Path -LiteralPath $apkPath -PathType Leaf) {
 Write-Host "=== Installed app (if present) ==="
 $pkg = @(& adb -s $serial shell dumpsys package $package)
 $pkg | Select-String -Pattern "versionCode=|versionName=" | Select-Object -First 4
+if ($Install -or $Launch) {
+  Write-Host "=== Start Mahjong Copilot ==="
+  & adb -s $serial shell monkey -p $package -c android.intent.category.LAUNCHER 1
+}
 Write-Host "=== Human device checks (NOT automated/passed) ==="
 Write-Host "启动应用 → 手动13/14张出牌建议 → 游戏截图纠错/撤销 → 相册 YOLO 状态和图片 → 离线重启/旋转/切模式。"
 Write-Host "MediaProjection 悬浮窗目前尚未实现；不能将本命令结果当作该功能的验收。"
