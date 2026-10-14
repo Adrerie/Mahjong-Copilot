@@ -15,7 +15,7 @@
  */
 import assert from 'node:assert/strict';
 import { GameMode, GameState, KongKind, MCRContext, Meld, Suit, Tile, WinSource } from '../types';
-import { createTile, TEXT } from '../constants';
+import { createTile, INITIAL_WALL_MCR, INITIAL_WALL_SICHUAN, TEXT } from '../constants';
 import {
   analyzeGame,
   analyzeMCR,
@@ -32,10 +32,14 @@ import {
 } from '../utils/mahjongLogic';
 import { validateGameState } from '../utils/inputValidation';
 import { recognizeSichuanPatterns } from '../utils/sichuanAnalyzer';
+import { classifyGlyph, HAND_CENTERS, isScreenshotRatio, REFERENCE_GLYPHS, TILE_OPTIONS } from '../utils/mcrScreenshot';
+import { compareHandSnapshots } from '../utils/gameSnapshot';
 import {
   decodeEntryState,
+  emptyEntryState,
   encodeEntryState,
   parseTileText,
+  planImportedState,
   planTextHand,
   planTileAdd,
   withConsistentContext,
@@ -85,6 +89,47 @@ const test = (name: string, run: () => void) => {
     console.log(`FAIL ${name}: ${String((error as Error).message).split('\n')[0]}`);
   }
 };
+
+test('国标截图导入：固定13+摸入位、有限模板可信匹配及未知拒识', () => {
+  assert.equal(HAND_CENTERS.length, 14);
+  assert.equal(TILE_OPTIONS.length, 34);
+  assert.equal(isScreenshotRatio(2048, 1280), true);
+  assert.equal(isScreenshotRatio(1536, 960), true);
+  assert.equal(isScreenshotRatio(1920, 1080), false);
+  for (const [key, descriptors] of Object.entries(REFERENCE_GLYPHS)) {
+    for (const descriptor of descriptors) {
+      assert.equal(descriptor.length, 192);
+      assert.equal(classifyGlyph(descriptor).key, key);
+    }
+  }
+  assert.equal(classifyGlyph('0'.repeat(192)).key, null);
+  assert.equal(classifyGlyph('bad').key, null);
+  const reviewedUnknownFace = 'f'.repeat(192);
+  assert.equal(classifyGlyph(reviewedUnknownFace).key, null);
+  assert.equal(classifyGlyph(reviewedUnknownFace, { z7: [reviewedUnknownFace] }).key, 'z7', '本地人工确认模板应被复用');
+  // 一份示例中的13张+右侧单独摸入牌：不会以13张误触发弃牌建议。
+  const screenHand: Tile[] = [
+    ...tiles('1358898', Suit.Man), ...tiles('2', Suit.Sou),
+    ...tiles('1146', Suit.Pin), createTile(Suit.Zihai, 1), createTile(Suit.Zihai, 4),
+  ];
+  assert.equal(screenHand.length, 14);
+  const input = state(screenHand);
+  assert.deepEqual(validateGameState(input, 'zh'), []);
+  assert.ok(analyzeGame(input, 'zh').status !== 'invalid');
+  assert.equal(analyzeGame({ ...input, hand: screenHand.slice(0, 13) }, 'zh').bestDiscard, undefined);
+});
+
+test('游戏连续截图：只有单次摸牌/打牌变化才允许明确标记，不推断跳帧', () => {
+  const base = ['1m', '1m', '2m', '3m', '4m', '5m', '6m', '7m', '8m', '9m', '1p', '2p', '3p'];
+  const draw = compareHandSnapshots(base, [...base, '9p']);
+  assert.deepEqual(draw, { added: ['9p'], removed: [], kind: 'draw' });
+  const discard = compareHandSnapshots([...base, '9p'], base);
+  assert.deepEqual(discard, { added: [], removed: ['9p'], kind: 'discard' });
+  assert.equal(compareHandSnapshots(base, [...base].reverse()).kind, 'unchanged');
+  const multi = compareHandSnapshots(base, [...base.slice(0, 11), '7s', '8s']);
+  assert.equal(multi.kind, 'ambiguous', '跨多个动作不能推断为单次弃牌');
+  assert.deepEqual(compareHandSnapshots(['1m', '1m'], ['1m']).removed, ['1m']);
+});
 
 // ============================================================
 // 一、输入校验与牌张边界
@@ -150,6 +195,66 @@ test('未成牌/听牌/多牌三种暗手形态各自给出正确结论', () => 
   const discardable = analyzeGame(state([...tiles('1234568', Suit.Man), ...tiles('7', Suit.Pin)], [pong(1), pong(9)]), 'zh');
   assert.equal(discardable.isWinning, false);
   assert.ok(discardable.bestDiscard);
+});
+
+test('国标和四川：13张提示进张、14张推荐打哪张，维持模式分离', () => {
+  const mcr13 = state([...tiles('123456', Suit.Man), ...tiles('7', Suit.Pin)], [pong(1), pong(9)]);
+  const m13 = analyzeGame(mcr13, 'zh');
+  assert.equal(m13.bestDiscard, undefined);
+  assert.ok(m13.improvingDraws?.some(x => x.tile.suit === Suit.Pin && x.tile.value === 7 && x.remaining > 0));
+  const m14 = analyzeGame(state([...tiles('1234568', Suit.Man), ...tiles('7', Suit.Pin)], [pong(1), pong(9)]), 'zh');
+  assert.ok(m14.bestDiscard, '14张国标未和时必须推荐出牌');
+  assert.equal(m14.improvingDraws, undefined);
+
+  const sc13 = sichuan([...tiles('123456789', Suit.Man), ...tiles('1235', Suit.Pin)], Suit.Sou);
+  const s13 = analyzeGame(sc13, 'zh');
+  assert.equal(s13.bestDiscard, undefined);
+  assert.ok(s13.improvingDraws?.some(x => x.tile.suit === Suit.Pin && x.tile.value === 5));
+  const sc14 = sichuan([...tiles('123456789', Suit.Man), ...tiles('12345', Suit.Pin)], Suit.Sou);
+  const s14 = analyzeGame(sc14, 'zh');
+  assert.ok(s14.bestDiscard, '14张四川未和时必须推荐出牌');
+  assert.equal(s14.improvingDraws, undefined);
+
+  const needsVoid = analyzeGame(sichuan([...tiles('123456789', Suit.Man), ...tiles('1235', Suit.Pin)], Suit.Man), 'zh');
+  // 定缺牌仍在手：只给非定缺进张方向，并标注是去除定缺后的计算口径，不冒充可和牌路线。
+  assert.ok(needsVoid.improvingDraws?.every(x => x.tile.suit !== Suit.Man), '定缺花色绝不作为进张方向');
+  assert.ok(needsVoid.improvingDraws?.some(x => x.tile.suit === Suit.Pin), '仍有定缺牌时也给出非定缺进张方向');
+  assert.ok(needsVoid.improvingDrawsNote?.includes('定缺'), '需说明进张按去除定缺后的牌形计算');
+});
+test('13张已听牌：待牌标记 completesHand 并排最前，未听牌时不冒充待牌', () => {
+  // 111m222m333m444m5m 是五面听：2m/3m/4m/5m/6m 都能构成4副+将。
+  const tenpai = analyzeGame(state([...tiles('111', Suit.Man), ...tiles('222', Suit.Man), ...tiles('333', Suit.Man), ...tiles('444', Suit.Man), ...tiles('5', Suit.Man)]), 'zh');
+  assert.equal(tenpai.isReady, true);
+  assert.ok(tenpai.improvingDraws?.length, '听牌时必须列出待牌');
+  assert.deepEqual(tenpai.improvingDraws!.filter(x => x.completesHand).map(x => `${x.tile.value}${x.tile.suit}`).sort(), ['2m', '3m', '4m', '5m', '6m'], '待牌必须是真正能成和的牌');
+  assert.ok(tenpai.improvingDraws!.every(x => x.completesHand), '该例进张全部是待牌');
+  assert.equal(tenpai.improvingDraws![0].completesHand, true, '待牌必须排在最前');
+
+  // 两面听 123m456m789m 55p 67p：待 5p/8p，按未见张数排序。
+  const ryanmen = analyzeGame(state([...tiles('123456789', Suit.Man), ...tiles('55', Suit.Pin), ...tiles('67', Suit.Pin)]), 'zh');
+  assert.deepEqual(ryanmen.improvingDraws?.map(x => `${x.tile.value}${x.tile.suit}`), ['8p', '5p']);
+  assert.ok(ryanmen.improvingDraws?.every(x => x.completesHand === true));
+
+  const thirteenOrphans = analyzeGame(state([
+    ...tiles('19', Suit.Man), ...tiles('19', Suit.Pin), ...tiles('19', Suit.Sou), ...tiles('1234567', Suit.Zihai),
+  ]), 'zh');
+  assert.equal(thirteenOrphans.improvingDraws?.length, 13, '十三幺十三面待牌不能被8条展示上限截断');
+  assert.ok(thirteenOrphans.improvingDraws?.every(x => x.completesHand === true));
+
+  // 未听牌：只是改善向听，不得标成待牌。
+  const notReady = analyzeGame(state([...tiles('1479', Suit.Man), ...tiles('258', Suit.Pin), ...tiles('369', Suit.Sou), ...tiles('11', Suit.Pin), ...tiles('2', Suit.Sou)]), 'zh');
+  assert.equal(notReady.isReady, false);
+  assert.ok(notReady.improvingDraws?.every(x => !x.completesHand), '未听牌时不得标记待牌');
+});
+
+
+test('国标：结构已和但8番待核时显示续打备选，不代替8番核验', () => {
+  const hand = [...tiles('123456', Suit.Man), ...tiles('123789', Suit.Pin), ...tiles('55', Suit.Sou)];
+  const r = analyzeGame(state(hand), 'zh');
+  assert.equal(r.isWinning, true);
+  assert.equal(r.contextPending, true);
+  assert.ok(r.bestDiscard, '结构已和但无法确认起和时需保留继续打的建议：'+JSON.stringify({suggestions:r.suggestions.map(x=>x.patternDetails),warnings:r.warnings}));
+  assert.ok(r.warnings.some(w => w.includes('8番未确认')));
 });
 
 test('死叫：牌河已见完的待牌不算听牌', () => {
@@ -1155,6 +1260,81 @@ test('建议层：末张提示只在牌墙剩 1 张且是 13 张等效听牌形�
   assert.ok(!closedNotTenpai.suggestions.some(s => s.name.includes('妙手回春') || s.name.includes('海底')));
   const twoLeft = analyzeGame(state([...tiles('1234567', Suit.Man)], [pong(1), pong(9)], { wallCount: 2 }), 'zh');
   assert.ok(!twoLeft.suggestions.some(s => s.name.includes('妙手回春') || s.name.includes('海底')));
+});
+
+test('导入落盘：四川新局面保留定缺与四川牌墙，国标清空定缺，续局只加用户确认的那张', () => {
+  const imported = [...tiles('123', Suit.Man), ...tiles('456', Suit.Pin), ...tiles('789', Suit.Sou), createTile(Suit.Sou, 9)];
+  const riverOne = [createTile(Suit.Pin, 1)];
+
+  // 新局面：按玩法重建牌墙；四川已声明的定缺保留（既不推断也不清空）
+  const sichuanNew = planImportedState(sichuan([], Suit.Man), GameMode.Sichuan, imported, { visibleRiver: riverOne });
+  assert.equal(sichuanNew.mode, GameMode.Sichuan);
+  assert.equal(sichuanNew.voidSuit, Suit.Man);
+  assert.equal(sichuanNew.wallCount, INITIAL_WALL_SICHUAN);
+  assert.equal(sichuanNew.hand.length, 10);
+  assert.equal(keys(sichuanNew.discards)[0], keys(riverOne)[0]);
+  assert.equal(sichuanNew.melds.length, 0);
+
+  const screenshotHand = [...tiles('33344466699977', Suit.Sou)];
+  const screenshotState = planImportedState(sichuan([], Suit.Man), GameMode.Sichuan, screenshotHand);
+  assert.deepEqual(validateGameState(screenshotState, 'zh'), []);
+  assert.equal(analyzeGame(screenshotState, 'zh').suggestions[0]?.scoreText, '3 指数番 · 8 倍');
+
+  // 国标新局面：定缺必须为空，牌墙用国标初始值
+  const mcrNew = planImportedState(state([...tiles('111', Suit.Man)]), GameMode.MCR, imported, { visibleRiver: [] });
+  assert.equal(mcrNew.voidSuit, null);
+  assert.equal(mcrNew.wallCount, INITIAL_WALL_MCR);
+  assert.equal(mcrNew.hand.length, 10);
+
+  // 续局：只有用户确认打过的那张进已见牌河，未确认时不动牌河
+  const confirmed = planImportedState(sichuan([createTile(Suit.Pin, 3)], Suit.Pin), GameMode.Sichuan, imported,
+    { importMode: 'continue', confirmedDiscard: createTile(Suit.Pin, 3) });
+  assert.equal(confirmed.discards.length, 1);
+  assert.equal(keys(confirmed.discards)[0], keys([createTile(Suit.Pin, 3)])[0]);
+  assert.equal(confirmed.voidSuit, Suit.Pin);
+  const unconfirmed = planImportedState(sichuan([createTile(Suit.Pin, 3)], Suit.Pin), GameMode.Sichuan, imported,
+    { importMode: 'continue' });
+  assert.equal(unconfirmed.discards.length, 0);
+  assert.equal(keys(unconfirmed.hand).length, 10);
+});
+
+test('续局截图：手牌变化即清理过期和牌事件，手牌仅换ID不影响既有上下文', () => {
+  const original = [...tiles('123456789', Suit.Man), ...tiles('1234', Suit.Pin)];
+  const winningTile = original[12];
+  const entry = state(original, [], {
+    winSource: 'selfDraw', winningTile, lastTile: true, afterKong: true,
+    seatWind: 1, roundWind: 2,
+  });
+  const changed = planImportedState(entry, GameMode.MCR,
+    [...original.slice(0, -1), createTile(Suit.Pin, 5)], { importMode: 'continue' });
+  assert.equal(changed.winSource, 'unknown');
+  assert.equal(changed.winningTile, null);
+  assert.equal(changed.lastTile, null);
+  assert.equal(changed.afterKong, null);
+  assert.equal(changed.seatWind, 1);
+  assert.equal(changed.roundWind, 2);
+  assert.equal(entry.winSource, 'selfDraw', 'must not mutate the existing state');
+
+  const sameFacesNewIds = original.map(t => createTile(t.suit, t.value)).reverse();
+  const unchanged = planImportedState(entry, GameMode.MCR, sameFacesNewIds, { importMode: 'continue' });
+  assert.equal(unchanged.winSource, 'selfDraw');
+  assert.equal(unchanged.lastTile, true);
+  assert.equal(unchanged.afterKong, true);
+
+  const sichuanOriginal = sichuan([...tiles('123456789', Suit.Pin), ...tiles('1234', Suit.Sou)], Suit.Man, [], {
+    sichuanWinEvent: 'lastDraw',
+  });
+  const sichuanChanged = planImportedState(sichuanOriginal, GameMode.Sichuan,
+    [...sichuanOriginal.hand.slice(0, -1), createTile(Suit.Sou, 5)], { importMode: 'continue' });
+  assert.equal(sichuanChanged.sichuanWinEvent, null);
+  assert.equal(sichuanChanged.voidSuit, Suit.Man);
+});
+
+test('空局面：牌墙按玩法取初始值，且与存储解码的空局面一致', () => {
+  assert.equal(emptyEntryState(GameMode.MCR).wallCount, INITIAL_WALL_MCR);
+  assert.equal(emptyEntryState(GameMode.Sichuan).wallCount, INITIAL_WALL_SICHUAN);
+  assert.equal(emptyEntryState(GameMode.Sichuan).voidSuit, null);
+  assert.equal(decodeEntryState(null, GameMode.Sichuan), null);
 });
 
 console.log(`\n${passed} 项守卫通过，${failed} 项失败。`);

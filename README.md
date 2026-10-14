@@ -113,6 +113,57 @@ npm run preview   # 本地预览构建产物
 
 ---
 
+## 🖼️ 国标游戏截图导入（实验功能）
+
+在国标录牌界面展开「从国标麻将截图导入手牌」，选择平板本地截图。当前只适配提供的 **16:10 横屏游戏画面**（参考分辨率 2048×1280），可分割底部13张与右侧可选摸入第14张，兼容一张手牌上移选中。识别器内置 **11种牌面参考指纹**，未覆盖全部34种；未知或不可靠牌保持「待确认」，请逐槽检查和修正。显式确认并成功导入后，仅将本次人工核验的量化指纹少量保存在本机，供以后识别其他牌面，**不是训练模型，也不会上传照片**。
+
+导入时可选 **新局面**（重置旧牌河、副露和默认牌墙）或 **继续本局**（保留已确认牌河）。两张确认过的截图仅比较暗手变化：13→14 标记可能摸入，14→13 只有经用户勾选确认才记已打出的牌；跳帧或碰杠不能自动推断。两种方式均可撤销。**国标与四川均保留出牌辅助**：13张显示改善结构向听的进张方向（不是现在弃牌，也不是摸牌概率），14张未成牌时显示推荐弃牌及有效进张；国标结构已和但8番资格不足或待核时，先提示核验起和条件，并显示若不能和时的续打备选。仅在设备本地解码图像，当前**不支持系统悬浮窗自动截屏、持续牌河追踪或全牌面自动识别**，也不保证识别准确率。后续工作集中记录在 [TODO](docs/RESTRUCTURE_PLAN_2026-10-10.md)。
+
+---
+
+## 真实牌桌照片（Android 端侧 YOLO，可选实验功能）
+
+**第三方模型致谢与开源声明**：感谢 [Shin Zhang / @nikmomo](https://github.com/nikmomo) 开源 [Mahjong-YOLO](https://github.com/nikmomo/Mahjong-YOLO)（原仓库 MIT）。模型使用 Ultralytics YOLO11 技术，相关模型/训练技术受 AGPL-3.0 开源许可约束。我们选择**非商业、完整开源的使用路线**，无需单独购买商业许可，但公开分发内置模型 APK 时应满足对应源码、许可及来源说明，不能仅靠署名替代。完整来源、MIT 版权文本及对应说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。此前 Lenovo 平板本机含 ONNX Debug 包已记录可推理；目前 GitHub Actions 也尝试直接打包上游 ONNX，是否成功以最新 Android CI 构建为准。
+
+
+真实照片不能复用游戏截图的14个固定裁切槽。现有 Android 原生 `RealTableDetector` 使用 ONNX Runtime 对整张照片运行本地 YOLO：候选框全部从“未分配”开始，用户需要逐项校正牌面及归属（本人暗手／已确认牌河／忽略），并可补录漏识别的手牌。验证13/14张及同牌不超4张后才能写局面，手动输入始终保留。静态照片**不能推断牌河时间顺序、他家隐牌或碰杠历史**。
+
+**Android CI 构建现已内置模型。** 构建时从 Mahjong-YOLO 上游取得 ONNX，直接放入 APK；安装后完全离线，不会运行时下载或使用远端识别。自行在本机构建时也可用现成 ONNX 或 .pt。
+
+开发机批量检验（非 Android 内置功能；可一次测试3张或更多照片；本次本地评测记录为5张）：
+
+```powershell
+python -m pip install ultralytics
+# 先从 https://github.com/nikmomo/Mahjong-YOLO 下载 nano .pt 权重到本机
+python scripts/evaluate_real_table.py --image-dir "D:\\Photos\\mahjong" --weights "D:\\models\\mahjong-yolon-best.pt" --out "real-table-eval"
+# 或指定文件：--images "D:\\Photos\\a.jpg" "D:\\Photos\\b.jpg" "D:\\Photos\\c.jpg"
+```
+
+每张照片分别生成 `detections.jpg` 和 `detections.json`，另有 `summary.json` 与等待人工填写正确框/错框/漏框的 `review.csv`。输出包含图像路径和实际推理参数；**复测请使用新的 `--out` 目录**，脚本不会静默覆盖既有人工复核结果。统计的检测框数量**不是识别准确率**；3张图只作初步可行性判断。候选牌全部标记为 `unassigned`，必须核实本人手牌、可见牌池、副露、他家及未知归属。
+
+### 本地转换并打包 Android 模型
+
+使用上游提供的麻将 YOLO Nano ONNX，免去 PyTorch 转换；也可以从已有 `.pt` 导出：
+
+```powershell
+python -m pip install onnx
+Invoke-WebRequest "https://raw.githubusercontent.com/nikmomo/Mahjong-YOLO/main/models/nano/mahjong-yolon-best.onnx" -OutFile "$env:TEMP\mahjong-yolon-best.onnx"
+python scripts/export_android_yolo.py --onnx "$env:TEMP\mahjong-yolon-best.onnx"
+# 只有 .pt 时：先安装 ultralytics，再使用 --weights 转换
+npm run build
+npx cap sync android
+cd android
+.\\gradlew.bat assembleDebug
+```
+
+导出脚本使用37类、固定FP32 `[1,3,640,640]` 与41通道原始输出，生成 `android/app/src/main/assets/mahjong_detector.onnx` 和 `mahjong_detector.json`（牌名类别表）。模型文件不入 Git；本地构建需提前放入 assets，GitHub Actions 会自动下载上游模型。原生端完成 letterbox、模型推理、NMS 和坐标还原；默认 `imgsz=640/conf=0.22/iou=0.7`，仅为小样本测试起点。先在 Android 实机验证照片识别和完整导入流程；公开发布时保留第三方开源许可和源码入口。
+
+游戏实时识别下一步改用 Android 用户主动授权的 MediaProjection + 前台服务 + 用户确认后的帧差更新；当前仍是**导入游戏截图**，没有系统级悬浮窗/持续录屏，不绕过受保护画面。
+
+端侧策略预研优先选择**现成麻将策略权重**，不自行训练、微调、蒸馏或搭建自博弈环境。国标可在 [Botzone](https://www.botzone.org.cn/) 比较有授权的国标 Agent，再于 Android 平板复核相同局面的动作、推理延迟和内存；当前弃牌评分器维持默认可运行基线。四川先保留现有策略与定缺约束，之后再筛可复用的现成血战权重。Qwen/RAG 只有可测增益时才考虑，日麻暂缓。详见 [统一 TODO](docs/RESTRUCTURE_PLAN_2026-10-10.md)。
+
+---
+
 ## 📱 Android（Capacitor）
 
 ```bash
@@ -128,6 +179,18 @@ cd android && ./gradlew assembleDebug
 ```
 
 `android/` 工程已随仓库提交，`capacitor.config.json` 的 `webDir` 指向 `dist`。APK `applicationId` 为 `com.karislin.mahjong`，`versionName=1.1.0-beta.1`、`versionCode=2`；它们与 npm 版本一致。Debug APK 用于安装测试，**不是正式签名发行包**；更换签名证书的 APK 可能需要先卸载旧包，卸载会清除本地存储。
+
+### Android 真机安全检查
+
+Windows PowerShell，在 **ADB 已授权且恰好连接一台设备**、Debug APK 构建完成后：
+
+```powershell
+.\scripts\check_android_device.ps1           # 查看设备与 APK 是否包含 ONNX
+.\scripts\check_android_device.ps1 -Install  # 明确覆盖安装，不清空应用数据
+.\scripts\check_android_device.ps1 -Logs     # 仅本机查看最近崩溃/Capacitor 日志
+```
+
+脚本不能代替真人在游戏内测试：需要逐项检查手录、截图、实拍、撤销、横竖屏、离线与切后台。若遇 `INSTALL_FAILED_UPDATE_INCOMPATIBLE`，通常需要核对签名证书；**不要自动卸载旧 App 以免丢失存档**。当前 MediaProjection 实时悬浮窗尚处于计划阶段；GitHub CI 的 Debug APK 构建会自动获取上游 YOLO 模型；本机离线构建需事先备有 ONNX。具体步骤见 [唯一 TODO](docs/RESTRUCTURE_PLAN_2026-10-10.md)。
 
 应用在 Android 上使用 edge-to-edge 主题，界面按安全区（`env(safe-area-inset-*)`）留边；平板横屏（≥1000px）为录牌/上下文与手牌/牌河双栏，竖屏和手机保持单列，键盘在宽屏上限宽居中，不用固定宽度容器包裹整页。
 
@@ -154,7 +217,9 @@ GitHub 自动统计的 Contributors/贡献图由实际提交作者及合并记�
 
 ## 后续计划
 
-已确认但暂不解决的四项：海底事件需要完整摸打时序、四川整局支付/地方变体、国标逐张8番起和核验、最新版 APK 独立真机复测。悬浮窗、自动牌河、端侧模型与摄像头识别也已列入后续路线，**本版尚未实现**。详见 [后续 TODO](docs/RESTRUCTURE_PLAN_2026-10-10.md)。
+**长期设计取舍及参考来源**保存在根目录 [PRODUCT_DECISIONS.md](PRODUCT_DECISIONS.md)，包括保留、简化、延期和不做的功能，供最终优化时重议；当前唯一执行队列仍在 [TODO](docs/RESTRUCTURE_PLAN_2026-10-10.md)。
+
+下一步重点：导出已授权模型并实测含ONNX资产的Android APK、实拍人工校正端到端、游戏连续截图验证，继而经用户授权加入 MediaProjection 和轻量悬浮提醒。规则遗留包括四川完整时序和结算、国标逐张8番起和、完整番种边界；正式签名APK需另测覆盖安装及存档保留。详见 [后续 TODO](docs/RESTRUCTURE_PLAN_2026-10-10.md)。
 
 ## 自动验证与构建
 

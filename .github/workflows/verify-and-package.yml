@@ -30,6 +30,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      - run: python -m py_compile scripts/evaluate_real_table.py
+      - run: python -m py_compile scripts/export_android_yolo.py
       - run: npm run typecheck
       - run: npm run build
       - name: Upload web dist
@@ -42,7 +44,6 @@ jobs:
 
   android:
     name: Build Android debug APK
-    needs: web
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -61,6 +62,15 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - run: npm ci
       - run: npm run build
+      - name: Bundle Mahjong-YOLO ONNX for offline APK
+        shell: bash
+        run: |
+          python -m pip install --quiet onnx
+          curl --fail --location --retry 2 \
+            --output "$RUNNER_TEMP/mahjong-yolon-best.onnx" \
+            https://raw.githubusercontent.com/nikmomo/Mahjong-YOLO/main/models/nano/mahjong-yolon-best.onnx
+          python scripts/export_android_yolo.py --onnx "$RUNNER_TEMP/mahjong-yolon-best.onnx"
+          cp THIRD_PARTY_NOTICES.md android/app/src/main/assets/third_party_notices.md
       - name: Synchronize Capacitor Android
         run: npx cap sync android
       - name: Assemble debug APK
@@ -81,7 +91,7 @@ jobs:
     # Never expose signing credentials to pull requests or feature branches.
     # Main pushes produce a verifiable artifact; version tags additionally publish it.
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
-    needs: android
+    needs: web
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -113,6 +123,15 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - run: npm ci
       - run: npm run build
+      - name: Bundle Mahjong-YOLO ONNX for offline APK
+        shell: bash
+        run: |
+          python -m pip install --quiet onnx
+          curl --fail --location --retry 2 \
+            --output "$RUNNER_TEMP/mahjong-yolon-best.onnx" \
+            https://raw.githubusercontent.com/nikmomo/Mahjong-YOLO/main/models/nano/mahjong-yolon-best.onnx
+          python scripts/export_android_yolo.py --onnx "$RUNNER_TEMP/mahjong-yolon-best.onnx"
+          cp THIRD_PARTY_NOTICES.md android/app/src/main/assets/third_party_notices.md
       - name: Synchronize Capacitor Android
         run: npx cap sync android
       - name: Restore and validate signing keystore
@@ -165,7 +184,6 @@ jobs:
           grep -Fq "versionName='$version'" <<< "$package_info"
           mkdir -p release-artifacts
           cp "$apk" "release-artifacts/Mahjong-Copilot-v${version}-release.apk"
-          sha256sum "release-artifacts/Mahjong-Copilot-v${version}-release.apk"
       - name: Upload verified signed APK
         uses: actions/upload-artifact@v7
         with:

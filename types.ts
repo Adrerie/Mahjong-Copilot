@@ -92,6 +92,16 @@ export interface AnalysisResult {
     ukeire: number; // 进张数 (有效牌的数量)
     ukeireTiles: number; // 进张种类数 (有效牌的种类数量)
   };
+  /** 13张时可改善牌型的候选摸入牌；不可将其误展示为现在就要打出的牌。 */
+  improvingDraws?: {
+    tile: Tile;
+    remaining: number; // 当前未见张数，而不是下一摸概率
+    shantenAfter: number;
+    /** 该牌摸到即可构成和牌型（13张听牌时的待牌）；只是改善向听时为 false。 */
+    completesHand?: boolean;
+  }[];
+  /** 仅四川13张且手上仍有定缺牌时出现：说明进张按去除定缺后的牌形计算，不是可和牌路线。 */
+  improvingDrawsNote?: string;
   suggestions: FanSuggestion[];
   scoreEstimate?: number; // Fan
   /** 成牌但仍有未记录的事件事实（国标）；此时番数只能标「待核」，否则标「参考计番」。 */

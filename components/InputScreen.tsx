@@ -7,12 +7,15 @@ import {
 import { analyzeGame, sortTiles } from '../utils/mahjongLogic';
 import { sichuanEventSource } from '../utils/inputValidation';
 import {
-  EntryMessage, decodeEntryState, encodeEntryState, entryStorageKey, planTextHand, planTileAdd,
-  withConsistentContext,
+  EntryMessage, decodeEntryState, emptyEntryState, encodeEntryState, entryStorageKey, planImportedState,
+  planTextHand, planTileAdd, withConsistentContext,
 } from '../utils/entryEditing';
 import TileSelector from './TileSelector';
 import TileUI from './TileUI';
 import AnalysisResultModal from './AnalysisResultModal';
+import McrScreenshotImport from './McrScreenshotImport';
+import RealTableImport from './RealTableImport';
+import { validateGameState } from '../utils/inputValidation';
 
 interface Props {
   mode: GameMode;
@@ -26,15 +29,7 @@ const wallLimit = (mode: GameMode): number => mode === GameMode.Sichuan ? MAX_WA
 const clampWall = (mode: GameMode, value: number): number =>
   Number.isFinite(value) ? Math.min(wallLimit(mode), Math.max(0, Math.floor(value))) : 0;
 
-const emptyEntry = (mode: GameMode): GameState => ({
-  mode,
-  wallCount: mode === GameMode.MCR ? INITIAL_WALL_MCR : INITIAL_WALL_SICHUAN,
-  voidSuit: null,
-  hand: [],
-  melds: [],
-  discards: [],
-  winSource: 'unknown',
-});
+const emptyEntry = (mode: GameMode): GameState => emptyEntryState(mode);
 
 /** 录入目标区域：国标多一个「和牌张」区域，点牌即选中手上已有的那张。 */
 type EntryZone = 'hand' | 'melds' | 'discards' | 'winningTile';
@@ -124,6 +119,7 @@ const InputScreen: React.FC<Props> = ({ mode, lang, setLang, onBack }) => {
     // 和牌张随暗手失效；其余上下文保持不变
     setEntry(withConsistentContext(next));
     setEntryError(null);
+    setAnalysis(null);
   };
 
   const activateZone = (zone: EntryZone) => {
@@ -173,6 +169,7 @@ const InputScreen: React.FC<Props> = ({ mode, lang, setLang, onBack }) => {
     setEntry(undoEntry);
     setUndoEntry(null);
     setEntryError(null);
+    setAnalysis(null);
   };
 
   const handleReset = () => {
@@ -190,6 +187,39 @@ const InputScreen: React.FC<Props> = ({ mode, lang, setLang, onBack }) => {
     }
     commit(plan.state);
     setTextInput('');
+  };
+
+  const handleScreenshotHand = (hand: Tile[], importMode: 'replace' | 'continue', confirmedDiscard?: string) => {
+    // Only verified snapshots update state; a single frame cannot supply a play timeline.
+    const oldDiscard = confirmedDiscard && importMode === 'continue'
+      ? entry.hand.find(t => `${t.suit}${t.value}` === confirmedDiscard)
+      : undefined;
+    const candidate = planImportedState(entry, mode, hand, { importMode, confirmedDiscard: oldDiscard });
+    const errors = validateGameState(candidate, lang);
+    if (errors.length) {
+      setEntryError({ zh: errors[0], en: errors[0] });
+      return false;
+    }
+    commit(candidate);
+    setTextInput('');
+    setShowKeyboard(false);
+    setAnalysis(analyzeGame(candidate, lang));
+    return true;
+  };
+
+  const handleRealTable = (hand: Tile[], visibleRiver: Tile[]): boolean => {
+    // A still photo supplies only selected hand and visible tiles.
+    const candidate = planImportedState(entry, mode, hand, { visibleRiver });
+    const errors = validateGameState(candidate, lang);
+    if (errors.length) {
+      setEntryError({ zh: errors[0], en: errors[0] });
+      return false;
+    }
+    commit(candidate);
+    setShowKeyboard(false);
+    setTextInput('');
+    setAnalysis(analyzeGame(candidate, lang));
+    return true;
   };
 
   const handleAnalyze = () => {
@@ -330,6 +360,11 @@ const InputScreen: React.FC<Props> = ({ mode, lang, setLang, onBack }) => {
                 </button>
             </div>
         </div>
+
+        {(mode === GameMode.MCR || mode === GameMode.Sichuan) && (
+          <McrScreenshotImport mode={mode} lang={lang} currentHand={hand} canContinue={melds.length === 0 && [13, 14].includes(hand.length)} onApply={handleScreenshotHand} />
+        )}
+        <RealTableImport lang={lang} onApply={handleRealTable} />
 
         {/* === SICHUAN WIN CONTEXT === */}
         {mode === GameMode.Sichuan && (

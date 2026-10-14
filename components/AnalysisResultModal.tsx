@@ -56,20 +56,64 @@ const AnalysisResultModal: React.FC<Props> = ({ result, lang, onClose }) => {
                <div className="absolute right-0 top-0 w-32 h-32 bg-blue-50 rounded-full blur-2xl opacity-50 -translate-y-1/2 translate-x-1/3"></div>
                
                <div className="flex flex-col items-center sm:items-start min-w-[100px] gap-2 z-10">
-                   <span className="text-xs font-black text-[#1A237E] uppercase tracking-wider bg-blue-50 px-2 py-1 rounded">{t.recDiscard}</span>
+                   <span className="text-xs font-black text-[#1A237E] uppercase tracking-wider bg-blue-50 px-2 py-1 rounded">
+                     {result.isWinning && result.mode === GameMode.MCR
+                       ? (lang === 'zh' ? '暂不能确认起和：续打备选' : 'Win unverified: discard alternative')
+                       : t.recDiscard}
+                   </span>
                    <div className="w-16 sm:w-20">
                       <TileUI tile={result.bestDiscard.tile} size="responsive" highlight />
                    </div>
                </div>
                
                <div className="flex-1 flex flex-col justify-center text-center sm:text-left z-10">
-                   <p className="text-[#37474F] font-bold text-sm sm:text-base leading-relaxed mb-1">{t.discardHint}</p>
+                   <p className="text-[#37474F] font-bold text-sm sm:text-base leading-relaxed mb-1">
+                     {result.isWinning && result.mode === GameMode.MCR
+                       ? (lang === 'zh' ? '先核对国标8番起和条件；若当前不能和，可参考继续打的建议。' : 'Check the 8-fan win requirement first. If you cannot win, consider this continuation.')
+                       : t.discardHint}
+                   </p>
                    <p className="text-xs text-gray-400 font-mono">{result.bestDiscard.reason}</p>
                    <div className="mt-2 inline-flex items-center gap-2 self-center sm:self-start bg-green-50 text-green-700 px-3 py-1 rounded-lg border border-green-100">
                        <span className="text-xs font-bold uppercase">{t.efficiency}</span>
                        <span className="font-mono font-black">{result.bestDiscard.ukeireTiles}种{result.bestDiscard.ukeire}张</span>
                    </div>
                </div>
+            </div>
+          )}
+
+          {/* For a 13-tile state there is no legal discard decision yet. Show useful draw directions. */}
+          {result.improvingDraws && (
+            <div className="bg-white p-4 rounded-2xl border border-blue-100 shadow-sm space-y-2">
+              <h3 className="text-sm font-black text-[#1A237E]">
+                {result.isReady
+                  ? (lang === 'zh' ? '13张手牌：已听牌（待牌在前）' : '13 tiles: tenpai (waits first)')
+                  : (lang === 'zh' ? '13张手牌：进张方向' : '13 tiles: useful draws')}
+              </h3>
+              <p className="text-xs text-gray-600">
+                {lang === 'zh'
+                  ? '当前尚未摸入第14张，不能直接推荐弃牌。下列数字是未见张数而非摸牌概率；标「结构待牌」的是摸到后可完成牌型的牌（国标能否8番起和仍需核验）；其余只是改善向听。实际摸牌后再推荐打哪张。'
+                  : 'No 14th tile drawn: no discard decision yet. Numbers are unseen copies, not draw probabilities; "Shape wait" marks tiles that complete the hand structure (MCR still requires an 8-fan check); the rest only improve shanten. Re-analyze after drawing.'}
+              </p>
+              {result.improvingDrawsNote && (
+                <p className="text-xs text-amber-800 bg-amber-50 p-2 rounded-lg">{result.improvingDrawsNote}</p>
+              )}
+              {result.improvingDraws.length ? (
+                <div className="flex flex-wrap gap-2">
+                  {result.improvingDraws.map(({ tile, remaining, shantenAfter, completesHand }, index) => (
+                    <div key={index} className={'flex flex-col items-center gap-1 rounded-lg p-2 w-16 ' + (completesHand ? 'border-2 border-[#CCFF00] bg-lime-50' : 'border border-gray-100')}>
+                      <div className="w-9"><TileUI tile={tile} size="responsive" /></div>
+                      <span className="text-[10px] text-gray-600">{remaining}{lang === 'zh' ? '张未见' : ' unseen'}</span>
+                      <span className={completesHand ? 'text-[10px] font-bold text-[#1A237E]' : 'text-[10px] text-gray-400'}>{completesHand ? (result.mode === GameMode.MCR
+                        ? (lang === 'zh' ? '结构待牌' : 'Shape wait')
+                        : (lang === 'zh' ? '待牌·摸到成和' : 'Wait: completes hand')) : (shantenAfter < 0 ? (lang === 'zh' ? '结构成牌' : 'Shape complete') : `${shantenAfter}${lang === 'zh' ? '向听' : ' shanten'}`)}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-gray-500">
+                  {lang === 'zh' ? '当前没有可确认的直接改善进张，或仍需先处理四川定缺；摸入新牌后重新分析。' : 'No confirmed immediate improvement, or void-suit handling remains. Reanalyze after drawing.'}
+                </p>
+              )}
             </div>
           )}
 

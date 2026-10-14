@@ -1,5 +1,5 @@
 import { GameMode, GameState, KongKind, Meld, SichuanWinEvent, Suit, Tile, WinSource, Wind } from '../types';
-import { MAX_TILES_IN_HAND, SUIT_LABELS, createTile, getTileKey } from '../constants';
+import { INITIAL_WALL_MCR, INITIAL_WALL_SICHUAN, MAX_TILES_IN_HAND, SUIT_LABELS, createTile, getTileKey } from '../constants';
 import { countTiles } from './tileHelpers';
 import { isSichuanWinEvent, isTile, validateGameState, winningTileInHand } from './inputValidation';
 
@@ -58,6 +58,47 @@ const tileName = (tile: Tile): EntryMessage => ({
 });
 
 /** 和牌张必须真的在暗手里；手牌变化后自动失效，避免记下无法核对的上下文。 */
+/** 空局面：牌墙按玩法取初始值；只用于「新局面」导入和存储损坏兜底。 */
+export const emptyEntryState = (mode: GameMode): GameState => ({
+  mode,
+  wallCount: mode === GameMode.MCR ? INITIAL_WALL_MCR : INITIAL_WALL_SICHUAN,
+  voidSuit: null,
+  hand: [],
+  melds: [],
+  discards: [],
+  winSource: 'unknown',
+});
+
+/**
+ * 截图或实拍照片导入后要写入的局面。单帧只能给出暗手和「已确认可见牌」：
+ * - replace：按当前玩法重建局面（国标/四川的牌墙不同），已声明的四川定缺保留，不自动推断缺门
+ * - continue：只替换暗手；`visibleRiver` 或用户确认打过的那张才进入已见牌河
+ * 调用方仍须先跑 validateGameState，校验失败不得写入。
+ */
+export const planImportedState = (
+  entry: GameState,
+  mode: GameMode,
+  hand: Tile[],
+  options: { importMode?: 'replace' | 'continue'; visibleRiver?: Tile[]; confirmedDiscard?: Tile | null } = {},
+): GameState => {
+  const { importMode = 'replace', visibleRiver, confirmedDiscard } = options;
+  const voidSuit = mode === GameMode.Sichuan ? entry.voidSuit : null;
+  if (importMode === 'continue') {
+    const discards = visibleRiver ?? (confirmedDiscard ? [...entry.discards, confirmedDiscard] : entry.discards);
+    // A fresh hand observation does not prove how the new winning tile was obtained.
+    // Preserve stable seat/round winds, but invalidate event-specific scoring facts
+    // whenever the hand's tile multiset actually changes (new IDs alone don't count).
+    const before = entry.hand.map(t => getTileKey(t.suit, t.value)).sort();
+    const after = hand.map(t => getTileKey(t.suit, t.value)).sort();
+    const handChanged = before.length !== after.length || before.some((key, i) => key !== after[i]);
+    return handChanged
+      ? { ...entry, hand, discards, voidSuit, winSource: 'unknown',
+          winningTile: null, lastTile: null, afterKong: null, sichuanWinEvent: null }
+      : { ...entry, hand, discards, voidSuit };
+  }
+  return { ...emptyEntryState(mode), hand, discards: visibleRiver ?? [], voidSuit };
+};
+
 export const withConsistentContext = (state: GameState): GameState => {
   const winning = winningTileInHand(state);
   // 删除最后一副自己的杠后，原有「杠上开花」事件不再有牌面证据。

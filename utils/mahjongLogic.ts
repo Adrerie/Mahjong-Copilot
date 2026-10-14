@@ -81,8 +81,41 @@ export const analyzeGame = (state: GameState, lang: Language = 'en'): AnalysisRe
   let waitingTiles = !hasVoid && hand.length + melds.length * 3 === 13
     ? describeWaits(calculateWaitingTiles(hand, melds, mode, voidSuit)) : [];
   const isReady = !isWinning && waitingTiles.some(w => w.remaining > 0);
-  const discard = !isWinning ? calculateBestDiscard(hand, melds, discards, lang, mode, voidSuit) : undefined;
+  // 14张打牌建议由现有规则效率评分提供；13张不是弃牌回合。
+  // 国标若仅结构成牌而8番尚未确认，可另外提供“继续打”的备选参考。
+  let discard = !isWinning ? calculateBestDiscard(hand, melds, discards, lang, mode, voidSuit) : undefined;
   if (discard) waitingTiles = describeWaits(discard.waitingTiles);
+
+  const improvingDraws: NonNullable<AnalysisResult['improvingDraws']> = [];
+  let improvingDrawsNote: string | undefined;
+  const effectiveTiles = hand.length + melds.length * 3;
+  // 四川手上仍有定缺牌（摸牌前的常态）：进张方向按去除定缺后的可用牌形计算，
+  // 只列非定缺牌；这不是可和牌路线，定缺警告仍照常提示。
+  const voidInHand = mode === GameMode.Sichuan && !!voidSuit && hand.some(t => t.suit === voidSuit);
+  if (effectiveTiles === 13 && (!hasVoid || voidInHand)) {
+    const focus = voidInHand ? hand.filter(t => t.suit !== voidSuit) : hand;
+    const baseShanten = voidInHand ? calculateShanten(focus, melds, mode) : shanten;
+    if (voidInHand) {
+      improvingDrawsNote = zh
+        ? '定缺牌仍在手：以下进张按去除定缺后的牌形计算，摸到定缺花色仍应直接打出。'
+        : 'Void tiles remain: draws are scored on the de-voided shape; drawn void tiles should still be discarded.';
+    }
+    for (let i = 0; i < (mode === GameMode.Sichuan ? 27 : 34); i++) {
+      const incoming = indexToTile(i);
+      if (mode === GameMode.Sichuan && incoming.suit === voidSuit) continue;
+      const remaining = Math.max(0, 4 - (used.get(getTileKey(incoming.suit, incoming.value)) ?? 0));
+      if (remaining <= 0) continue;
+      const handAfterDraw = [...focus, incoming];
+      const nextShanten = voidInHand
+        ? calculateShanten(handAfterDraw, melds, mode)
+        : (checkWinning(countsToArray(countTiles(handAfterDraw)), melds.length, mode)
+          ? -1 : Math.max(0, calculateShanten(handAfterDraw, melds, mode)));
+      if (nextShanten < baseShanten) improvingDraws.push({ tile: incoming, remaining, shantenAfter: nextShanten, completesHand: nextShanten < 0 });
+    }
+    // 听牌时的待牌（摸到即成和牌型）排最前，其次才是只改善向听的进张。
+    improvingDraws.sort((a, b) => Number(b.completesHand ?? false) - Number(a.completesHand ?? false)
+      || a.shantenAfter - b.shantenAfter || b.remaining - a.remaining);
+  }
   let suggestions: FanSuggestion[] = [];
   let contextPending = false;
   const scoreNote = mode === GameMode.Sichuan
@@ -122,6 +155,15 @@ export const analyzeGame = (state: GameState, lang: Language = 'en'): AnalysisRe
           : `Below the 8-fan minimum (${result.confirmedFan} confirmed)`);
     const unrecorded = result.missingContext.map(gap => MCR_CONTEXT_LABELS[gap][lang]);
     contextPending = result.missingContext.length > 0;
+    if (result.eligibility !== 'met') {
+      // “形状已和”不代表国标可起和；不足8番/资料待核时提供继续打的参考。
+      discard = calculateBestDiscard(hand, melds, discards, lang, mode, voidSuit);
+      if (discard) {
+        waitingTiles = describeWaits(discard.waitingTiles);
+        warnings.push(zh ? '8番未确认：弃牌建议只作为继续打的备选，请先核对起和条件'
+          : '8-fan eligibility unconfirmed: discard is a continuation option; check win eligibility first');
+      }
+    }
     suggestions = [{ name: zh ? '成牌（参考计番）' : 'Complete shape (reference score)', baseFan: result.confirmedFan,
       fan: result.confirmedFan, probability: 0, missingTiles: [],
       patternDetails: [...result.details, eligibilityText, `${zh ? '未记录' : 'Not recorded'}: ${unrecorded.join(zh ? '、' : ', ')}`] }];
@@ -140,6 +182,9 @@ export const analyzeGame = (state: GameState, lang: Language = 'en'): AnalysisRe
   return { mode, status, isReady, isWinning, shanten, waitingTiles, suggestions, scoreNote,
     bestDiscard: discard && { tile: discard.tile, reason: hasVoid ? (zh ? '优先打定缺花色' : 'Discard void suit first') : discard.reason,
       ukeire: discard.ukeire, ukeireTiles: discard.ukeireTiles },
+    improvingDraws: effectiveTiles === 13
+      ? improvingDraws.filter((draw, index) => draw.completesHand || index < 8) : undefined,
+    improvingDrawsNote,
     scoreEstimate: isWinning ? suggestions[0]?.fan : undefined, contextPending, warnings };
 };
 
