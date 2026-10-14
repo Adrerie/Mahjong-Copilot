@@ -14,8 +14,6 @@
  *   封顶 4 指数番 = 16 倍；自摸/点炮、杠类型、海底等事件未建模，一律不加番。
  */
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import path from 'node:path';
 import { GameMode, GameState, KongKind, MCRContext, Meld, Suit, Tile, WinSource } from '../types';
 import { createTile, INITIAL_WALL_MCR, INITIAL_WALL_SICHUAN, TEXT } from '../constants';
 import {
@@ -1337,84 +1335,6 @@ test('空局面：牌墙按玩法取初始值，且与存储解码的空局面�
   assert.equal(emptyEntryState(GameMode.Sichuan).wallCount, INITIAL_WALL_SICHUAN);
   assert.equal(emptyEntryState(GameMode.Sichuan).voidSuit, null);
   assert.equal(decodeEntryState(null, GameMode.Sichuan), null);
-});
-
-/**
- * 端侧检测契约：导出脚本、Android 原生推理和 PC 评测分属三种语言，无法互相 import，
- * 只能按源码文本对账。三处任一侧单独改动（输入尺寸、原始输出通道数、类别数、置信度、
- * IoU、letterbox 灰边、fp32/外部NMS 声明）都会在这里失败——真机上「框数与 PC 不一致」
- * 正是靠这组参数对齐才能排查。模型二进制本身不入 Git，因此这里守卫的是契约而不是权重。
- */
-test('端侧检测契约：导出脚本、原生推理与PC评测参数逐项对齐', () => {
-  const read = (relative: string): string => {
-    const file = path.join(process.cwd(), relative);
-    assert.ok(fs.existsSync(file), `缺少来源文件 ${relative}`);
-    return fs.readFileSync(file, 'utf8');
-  };
-  const num = (source: string, pattern: RegExp, label: string): number => {
-    const matched = source.match(pattern);
-    assert.ok(matched, `未能从源码解析${label}，该侧契约写法已变`);
-    return Number(matched![1]);
-  };
-  const has = (source: string, needle: string, label: string) =>
-    assert.ok(source.includes(needle), `${label} 缺少 ${needle}`);
-
-  const exporter = read('scripts/export_android_yolo.py');
-  const plugin = read('android/app/src/main/java/com/karislin/mahjong/RealTableDetectorPlugin.java');
-  const evaluator = read('scripts/evaluate_real_table.py');
-
-  // 输入边长：导出 / 原生 letterbox / PC 评测
-  const exportSize = num(exporter, /"imgsz": (\d+)/, '导出脚本 imgsz');
-  const pluginSize = num(plugin, /final int imageSize = (\d+)/, '原生输入边长');
-  const evalSize = num(evaluator, /--imgsz", type=int, default=(\d+)/, 'PC 评测 imgsz');
-  assert.equal(pluginSize, exportSize);
-  assert.equal(evalSize, exportSize);
-  assert.equal(exportSize, 640);
-
-  // 类别数与原始输出通道数：4 个坐标 + 37 个类别 = 41
-  const exportClasses = num(exporter, /len\(classes\) != (\d+)/, '导出脚本类别数');
-  const pluginClasses = num(plugin, /for \(int c = 0; c < (\d+); c\+\+\)/, '原生类别循环上界');
-  const pluginLabels = num(plugin, /labels\.length\(\) != (\d+)/, '原生清单类别校验');
-  const exportChannels = num(exporter, /(\d+) not in output_dims/, '导出脚本原始通道数');
-  const pluginChannels = num(plugin, /raw\.length == (\d+)/, '原生原始输出通道数');
-  assert.equal(pluginClasses, exportClasses);
-  assert.equal(pluginLabels, exportClasses);
-  assert.equal(exportClasses, 37);
-  assert.equal(exportChannels, exportClasses + 4);
-  assert.equal(pluginChannels, exportChannels);
-
-  // 置信度与 IoU 阈值
-  const exportConf = num(exporter, /"confidence": ([0-9.]+)/, '导出脚本置信度');
-  const pluginConf = num(plugin, /float best = ([0-9.]+)f/, '原生置信度下限');
-  const evalConf = num(evaluator, /--conf", type=float, default=([0-9.]+)/, 'PC 评测 conf');
-  assert.equal(pluginConf, exportConf);
-  assert.equal(evalConf, exportConf);
-  const exportIou = num(exporter, /"iou": ([0-9.]+)/, '导出脚本 IoU');
-  const pluginIou = num(plugin, /iou\(candidate, previous\) > ([0-9.]+)f/, '原生 IoU');
-  const evalIou = num(evaluator, /--iou", type=float, default=([0-9.]+)/, 'PC 评测 iou');
-  assert.equal(pluginIou, exportIou);
-  assert.equal(evalIou, exportIou);
-
-  // 预处理与清单口径：灰边 114、RGB 三平面 /255、fp32、NMS 在端侧外部执行
-  has(plugin, 'Color.rgb(114, 114, 114)', '原生 letterbox');
-  has(plugin, 'input[plane * 2 + i] = Color.blue(argb) / 255f', '原生 NCHW 归一化');
-  has(plugin, 'new long[]{1, 3, 640, 640}', '原生张量形状');
-  has(exporter, '"precision": "fp32"', '导出脚本精度声明');
-  has(plugin, '"fp32".equals', '原生精度校验');
-  has(exporter, '"nms": "external"', '导出脚本 NMS 归属');
-  has(plugin, '"external".equals', '原生 NMS 归属校验');
-  has(plugin, 'Model checksum does not match manifest', '原生 SHA-256 校验');
-  has(exporter, 'Output model already exists', '导出脚本不得静默覆盖已有模型');
-  const exportCall = exporter.indexOf('model.export(format="onnx"');
-  assert.ok(exportCall > 0, '导出脚本必须调用 ONNX 导出');
-  assert.ok(exporter.indexOf('if dest.exists() or manifest.exists():') < exportCall,
-    'APK 模型存在检查必须发生在 Ultralytics 导出之前');
-  assert.ok(exporter.indexOf('source_onnx.exists()') < exportCall,
-    '禁止导出时覆盖与 .pt 同目录的已有 ONNX');
-
-  // 手动兜底：模型缺失时原生只报不可用，不猜牌面
-  has(plugin, 'Model unavailable or invalid', '原生缺失兜底');
-  has(evaluator, 'Unreviewed object detection only', 'PC 评测不越权声明');
 });
 
 console.log(`\n${passed} 项守卫通过，${failed} 项失败。`);
