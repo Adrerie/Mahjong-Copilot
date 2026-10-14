@@ -46,7 +46,8 @@ const McrScreenshotImport: React.FC<Props> = ({ mode, lang, onApply, currentHand
   };
 
   const select = (index: number, key: string) => {
-        setSlots(previous => previous.map(slot => slot.index === index ? { ...slot, key: key || null } : slot));
+    setRecordDiscard(false);
+    setSlots(previous => previous.map(slot => slot.index === index ? { ...slot, key: key || null } : slot));
   };
 
   const apply = (mode: 'replace' | 'continue') => {
