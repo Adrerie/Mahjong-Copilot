@@ -7,7 +7,7 @@
 1. 核心交付：**Android 游戏内实时悬浮麻将助手**。用户主动授权截屏，先悬浮球点击识别，再做低频画面变化刷新；重点是游戏局内手牌、公开牌河、副露和自己的回合。**目前仍未交付完整悬浮识别闭环**。
 2. 已有稳定基线：React/TypeScript/Vite/Capacitor、国标与四川规则引擎、手动录牌、13张进张/结构待牌、14张合法弃牌推荐、撤销及已有截图/实拍入口。改任何功能不得破坏手动输入和 `calculateBestDiscard` 回退。
 3. 游戏画面优先按**可保存 ROI + 模板/必要时 OCR**识别；现实牌桌照片继续验证现有 YOLO/ONNX。两条视觉路径只共享经过验证的 `GameState`，不要统一成一个全屏 YOLO 常驻模型。
-4. 复杂改动（MediaProjection 服务、悬浮窗生命周期、跨帧事件追踪、策略网络、规则大改）**先写入 TODO 的实现步骤、依赖和验收；本轮只直接修小 Bug、测试、文档与简短的设备诊断脚本**。不要为做计划而写一堆未验证代码。
+4. **先跑真机流程再扩功能**：优先验证已经实现的相册 YOLO 人工修正→确认导入→分析→撤销，及四川/国标连续截图13→14→13；已有测试结果只按证据范围标注。简单 Bug、测试、必要诊断可直接修复。MediaProjection 悬浮窗、跨帧牌河、策略网络等复杂模块只按 TODO 分阶段实施，不叠加全新架构。
 
 ## 识别与决策边界
 
@@ -18,7 +18,7 @@
 
 ## Android、授权和验收
 
-- 当前 Android Debug APK **默认不含 YOLO 权重文件**；本地 `scripts/export_android_yolo.py` 导出 `onnx + manifest` 后才可打包含模型的 APK。普通 CI 构建成功不代表真机推理成功。图像/权重、签名密钥、评测数据不得进入 Git。代码、权重、数据集、第三方推理工具的分发许可分别核验。
+- **开源模型路线已明确**：本项目非商用且源码公开，Mahjong-YOLO 作者 Shin Zhang（@nikmomo）的 MIT 署名与 Ultralytics YOLO11 的 AGPL-3.0 声明统一见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。不要求商业许可证；但仅 @ 作者不等于履行 AGPL，对公开发行的含模型 APK 应同时给出相应源码、许可和来源。**GPL-3.0 与 AGPL-3.0 的组合按各自义务处理**，不要随意修改主仓库 LICENSE。此前已记录 Lenovo 平板上的含模型 Debug APK 成功；普通 CI APK 仍默认不带权重，本机 ONNX + manifest 打包流程保留。私有图片、权重、密钥不上 Git。
 - 未来 MediaProjection 必须由用户主动授权；Android 14+ 需要对应 `mediaProjection` 前台服务类型/权限和正确启动顺序，录制停止后释放会话；系统悬浮窗权限另外申请。服务或悬浮窗未实现前不要预加多余权限。目标游戏不允许获取画面时回退手录，不提供绕过方案。
 - 每次修改运行 `npm test && npm run typecheck && npm run build`；Python 脚本做语法检查；Android 运行 `npx cap sync android` 和 Debug 构建。查看 GitHub Actions 的具体失败步骤，**绿 CI 不代表设备验收**。
 - 真机用 `scripts/check_android_device.ps1` 核对设备、签名安装/版本、APK 是否含 ONNX，再人工测试截图、纠错、离线、旋转、前后台、存档/撤销、耗时和发热。**未在真机亲测不得写已通过**；Debug 与 Release 签名不同，禁止为覆盖安装自动卸载（会丢本地记录）。
