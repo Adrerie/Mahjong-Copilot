@@ -70,6 +70,7 @@ jobs:
             --output "$RUNNER_TEMP/mahjong-yolon-best.onnx" \
             https://raw.githubusercontent.com/nikmomo/Mahjong-YOLO/main/models/nano/mahjong-yolon-best.onnx
           python scripts/export_android_yolo.py --onnx "$RUNNER_TEMP/mahjong-yolon-best.onnx"
+          cp THIRD_PARTY_NOTICES.md android/app/src/main/assets/third_party_notices.md
       - name: Synchronize Capacitor Android
         run: npx cap sync android
       - name: Assemble debug APK
@@ -130,6 +131,7 @@ jobs:
             --output "$RUNNER_TEMP/mahjong-yolon-best.onnx" \
             https://raw.githubusercontent.com/nikmomo/Mahjong-YOLO/main/models/nano/mahjong-yolon-best.onnx
           python scripts/export_android_yolo.py --onnx "$RUNNER_TEMP/mahjong-yolon-best.onnx"
+          cp THIRD_PARTY_NOTICES.md android/app/src/main/assets/third_party_notices.md
       - name: Synchronize Capacitor Android
         run: npx cap sync android
       - name: Restore and validate signing keystore
