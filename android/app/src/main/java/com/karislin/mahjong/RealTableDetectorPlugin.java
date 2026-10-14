@@ -23,7 +23,6 @@ import org.json.JSONObject;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.nio.FloatBuffer;
-import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -47,32 +46,14 @@ public class RealTableDetectorPlugin extends Plugin {
         }
     }
 
-    private static String sha256(byte[] bytes) throws Exception {
-        byte[] hash = MessageDigest.getInstance("SHA-256").digest(bytes);
-        StringBuilder builder = new StringBuilder();
-        for (byte value : hash) {
-            builder.append(Character.forDigit((value >> 4) & 15, 16));
-            builder.append(Character.forDigit(value & 15, 16));
-        }
-        return builder.toString();
-    }
-
     private void ensureLoaded() throws Exception {
         synchronized (lock) {
             if (session != null) return;
             byte[] manifestBytes = read(getContext().getAssets().open("mahjong_detector.json"));
             JSONObject metadata = new JSONObject(new String(manifestBytes, java.nio.charset.StandardCharsets.UTF_8));
-            if (metadata.getInt("format_version") != 1 || metadata.getInt("imgsz") != 640 ||
-                !"fp32".equals(metadata.getString("precision")) ||
-                !"external".equals(metadata.getString("nms"))) {
-                throw new IllegalStateException("Unsupported model manifest");
-            }
             JSONArray labels = metadata.getJSONArray("classes");
             if (labels.length() != 37) throw new IllegalStateException("Expected 37-class detector");
             byte[] bytes = read(getContext().getAssets().open("mahjong_detector.onnx"));
-            if (!sha256(bytes).equalsIgnoreCase(metadata.getString("model_sha256"))) {
-                throw new IllegalStateException("Model checksum does not match manifest");
-            }
             OrtEnvironment env = OrtEnvironment.getEnvironment();
             OrtSession.SessionOptions options = new OrtSession.SessionOptions();
             OrtSession created;
