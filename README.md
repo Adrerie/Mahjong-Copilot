@@ -123,6 +123,9 @@ npm run preview   # 本地预览构建产物
 
 ## 真实牌桌照片（Android 端侧 YOLO，可选实验功能）
 
+**第三方模型致谢与开源声明**：感谢 [Shin Zhang / @nikmomo](https://github.com/nikmomo) 开源 [Mahjong-YOLO](https://github.com/nikmomo/Mahjong-YOLO)（原仓库 MIT）。模型使用 Ultralytics YOLO11 技术，相关模型/训练技术受 AGPL-3.0 开源许可约束。我们选择**非商业、完整开源的使用路线**，无需单独购买商业许可，但公开分发内置模型 APK 时应满足对应源码、许可及来源说明，不能仅靠署名替代。完整来源、MIT 版权文本及对应说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。此前 Lenovo 平板的**本机**含 ONNX Debug 包已记录可推理；普通 CI 下载的 Debug APK 默认仍**不含模型**。
+
+
 真实照片不能复用游戏截图的14个固定裁切槽。现有 Android 原生 `RealTableDetector` 使用 ONNX Runtime 对整张照片运行本地 YOLO：候选框全部从“未分配”开始，用户需要逐项校正牌面及归属（本人暗手／已确认牌河／忽略），并可补录漏识别的手牌。验证13/14张及同牌不超4张后才能写局面，手动输入始终保留。静态照片**不能推断牌河时间顺序、他家隐牌或碰杠历史**。
 
 **注意：普通仓库构建默认不含模型文件。** 若未自行导出 ONNX 到 Android assets，界面会明确显示模型不可用，绝不自动下载或偷偷使用远端服务器。
