@@ -85,7 +85,16 @@ export const planImportedState = (
   const voidSuit = mode === GameMode.Sichuan ? entry.voidSuit : null;
   if (importMode === 'continue') {
     const discards = visibleRiver ?? (confirmedDiscard ? [...entry.discards, confirmedDiscard] : entry.discards);
-    return { ...entry, hand, discards, voidSuit };
+    // A fresh hand observation does not prove how the new winning tile was obtained.
+    // Preserve stable seat/round winds, but invalidate event-specific scoring facts
+    // whenever the hand's tile multiset actually changes (new IDs alone don't count).
+    const before = entry.hand.map(getTileKey).sort();
+    const after = hand.map(getTileKey).sort();
+    const handChanged = before.length !== after.length || before.some((key, i) => key !== after[i]);
+    return handChanged
+      ? { ...entry, hand, discards, voidSuit, winSource: 'unknown',
+          winningTile: null, lastTile: null, afterKong: null, sichuanWinEvent: null }
+      : { ...entry, hand, discards, voidSuit };
   }
   return { ...emptyEntryState(mode), hand, discards: visibleRiver ?? [], voidSuit };
 };
