@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
-"""Export an existing 37-class Mahjong YOLO checkpoint for optional offline Android packaging.
+"""Place an existing Mahjong-YOLO ONNX (or convert a .pt) into Android APK assets.
 
-No training, downloading or credential handling. Requires: pip install ultralytics onnx.
-Run with an explicitly authorized local .pt file, then compile Android on the SAME machine.
-The resulting .onnx and class list are local build assets, never auto-committed.
+No training and no model download. The JSON maps detector output indices to tile names.
 """
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import shutil
 from pathlib import Path
@@ -15,43 +14,53 @@ from pathlib import Path
 
 def run() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--weights", type=Path, required=True)
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--weights", type=Path, help="Existing local Ultralytics .pt")
+    source.add_argument("--onnx", type=Path, help="Existing local ONNX exported by Ultralytics")
     parser.add_argument("--out-dir", type=Path, default=Path("android/app/src/main/assets"))
     args = parser.parse_args()
-    if not args.weights.is_file() or args.weights.suffix.lower() != ".pt":
-        parser.error("--weights must point to a local .pt checkpoint")
 
-    from ultralytics import YOLO
     import onnx
 
-    model = YOLO(str(args.weights))
-    labels = model.names
-    classes = [str(labels[i]) for i in range(len(labels))]
-    if len(classes) != 37 or len(set(classes)) != len(classes):
-        raise SystemExit(f"Expected 37 unique classes; found {len(classes)}. Check checkpoint.")
-    # Static 640x640 FP32 NCHW with raw xywh+score output; NMS runs in native Android.
-    exported = Path(model.export(format="onnx", imgsz=640, batch=1, dynamic=False,
-                                 simplify=False, opset=17, nms=False, device="cpu"))
+    if args.weights:
+        if not args.weights.is_file():
+            parser.error("Local .pt file does not exist")
+        from ultralytics import YOLO
+        model = YOLO(str(args.weights))
+        labels = model.names
+        classes = [str(labels[i]) for i in range(len(labels))]
+        exported = Path(model.export(format="onnx", imgsz=640, batch=1, dynamic=False,
+                                     simplify=False, opset=17, nms=False, device="cpu"))
+    else:
+        exported = args.onnx
+        if not exported.is_file():
+            parser.error("Local .onnx file does not exist")
+        classes = []
+
     graph = onnx.load(str(exported))
-    onnx.checker.check_model(graph)
-    dims = lambda value: [d.dim_value for d in value.type.tensor_type.shape.dim]
-    input_dims = dims(graph.graph.input[0])
-    output_dims = dims(graph.graph.output[0])
-    if input_dims != [1, 3, 640, 640]:
-        raise SystemExit(f"Unexpected ONNX input dimensions: {input_dims}")
-    if len(output_dims) != 3 or output_dims[0] != 1 or 41 not in output_dims[1:]:
-        raise SystemExit(f"Unexpected ONNX output dimensions: {output_dims} (expect 4+37 raw channels)")
+    if not args.weights:
+        metadata = {entry.key: entry.value for entry in graph.metadata_props}
+        encoded_names = metadata.get("names")
+        if not encoded_names:
+            parser.error("ONNX lacks Ultralytics class names; use --weights to export instead")
+        names = ast.literal_eval(encoded_names)
+        if isinstance(names, dict):
+            classes = [str(names[i] if i in names else names[str(i)]) for i in range(len(names))]
+        else:
+            classes = [str(name) for name in names]
+
+    # The app's tile labels and raw output assume the existing 37-class model.
+    if len(classes) != 37 or len(set(classes)) != 37:
+        parser.error(f"Expected 37 tile labels; found {len(classes)}")
     args.out_dir.mkdir(parents=True, exist_ok=True)
-    dest = args.out_dir / "mahjong_detector.onnx"
-    manifest = args.out_dir / "mahjong_detector.json"
-    shutil.copyfile(exported, dest)
-    # The runtime needs only the tile label order; ONNX Runtime checks the graph.
-    manifest.write_text(json.dumps({"classes": classes}, ensure_ascii=False, indent=2),
-                        encoding="utf-8")
-    print(f"Packaged {dest} ({dest.stat().st_size} bytes); classes={len(classes)}")
-    print(f"Labels: {manifest}; output={output_dims}")
+    destination = args.out_dir / "mahjong_detector.onnx"
+    if exported.resolve() != destination.resolve():
+        shutil.copyfile(exported, destination)
+    (args.out_dir / "mahjong_detector.json").write_text(
+        json.dumps({"classes": classes}, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    print(f"Android ONNX: {destination}; classes: {len(classes)}")
     print("Next: npm run build; npx cap sync android; cd android; ./gradlew assembleDebug")
-    print("Keep both generated files local unless model redistribution rights are confirmed.")
 
 
 if __name__ == "__main__":
