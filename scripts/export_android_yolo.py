@@ -13,12 +13,10 @@ import shutil
 from pathlib import Path
 
 
-
 def run() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--weights", type=Path, required=True)
     parser.add_argument("--out-dir", type=Path, default=Path("android/app/src/main/assets"))
-    parser.add_argument("--imgsz", type=int, default=640, choices=[640])
     args = parser.parse_args()
     if not args.weights.is_file() or args.weights.suffix.lower() != ".pt":
         parser.error("--weights must point to a local .pt checkpoint")
