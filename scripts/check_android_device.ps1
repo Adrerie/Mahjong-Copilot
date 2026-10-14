@@ -40,7 +40,25 @@ if (Test-Path -LiteralPath $apkPath -PathType Leaf) {
     $model = $paths -contains "assets/mahjong_detector.onnx"
     $manifest = $paths -contains "assets/mahjong_detector.json"
     Write-Host "Contains local ONNX: $model ; model manifest: $manifest"
-    if ($model -xor $manifest) { Write-Warning "模型和元信息没有成对打包，该 APK 不能可靠识别。" }
+    if ($model -xor $manifest) { throw "模型和清单必须成对存在；此 APK 无法正确加载。" }
+    if ($model -and $manifest) {
+      $manifestEntry = $archive.GetEntry("assets/mahjong_detector.json")
+      $reader = [System.IO.StreamReader]::new($manifestEntry.Open(), [System.Text.Encoding]::UTF8)
+      try { $metadata = $reader.ReadToEnd() | ConvertFrom-Json } finally { $reader.Dispose() }
+      $hasher = [System.Security.Cryptography.SHA256]::Create()
+      $modelStream = $archive.GetEntry("assets/mahjong_detector.onnx").Open()
+      try {
+        $actualHash = [System.BitConverter]::ToString($hasher.ComputeHash($modelStream)).Replace("-", "").ToLowerInvariant()
+      } finally {
+        $modelStream.Dispose()
+        $hasher.Dispose()
+      }
+      if ($actualHash -ne $metadata.model_sha256) {
+        throw "APK 内 ONNX 的 SHA-256 不匹配 manifest，拒绝安装/验收。"
+      }
+      if (@($metadata.classes).Count -ne 37) { throw "APK 内模型类别数与 37 类约定不符。" }
+      Write-Host "Embedded ONNX SHA-256 verified: $actualHash ; classes: 37"
+    }
   } finally { $archive.Dispose() }
   if ($Install) {
     Write-Host "=== adb install -r (保留现有应用数据) ==="
