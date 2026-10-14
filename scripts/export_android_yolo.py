@@ -3,23 +3,15 @@
 
 No training, downloading or credential handling. Requires: pip install ultralytics onnx.
 Run with an explicitly authorized local .pt file, then compile Android on the SAME machine.
-The resulting .onnx and provenance JSON are local build assets, never auto-committed.
+The resulting .onnx and class list are local build assets, never auto-committed.
 """
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import shutil
 from pathlib import Path
 
-
-def sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for block in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(block)
-    return digest.hexdigest()
 
 
 def run() -> None:
@@ -30,17 +22,6 @@ def run() -> None:
     args = parser.parse_args()
     if not args.weights.is_file() or args.weights.suffix.lower() != ".pt":
         parser.error("--weights must point to a local .pt checkpoint")
-
-    # Preflight BEFORE Ultralytics export: it normally writes beside the .pt.
-    # An existing source-side .onnx may have been downloaded independently and
-    # must not be overwritten merely because the APK assets directory is empty.
-    dest = args.out_dir / "mahjong_detector.onnx"
-    manifest = args.out_dir / "mahjong_detector.json"
-    if dest.exists() or manifest.exists():
-        raise SystemExit("Output model already exists; remove BOTH local assets before re-exporting")
-    source_onnx = args.weights.with_suffix(".onnx")
-    if source_onnx.exists():
-        raise SystemExit(f"Source-side ONNX already exists: {source_onnx}; refusing to overwrite it")
 
     from ultralytics import YOLO
     import onnx
@@ -63,21 +44,14 @@ def run() -> None:
     if len(output_dims) != 3 or output_dims[0] != 1 or 41 not in output_dims[1:]:
         raise SystemExit(f"Unexpected ONNX output dimensions: {output_dims} (expect 4+37 raw channels)")
     args.out_dir.mkdir(parents=True, exist_ok=True)
-    # Recheck destination in case a separate process created files meanwhile.
-    if dest.exists() or manifest.exists():
-        raise SystemExit("Output model already exists; remove BOTH local assets before re-exporting")
+    dest = args.out_dir / "mahjong_detector.onnx"
+    manifest = args.out_dir / "mahjong_detector.json"
     shutil.copyfile(exported, dest)
-    metadata = {
-        "format_version": 1, "model_file": dest.name,
-        "model_sha256": sha256(dest), "source_sha256": sha256(args.weights),
-        "input_shape": input_dims, "output_shape": output_dims,
-        "imgsz": 640, "precision": "fp32", "nms": "external", "confidence": 0.22,
-        "iou": 0.7, "classes": classes,
-        "notice": "Verify third-party checkpoint/data/Ultralytics redistribution terms before publication",
-    }
-    manifest.write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"Packaged {dest} ({dest.stat().st_size} bytes), sha256={metadata['model_sha256']}")
-    print(f"Metadata: {manifest}; classes={len(classes)}; output={output_dims}")
+    # The runtime needs only the tile label order; ONNX Runtime checks the graph.
+    manifest.write_text(json.dumps({"classes": classes}, ensure_ascii=False, indent=2),
+                        encoding="utf-8")
+    print(f"Packaged {dest} ({dest.stat().st_size} bytes); classes={len(classes)}")
+    print(f"Labels: {manifest}; output={output_dims}")
     print("Next: npm run build; npx cap sync android; cd android; ./gradlew assembleDebug")
     print("Keep both generated files local unless model redistribution rights are confirmed.")
 
