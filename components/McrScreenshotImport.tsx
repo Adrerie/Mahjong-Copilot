@@ -19,7 +19,6 @@ const McrScreenshotImport: React.FC<Props> = ({ mode, lang, onApply, currentHand
   const [slots, setSlots] = useState<ScreenshotTile[]>([]);
   const [busy, setBusy] = useState(false);
   const [recordDiscard, setRecordDiscard] = useState(false);
-  const [confirmed, setConfirmed] = useState(false);
   const [error, setError] = useState('');
   const zh = lang === 'zh';
   const sichuan = mode === GameMode.Sichuan;
@@ -36,7 +35,7 @@ const McrScreenshotImport: React.FC<Props> = ({ mode, lang, onApply, currentHand
 
   const readFile = async (file?: File) => {
     if (!file) return;
-    setBusy(true); setSlots([]); setError(''); setRecordDiscard(false); setConfirmed(false);
+    setBusy(true); setSlots([]); setError(''); setRecordDiscard(false);
     try {
       setSlots(await recognizeMcrScreenshot(file));
     } catch (e) {
@@ -47,12 +46,11 @@ const McrScreenshotImport: React.FC<Props> = ({ mode, lang, onApply, currentHand
   };
 
   const select = (index: number, key: string) => {
-    setConfirmed(false);
-    setSlots(previous => previous.map(slot => slot.index === index ? { ...slot, key: key || null } : slot));
+        setSlots(previous => previous.map(slot => slot.index === index ? { ...slot, key: key || null } : slot));
   };
 
   const apply = (mode: 'replace' | 'continue') => {
-    if (!ready || !confirmed) return;
+    if (!ready) return;
     const tiles: Tile[] = slots.map(slot => {
       const info = TILE_OPTIONS.find(option => option.key === slot.key)!;
       return createTile(info.suit, info.value);
@@ -125,24 +123,23 @@ const McrScreenshotImport: React.FC<Props> = ({ mode, lang, onApply, currentHand
               )}
             </div>
           )}
-          <label className="block mt-3 text-xs font-bold"><input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} />{' '}{zh ? '我已逐张核对识别结果' : 'I have reviewed every tile'}</label>
           <div className="flex flex-wrap gap-2 mt-3">
-            <button type="button" onClick={() => apply('replace')} disabled={!ready || !confirmed}
+            <button type="button" onClick={() => apply('replace')} disabled={!ready}
               className="rounded-lg bg-[#CCFF00] border-2 border-black text-black font-black px-3 py-2 text-sm disabled:opacity-40">
               {zh
                 ? (sichuan ? '作为新局面导入（需另行核验定缺）' : '作为新局面导入（重置旧记录）')
                 : (sichuan ? 'Start new snapshot (verify void suit after)' : 'Start new snapshot (reset context)')}
             </button>
             {canContinue && (
-              <button type="button" onClick={() => apply('continue')} disabled={!ready || !delta || !confirmed}
+              <button type="button" onClick={() => apply('continue')} disabled={!ready || !delta}
                 className="rounded-lg border-2 border-[#1A237E] px-3 py-2 text-sm font-bold disabled:opacity-40">
                 {zh ? '继续本局（保留牌河）' : 'Continue this round (keep river)'}
               </button>
             )}
           </div>
           <p className="text-[11px] text-gray-500 mt-1">
-            {zh ? '逐张确认后才写入。继续本局不会自动推断其他人的出牌、碰杠或先后顺序；新局面将重置旧牌墙与牌河。操作后可撤销。'
-              : 'Verify every tile first. Continue never guesses other players\' actions or chronology. New snapshot resets old wall and river. Undo is available.'}
+            {zh ? '核对牌面后直接点击导入。继续本局不推断他人操作；新局面重置牌墙和牌河，可撤销。'
+              : 'Review tile faces, then import. Continue does not infer opponents' actions. New snapshot resets wall and river. Undo is available.'}
           </p>
         </>
       )}
