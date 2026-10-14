@@ -7,6 +7,7 @@
 
 - [x] 手动国标/四川录牌、局面存储和撤销、13张进张/待牌、14张弃牌建议、四川定缺与国标8番提示保留。
 - [x] 固定16:10游戏截图13+可选14槽、初始11种指纹与本地人工核验模板缓存；连续截图的手牌差分、新局面/继续本局及确认弃牌逻辑已提交。**尚非实时悬浮窗**。
+- [x] **2026-10-14 复核修正**：截图及实拍入口实际调用共用 `planImportedState`，修复四川新截图仍按国标创建局面的接线错误；保留四川定缺与初始牌墙。此修正不代表新增真机验收。
 - [x] 真实牌桌 Android 原生 ONNX 推理入口、全图候选框与手动区域/牌面修正、漏识别手牌补录，导入前校验。`scripts/evaluate_real_table.py` 和 `scripts/export_android_yolo.py` 已提交。
 - [x] `scripts/check_android_device.ps1`：仅通过 ADB 收集单台设备版本、APK模型资产和签名覆盖安装的反馈；安装需要显式 `-Install`，不卸载、不清空数据。
 - [x] 修复 `utils/entryEditing.ts` 中 Android/截图导入局面初始牌墙常量的缺失导入，原 [CI 失败记录](https://github.com/Adrerie/Mahjong-Copilot/actions/runs/38272706504) 显示这两个未定义符号；**需以最新 CI 确认修复通过**。

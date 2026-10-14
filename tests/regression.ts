@@ -1277,6 +1277,11 @@ test('导入落盘：四川新局面保留定缺与四川牌墙，国标清空�
   assert.equal(keys(sichuanNew.discards)[0], keys(riverOne)[0]);
   assert.equal(sichuanNew.melds.length, 0);
 
+  const screenshotHand = [...tiles('33344466699977', Suit.Sou)];
+  const screenshotState = planImportedState(sichuan([], Suit.Man), GameMode.Sichuan, screenshotHand);
+  assert.deepEqual(validateGameState(screenshotState, 'zh'), []);
+  assert.equal(analyzeGame(screenshotState, 'zh').suggestions[0]?.scoreText, '3 指数番 · 8 倍');
+
   // 国标新局面：定缺必须为空，牌墙用国标初始值
   const mcrNew = planImportedState(state([...tiles('111', Suit.Man)]), GameMode.MCR, imported, { visibleRiver: [] });
   assert.equal(mcrNew.voidSuit, null);

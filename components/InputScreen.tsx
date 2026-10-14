@@ -192,9 +192,7 @@ const InputScreen: React.FC<Props> = ({ mode, lang, setLang, onBack }) => {
     const oldDiscard = confirmedDiscard && importMode === 'continue'
       ? entry.hand.find(t => `${t.suit}${t.value}` === confirmedDiscard)
       : undefined;
-    const candidate: GameState = importMode === 'continue'
-      ? { ...entry, hand, discards: oldDiscard ? [...entry.discards, oldDiscard] : entry.discards }
-      : { ...emptyEntry(GameMode.MCR), hand };
+    const candidate = planImportedState(entry, mode, hand, { importMode, confirmedDiscard: oldDiscard });
     const errors = validateGameState(candidate, lang);
     if (errors.length) {
       setEntryError({ zh: validateGameState(candidate, 'zh')[0], en: validateGameState(candidate, 'en')[0] });
@@ -209,10 +207,7 @@ const InputScreen: React.FC<Props> = ({ mode, lang, setLang, onBack }) => {
 
   const handleRealTable = (hand: Tile[], visibleRiver: Tile[]) => {
     // Only manually attributed boxes enter the engine. A still photo has no temporal order.
-    const candidate: GameState = {
-      ...emptyEntry(mode), hand, discards: visibleRiver,
-      voidSuit: mode === GameMode.Sichuan ? entry.voidSuit : null,
-    };
+    const candidate = planImportedState(entry, mode, hand, { visibleRiver });
     const errors = validateGameState(candidate, lang);
     if (errors.length) {
       setEntryError({ zh: validateGameState(candidate, 'zh')[0], en: validateGameState(candidate, 'en')[0] });
