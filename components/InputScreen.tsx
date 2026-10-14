@@ -119,6 +119,7 @@ const InputScreen: React.FC<Props> = ({ mode, lang, setLang, onBack }) => {
     // 和牌张随暗手失效；其余上下文保持不变
     setEntry(withConsistentContext(next));
     setEntryError(null);
+    setAnalysis(null);
   };
 
   const activateZone = (zone: EntryZone) => {
@@ -168,6 +169,7 @@ const InputScreen: React.FC<Props> = ({ mode, lang, setLang, onBack }) => {
     setEntry(undoEntry);
     setUndoEntry(null);
     setEntryError(null);
+    setAnalysis(null);
   };
 
   const handleReset = () => {
@@ -195,7 +197,7 @@ const InputScreen: React.FC<Props> = ({ mode, lang, setLang, onBack }) => {
     const candidate = planImportedState(entry, mode, hand, { importMode, confirmedDiscard: oldDiscard });
     const errors = validateGameState(candidate, lang);
     if (errors.length) {
-      setEntryError({ zh: validateGameState(candidate, 'zh')[0], en: validateGameState(candidate, 'en')[0] });
+      setEntryError({ zh: errors[0], en: errors[0] });
       return false;
     }
     commit(candidate);
@@ -205,18 +207,19 @@ const InputScreen: React.FC<Props> = ({ mode, lang, setLang, onBack }) => {
     return true;
   };
 
-  const handleRealTable = (hand: Tile[], visibleRiver: Tile[]) => {
-    // Only manually attributed boxes enter the engine. A still photo has no temporal order.
+  const handleRealTable = (hand: Tile[], visibleRiver: Tile[]): boolean => {
+    // A still photo supplies only selected hand and visible tiles.
     const candidate = planImportedState(entry, mode, hand, { visibleRiver });
     const errors = validateGameState(candidate, lang);
     if (errors.length) {
-      setEntryError({ zh: validateGameState(candidate, 'zh')[0], en: validateGameState(candidate, 'en')[0] });
-      return;
+      setEntryError({ zh: errors[0], en: errors[0] });
+      return false;
     }
     commit(candidate);
     setShowKeyboard(false);
     setTextInput('');
     setAnalysis(analyzeGame(candidate, lang));
+    return true;
   };
 
   const handleAnalyze = () => {
