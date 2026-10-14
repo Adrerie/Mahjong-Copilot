@@ -206,6 +206,7 @@ public class RealTableDetectorPlugin extends Plugin {
             return;
         }
         new Thread(() -> {
+            Bitmap photo = null;
             try {
                 ensureLoaded();
                 int comma = image.indexOf(',');
@@ -213,7 +214,7 @@ public class RealTableDetectorPlugin extends Plugin {
                     throw new IllegalArgumentException("Expected base64 image");
                 }
                 byte[] bytes = Base64.decode(image.substring(comma + 1), Base64.DEFAULT);
-                Bitmap photo = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
+                photo = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
                 if (photo == null || photo.getWidth() > 4096 || photo.getHeight() > 4096) {
                     throw new IllegalArgumentException("Invalid or oversized image");
                 }
@@ -224,10 +225,11 @@ public class RealTableDetectorPlugin extends Plugin {
                 response.put("width", photo.getWidth());
                 response.put("height", photo.getHeight());
                 response.put("elapsedMs", SystemClock.elapsedRealtime() - start);
-                photo.recycle();
                 call.resolve(response);
             } catch (Exception e) {
                 call.reject("On-device detection failed: " + e.getMessage());
+            } finally {
+                if (photo != null && !photo.isRecycled()) photo.recycle();
             }
         }, "mahjong-model-inference").start();
     }
