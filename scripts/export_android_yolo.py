@@ -30,6 +30,18 @@ def run() -> None:
     args = parser.parse_args()
     if not args.weights.is_file() or args.weights.suffix.lower() != ".pt":
         parser.error("--weights must point to a local .pt checkpoint")
+
+    # Preflight BEFORE Ultralytics export: it normally writes beside the .pt.
+    # An existing source-side .onnx may have been downloaded independently and
+    # must not be overwritten merely because the APK assets directory is empty.
+    dest = args.out_dir / "mahjong_detector.onnx"
+    manifest = args.out_dir / "mahjong_detector.json"
+    if dest.exists() or manifest.exists():
+        raise SystemExit("Output model already exists; remove BOTH local assets before re-exporting")
+    source_onnx = args.weights.with_suffix(".onnx")
+    if source_onnx.exists():
+        raise SystemExit(f"Source-side ONNX already exists: {source_onnx}; refusing to overwrite it")
+
     from ultralytics import YOLO
     import onnx
 
@@ -51,8 +63,7 @@ def run() -> None:
     if len(output_dims) != 3 or output_dims[0] != 1 or 41 not in output_dims[1:]:
         raise SystemExit(f"Unexpected ONNX output dimensions: {output_dims} (expect 4+37 raw channels)")
     args.out_dir.mkdir(parents=True, exist_ok=True)
-    dest = args.out_dir / "mahjong_detector.onnx"
-    manifest = args.out_dir / "mahjong_detector.json"
+    # Recheck destination in case a separate process created files meanwhile.
     if dest.exists() or manifest.exists():
         raise SystemExit("Output model already exists; remove BOTH local assets before re-exporting")
     shutil.copyfile(exported, dest)
