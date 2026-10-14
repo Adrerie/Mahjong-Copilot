@@ -41,7 +41,6 @@ const RealTableImport: React.FC<Props> = ({ lang, onApply }) => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [duration, setDuration] = useState<number | null>(null);
-  const [confirmed, setConfirmed] = useState(false);
 
   useEffect(() => {
     if (Capacitor.getPlatform() !== 'android') {
@@ -75,7 +74,7 @@ const RealTableImport: React.FC<Props> = ({ lang, onApply }) => {
 
   const read = async (file?: File) => {
     if (!file || availability !== 'ready') return;
-    setError(''); setBoxes([]); setMissing([]); setBusy(true); setPhoto(''); setDuration(null); setConfirmed(false);
+    setError(''); setBoxes([]); setMissing([]); setBusy(true); setPhoto(''); setDuration(null);
     try {
       const bitmap = await createImageBitmap(file);
       const ratio = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
@@ -107,7 +106,7 @@ const RealTableImport: React.FC<Props> = ({ lang, onApply }) => {
   };
 
   const apply = () => {
-    if (!ready || !confirmed) return;
+    if (!ready) return;
     const toTile = (key: string | null): Tile => {
       const entry = optionFor(key);
       if (!entry) throw new Error('Unknown tile');
@@ -122,8 +121,8 @@ const RealTableImport: React.FC<Props> = ({ lang, onApply }) => {
         {zh ? '真实牌桌照片 · 本机 YOLO（实验功能）' : 'Real-table photo · offline YOLO (experimental)'}
       </summary>
       <p className="mt-2 text-xs text-gray-600">
-        {zh ? '只读本地相册。识别框、牌面及区域均须人工确认；默认不认定任何一张属于自己或牌河。漏识别牌可补录。此入口不推断时间顺序。'
-          : 'On-device photos only. Review every box, tile, and region. Nothing is auto-assigned; add missed hand tiles manually. No chronology is inferred.'}
+        {zh ? '只读本地相册。选择自己的手牌，必要时纠正牌面或补漏；其余检测框可忽略。此入口不推断时间顺序。'
+          : 'On-device photos only. Select your hand tiles and correct any mistakes. Other detections may be ignored. No chronology is inferred.'}
       </p>
       <p className="mt-1 text-xs text-gray-500">{availability === 'checking' ? 'Checking local model…' : status}</p>
       {availability === 'ready' && (
@@ -175,16 +174,16 @@ const RealTableImport: React.FC<Props> = ({ lang, onApply }) => {
             {missing.map((key, index) => (
               <div className="flex gap-2" key={index}>
                 <select className="flex-1 border rounded p-1 text-xs" value={key}
-                  onChange={e => { setConfirmed(false); setMissing(old => old.map((x, i) => i === index ? e.target.value : x)); }}>
+                  onChange={e => { setMissing(old => old.map((x, i) => i === index ? e.target.value : x)); }}>
                   <option value="">{zh ? '选择牌面' : 'Choose face'}</option>
                   {TILE_OPTIONS.map(t => <option key={t.key} value={t.key}>{t.name}</option>)}
                 </select>
-                <button type="button" onClick={() => { setConfirmed(false); setMissing(old => old.filter((_, i) => i !== index)); }}
+                <button type="button" onClick={() => { setMissing(old => old.filter((_, i) => i !== index)); }}
                   className="px-2 border rounded">{zh ? '删除' : 'Remove'}</button>
               </div>
             ))}
             <button type="button" disabled={handKeys.length >= 14}
-              onClick={() => { setConfirmed(false); setMissing(old => [...old, '']); }}
+              onClick={() => { setMissing(old => [...old, '']); }}
               className="text-xs underline disabled:opacity-40">{zh ? '+ 补一张手牌' : '+ Missing tile'}</button>
           </div>
           {(counts || conflicts) && (
@@ -192,8 +191,7 @@ const RealTableImport: React.FC<Props> = ({ lang, onApply }) => {
               {zh ? '已分配候选存在重复框或同牌超过四张，请修正或忽略误检框。' : 'Assigned boxes overlap or exceed four copies. Review duplicates.'}
             </p>
           )}
-          <label className="block mt-3 text-xs font-bold"><input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} />{' '}{zh ? '已核验手牌、已见牌和每个框的归属' : 'All selected tiles and regions have been checked'}</label>
-          <button type="button" disabled={!ready || !confirmed} onClick={apply}
+          <button type="button" disabled={!ready} onClick={apply}
             className="mt-3 rounded-lg bg-[#CCFF00] border-2 border-black text-black font-black px-3 py-2 text-sm disabled:opacity-40">
             {zh ? `确认导入 ${handKeys.length} 张暗手 + ${river.length} 张已见牌` :
               `Confirm ${handKeys.length} hand + ${river.length} visible river tiles`}
