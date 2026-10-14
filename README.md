@@ -123,12 +123,12 @@ npm run preview   # 本地预览构建产物
 
 ## 真实牌桌照片（Android 端侧 YOLO，可选实验功能）
 
-**第三方模型致谢与开源声明**：感谢 [Shin Zhang / @nikmomo](https://github.com/nikmomo) 开源 [Mahjong-YOLO](https://github.com/nikmomo/Mahjong-YOLO)（原仓库 MIT）。模型使用 Ultralytics YOLO11 技术，相关模型/训练技术受 AGPL-3.0 开源许可约束。我们选择**非商业、完整开源的使用路线**，无需单独购买商业许可，但公开分发内置模型 APK 时应满足对应源码、许可及来源说明，不能仅靠署名替代。完整来源、MIT 版权文本及对应说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。此前 Lenovo 平板的**本机**含 ONNX Debug 包已记录可推理；普通 CI 下载的 Debug APK 默认仍**不含模型**。
+**第三方模型致谢与开源声明**：感谢 [Shin Zhang / @nikmomo](https://github.com/nikmomo) 开源 [Mahjong-YOLO](https://github.com/nikmomo/Mahjong-YOLO)（原仓库 MIT）。模型使用 Ultralytics YOLO11 技术，相关模型/训练技术受 AGPL-3.0 开源许可约束。我们选择**非商业、完整开源的使用路线**，无需单独购买商业许可，但公开分发内置模型 APK 时应满足对应源码、许可及来源说明，不能仅靠署名替代。完整来源、MIT 版权文本及对应说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。此前 Lenovo 平板本机含 ONNX Debug 包已记录可推理；目前 GitHub Actions 也尝试直接打包上游 ONNX，是否成功以最新 Android CI 构建为准。
 
 
 真实照片不能复用游戏截图的14个固定裁切槽。现有 Android 原生 `RealTableDetector` 使用 ONNX Runtime 对整张照片运行本地 YOLO：候选框全部从“未分配”开始，用户需要逐项校正牌面及归属（本人暗手／已确认牌河／忽略），并可补录漏识别的手牌。验证13/14张及同牌不超4张后才能写局面，手动输入始终保留。静态照片**不能推断牌河时间顺序、他家隐牌或碰杠历史**。
 
-**注意：普通仓库构建默认不含模型文件。** 若未自行导出 ONNX 到 Android assets，界面会明确显示模型不可用，绝不自动下载或偷偷使用远端服务器。
+**Android CI 构建现已内置模型。** 构建时从 Mahjong-YOLO 上游取得 ONNX，直接放入 APK；安装后完全离线，不会运行时下载或使用远端识别。自行在本机构建时也可用现成 ONNX 或 .pt。
 
 开发机批量检验（非 Android 内置功能；可一次测试3张或更多照片；本次本地评测记录为5张）：
 
@@ -143,18 +143,19 @@ python scripts/evaluate_real_table.py --image-dir "D:\\Photos\\mahjong" --weight
 
 ### 本地转换并打包 Android 模型
 
-使用**本人本地已有且获准使用**的麻将 YOLO Nano `.pt` 权重；代码只提供导出和端侧推理，不提交版权及分发条件尚未核实的二进制文件：
+使用上游提供的麻将 YOLO Nano ONNX，免去 PyTorch 转换；也可以从已有 `.pt` 导出：
 
 ```powershell
-python -m pip install ultralytics onnx
-python scripts/export_android_yolo.py --weights "D:\\models\\mahjong-yolon-best.pt"
+python -m pip install onnx
+python scripts/export_android_yolo.py --onnx "D:\\models\\mahjong-yolon-best.onnx"
+# 只有 .pt 时：先安装 ultralytics，再使用 --weights 转换
 npm run build
 npx cap sync android
 cd android
 .\\gradlew.bat assembleDebug
 ```
 
-导出脚本使用37类、固定FP32 `[1,3,640,640]` 与41通道原始输出，生成 `android/app/src/main/assets/mahjong_detector.onnx` 和 `mahjong_detector.json`（牌名类别表）。两个文件默认不入 Git；**必须在同一台机器先导出再构建 APK**，否则普通 CI APK 不含模型。原生端完成 letterbox、模型推理、NMS 和坐标还原；默认 `imgsz=640/conf=0.22/iou=0.7`，仅为小样本测试起点。先在 Android 实机验证照片识别和完整导入流程；公开发布时保留第三方开源许可和源码入口。
+导出脚本使用37类、固定FP32 `[1,3,640,640]` 与41通道原始输出，生成 `android/app/src/main/assets/mahjong_detector.onnx` 和 `mahjong_detector.json`（牌名类别表）。模型文件不入 Git；本地构建需提前放入 assets，GitHub Actions 会自动下载上游模型。原生端完成 letterbox、模型推理、NMS 和坐标还原；默认 `imgsz=640/conf=0.22/iou=0.7`，仅为小样本测试起点。先在 Android 实机验证照片识别和完整导入流程；公开发布时保留第三方开源许可和源码入口。
 
 游戏实时识别下一步改用 Android 用户主动授权的 MediaProjection + 前台服务 + 用户确认后的帧差更新；当前仍是**导入游戏截图**，没有系统级悬浮窗/持续录屏，不绕过受保护画面。
 
@@ -188,7 +189,7 @@ Windows PowerShell，在 **ADB 已授权且恰好连接一台设备**、Debug AP
 .\scripts\check_android_device.ps1 -Logs     # 仅本机查看最近崩溃/Capacitor 日志
 ```
 
-脚本不能代替真人在游戏内测试：需要逐项检查手录、截图、实拍、撤销、横竖屏、离线与切后台。若遇 `INSTALL_FAILED_UPDATE_INCOMPATIBLE`，通常需要核对签名证书；**不要自动卸载旧 App 以免丢失存档**。当前 MediaProjection 实时悬浮窗尚处于计划阶段；普通 Debug APK 默认不含 YOLO 权重，必须在本机导出模型并重新构建才可能在应用内加载。具体步骤见 [唯一 TODO](docs/RESTRUCTURE_PLAN_2026-10-10.md)。
+脚本不能代替真人在游戏内测试：需要逐项检查手录、截图、实拍、撤销、横竖屏、离线与切后台。若遇 `INSTALL_FAILED_UPDATE_INCOMPATIBLE`，通常需要核对签名证书；**不要自动卸载旧 App 以免丢失存档**。当前 MediaProjection 实时悬浮窗尚处于计划阶段；GitHub CI 的 Debug APK 构建会自动获取上游 YOLO 模型；本机离线构建需事先备有 ONNX。具体步骤见 [唯一 TODO](docs/RESTRUCTURE_PLAN_2026-10-10.md)。
 
 应用在 Android 上使用 edge-to-edge 主题，界面按安全区（`env(safe-area-inset-*)`）留边；平板横屏（≥1000px）为录牌/上下文与手牌/牌河双栏，竖屏和手机保持单列，键盘在宽屏上限宽居中，不用固定宽度容器包裹整页。
 
