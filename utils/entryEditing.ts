@@ -88,8 +88,8 @@ export const planImportedState = (
     // A fresh hand observation does not prove how the new winning tile was obtained.
     // Preserve stable seat/round winds, but invalidate event-specific scoring facts
     // whenever the hand's tile multiset actually changes (new IDs alone don't count).
-    const before = entry.hand.map(getTileKey).sort();
-    const after = hand.map(getTileKey).sort();
+    const before = entry.hand.map(t => getTileKey(t.suit, t.value)).sort();
+    const after = hand.map(t => getTileKey(t.suit, t.value)).sort();
     const handChanged = before.length !== after.length || before.some((key, i) => key !== after[i]);
     return handChanged
       ? { ...entry, hand, discards, voidSuit, winSource: 'unknown',
