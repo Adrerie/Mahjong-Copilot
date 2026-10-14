@@ -9,7 +9,7 @@ Mahjong Copilot 是非商业、公开源码的 Android 麻将辅助项目。**�
 - 数据集入口 / Dataset: https://www.kaggle.com/datasets/shinz114514/mahjong-hand-photos-taken-with-mobile-camera/data
 - 仓库许可 / Repository license: **MIT**（原项目 `LICENSE`）。
 - 本项目复用已训练的 Nano 检测牌模型，视权重取得方式直接使用上游 ONNX 或由合法取得的 `.pt` 导出 ONNX；无自行训练、无数据上传。
-- 模型不是项目独创成果；保留原作者版权和许可证，公开发布时提供模型具体版本、哈希及来源。
+- 模型不是项目独创成果；保留原作者版权和许可证，公开发布时注明模型来源与使用的版本。
 
 ### 原项目 MIT 完整许可 / Original MIT License
 
@@ -55,5 +55,5 @@ SOFTWARE.
 ## 已完成 vs 公开分发前的最后核对
 
 - **已完成**：来源及版权署名、MIT 完整文本、AGPL/GPL 规则说明；本地模型转换、含 ONNX Debug APK 和 Lenovo 平板端侧推理有既有测试记录。
-- **打包版公开发行前**：验证提交的模型 SHA-256/上游版本、完整对应源码可获得、许可告知及权重取得来源一致；签名 Release 安装升级测试通过。若不能核对，则继续提供可自行打包 ONNX 的源码，不虚构授权结论。
+- **打包版公开发行前**：保留模型来源、对应开源许可和源码获取方式；实际 APK 的功能使用真机确认，不增加哈希验证或内部审批流程。
 - 此文件不改变上游许可，也不自动授权与项目无关的第三方素材。
